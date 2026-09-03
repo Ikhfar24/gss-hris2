@@ -5,6 +5,7 @@ import { AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { Role } from '../common/enums/role.enum';
 import { distanceInMeters } from '../common/utils/geo.util';
 import { saveBase64Image, toProtectedMediaPath } from '../common/utils/file-storage.util';
+import { payableAttendanceState } from '../common/domain/attendance-payable';
 import { CheckInDto } from './dto/check-in.dto';
 import { CheckOutDto } from './dto/check-out.dto';
 import { QueryAttendanceDto, QueryOpenAttendanceDto } from './dto/query-attendance.dto';
@@ -38,7 +39,7 @@ export class AttendanceService {
   ) {}
 
   /** Resolves the Employee record linked to a logged-in User account. */
-  private async getEmployeeForUser(userId: string) {
+  private async getEmployeeForUser(userId: string, attendanceAt = new Date()) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: { employeeId: true },
@@ -48,11 +49,12 @@ export class AttendanceService {
     }
     const employee = await this.prisma.employee.findUnique({
       where: { id: user.employeeId },
-      include: { placements: { where: { status: 'ACTIVE' }, include: { location: true } } },
+      include: { placements: { where: { status: { in: ['ACTIVE', 'SCHEDULED'] } }, include: { location: true }, orderBy: { startDate: 'desc' } } },
     });
     if (!employee) throw new NotFoundException('Data karyawan tidak ditemukan');
 
-    const activePlacement = employee.placements[0];
+    const today = startOfDay(attendanceAt);
+    const activePlacement = employee.placements.find((placement) => placement.startDate <= today && (!placement.endDate || placement.endDate >= today));
     if (!activePlacement) {
       throw new BadRequestException('Karyawan belum memiliki penempatan aktif, tidak dapat absen.');
     }
@@ -167,10 +169,9 @@ export class AttendanceService {
   }
 
   async checkIn(dto: CheckInDto, actor: AuthenticatedUser) {
-    const { employee, location } = await this.getEmployeeForUser(actor.userId);
-    await this.enforceDeviceBinding(employee.id, dto.deviceId, dto.deviceInfo);
-
     const { at: checkInAt, clientAt, isOffline } = this.resolveEventTime(dto.clientRecordedAt);
+    const { employee, location } = await this.getEmployeeForUser(actor.userId, checkInAt);
+    await this.enforceDeviceBinding(employee.id, dto.deviceId, dto.deviceInfo);
     const today = startOfDay(checkInAt);
 
     const existing = await this.prisma.attendance.findUnique({
@@ -207,6 +208,7 @@ export class AttendanceService {
         checkInSyncedOffline: isOffline,
         latenessStatus,
         validationStatus: needsReview ? 'NEEDS_REVIEW' : 'VALID',
+        payableStatus: needsReview ? 'PENDING_REVIEW' : 'NOT_PAYABLE',
         reviewNote: isOffWorkDay ? 'Check-in di luar hari kerja terjadwal lokasi ini' : null,
       },
       update: {}, // upsert only used as an atomic find-or-create guard; existing rows are rejected above
@@ -266,6 +268,13 @@ export class AttendanceService {
         checkOutFailureNote: evidence.failureNote,
         checkOutSyncedOffline: isOffline,
         validationStatus: needsReview && existing.validationStatus === 'VALID' ? 'NEEDS_REVIEW' : existing.validationStatus,
+        payableStatus: payableAttendanceState({
+          checkInAt: existing.checkInAt,
+          checkOutAt,
+          validationStatus: needsReview && existing.validationStatus === 'VALID' ? 'NEEDS_REVIEW' : existing.validationStatus,
+          checkOutSource: 'EMPLOYEE',
+        }),
+        checkOutSource: 'EMPLOYEE',
       },
       include: INCLUDE,
     });

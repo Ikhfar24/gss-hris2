@@ -10,6 +10,7 @@ import { AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { Role } from '../common/enums/role.enum';
 import { CreatePlacementRequestDto } from './dto/create-placement-request.dto';
 import { ReviewPlacementRequestDto } from './dto/review-placement-request.dto';
+import { assertDateRange, dateRangesOverlap, startOfCalendarDay } from '../common/domain/date-range';
 
 const INCLUDE = {
   employee: { select: { id: true, name: true, employmentType: true } },
@@ -53,6 +54,11 @@ export class PlacementRequestsService {
   // §10.2 / §8.2 — request type follows the employee's employment type,
   // not an arbitrary choice by the requester (BR-003/BR-004).
   async create(dto: CreatePlacementRequestDto, actor: AuthenticatedUser) {
+    try {
+      assertDateRange(dto.startDate, dto.endDate);
+    } catch (error) {
+      throw new BadRequestException((error as Error).message);
+    }
     const employee = await this.prisma.employee.findUnique({
       where: { id: dto.employeeId },
       include: { placements: { where: { status: 'ACTIVE' } } },
@@ -213,11 +219,48 @@ export class PlacementRequestsService {
     employeeId: string;
     destinationLocationId: string;
     startDate: Date;
+    endDate?: Date | null;
   }) {
     await this.prisma.$transaction(async (tx) => {
+      const placements = await tx.placement.findMany({
+        where: { employeeId: request.employeeId },
+        select: { id: true, startDate: true, endDate: true, status: true },
+      });
+      const conflicts = placements.filter((placement) => placement.status !== 'ACTIVE'
+        && dateRangesOverlap(placement.startDate, placement.endDate, request.startDate, request.endDate));
+      if (conflicts.length > 0) {
+        throw new BadRequestException('Periode penempatan bertabrakan dengan riwayat penempatan yang sudah ada');
+      }
+
+      const isFuture = startOfCalendarDay(request.startDate) > startOfCalendarDay(new Date());
+      const activePlacements = placements.filter((placement) => placement.status === 'ACTIVE');
+      if (activePlacements.length > 1) {
+        throw new BadRequestException('Data penempatan aktif ambigu; perbaiki riwayat sebelum menyetujui mutasi baru');
+      }
+      if (activePlacements[0] && startOfCalendarDay(request.startDate) <= startOfCalendarDay(activePlacements[0].startDate)) {
+        throw new BadRequestException('Tanggal efektif penempatan baru harus setelah penempatan aktif saat ini');
+      }
+
+      if (isFuture) {
+        const scheduledConflict = placements.some((placement) => placement.status === 'SCHEDULED'
+          && dateRangesOverlap(placement.startDate, placement.endDate, request.startDate, request.endDate));
+        if (scheduledConflict) throw new BadRequestException('Periode penempatan terjadwal bertabrakan');
+        await tx.placement.create({
+          data: {
+            employeeId: request.employeeId,
+            locationId: request.destinationLocationId,
+            startDate: request.startDate,
+            endDate: request.endDate ?? null,
+            status: 'SCHEDULED',
+            sourceRequestId: request.id,
+          },
+        });
+        return;
+      }
+
       await tx.placement.updateMany({
         where: { employeeId: request.employeeId, status: 'ACTIVE' },
-        data: { status: 'ENDED', endDate: request.startDate },
+        data: { status: 'ENDED', endDate: new Date(startOfCalendarDay(request.startDate).getTime() - 86400000) },
       });
 
       await tx.placement.create({
@@ -225,6 +268,7 @@ export class PlacementRequestsService {
           employeeId: request.employeeId,
           locationId: request.destinationLocationId,
           startDate: request.startDate,
+          endDate: request.endDate ?? null,
           status: 'ACTIVE',
           sourceRequestId: request.id,
         },

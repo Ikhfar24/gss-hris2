@@ -5,6 +5,7 @@ import { AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { Role } from '../common/enums/role.enum';
 import { saveBase64File } from '../common/utils/file-storage.util';
 import { toProtectedMediaPath } from '../common/utils/file-storage.util';
+import { assertDateRange } from '../common/domain/date-range';
 import { CreateLeaveRequestDto } from './dto/create-leave-request.dto';
 import { ReviewLeaveRequestDto } from './dto/review-leave-request.dto';
 
@@ -62,6 +63,10 @@ export class LeaveRequestsService {
   }
 
   async create(dto: CreateLeaveRequestDto, actor: AuthenticatedUser) {
+    assertDateRange(dto.startDate, dto.endDate);
+    if (dto.type === 'SAKIT' && !dto.documentBase64) {
+      throw new BadRequestException('Dokumen medis wajib dilampirkan untuk pengajuan sakit');
+    }
     let employeeId: string;
     const maySubmitForOthers = [Role.ADMIN_HR, Role.SYSTEM_ADMIN].includes(actor.role as Role);
     if (!maySubmitForOthers) {
@@ -84,6 +89,8 @@ export class LeaveRequestsService {
         endDate: dto.endDate ? new Date(dto.endDate) : null,
         reason: dto.reason,
         documentUrl,
+        medicalDocumentUrl: dto.type === 'SAKIT' ? documentUrl : null,
+        requiresMedicalDocument: dto.type === 'SAKIT',
         requestedById: actor.userId,
         status: 'PENDING',
       },

@@ -59,6 +59,18 @@ enum EmployeeStatus {
   TERMINATED
 }
 
+enum Gender {
+  MALE
+  FEMALE
+}
+
+enum EmployeeProfileChangeStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
 enum ContractType {
   PKWT
   PKWTT
@@ -73,6 +85,7 @@ enum ContractStatus {
 
 enum PlacementStatus {
   ACTIVE
+  SCHEDULED
   ENDED
 }
 
@@ -103,7 +116,9 @@ model Client {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  locations Location[]
+  locations            Location[]
+  payrollCycleSettings PayrollCycleSetting[]
+  temporaryAssignments TemporaryAssignment[]
 
   @@map("clients")
 }
@@ -112,79 +127,118 @@ model Client {
 // operational rules referenced in PRD section 5/12 (radius, jam kerja,
 // toleransi) so HR can change them without code, per BR-008.
 model Location {
-  id              String   @id @default(uuid())
-  name            String
-  address         String?
-  latitude        Float?
-  longitude       Float?
-  radiusMeters    Int      @default(300)
-  checkInTime     String   @default("08:00") // "HH:mm", kept as string: no timezone/date semantics needed
-  checkOutTime    String   @default("16:00")
-  toleranceMin    Int      @default(10)
-  workDays        Int[]    @default([1, 2, 3, 4, 5]) // 0=Sunday .. 6=Saturday
-  clientId        String?
-  client          Client?  @relation(fields: [clientId], references: [id])
-  isActive        Boolean  @default(true)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id           String   @id @default(uuid())
+  name         String
+  address      String?
+  latitude     Float?
+  longitude    Float?
+  radiusMeters Int      @default(300)
+  checkInTime  String   @default("08:00") // "HH:mm", kept as string: no timezone/date semantics needed
+  checkOutTime String   @default("16:00")
+  toleranceMin Int      @default(10)
+  workDays     Int[]    @default([1, 2, 3, 4, 5]) // 0=Sunday .. 6=Saturday
+  clientId     String?
+  client       Client?  @relation(fields: [clientId], references: [id])
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
-  placements Placement[]
-  placementRequestsFrom PlacementRequest[] @relation("OriginLocation")
-  placementRequestsTo   PlacementRequest[] @relation("DestinationLocation")
-  attendances Attendance[]
-  holidays    Holiday[]
+  placements            Placement[]
+  placementRequestsFrom PlacementRequest[]    @relation("OriginLocation")
+  placementRequestsTo   PlacementRequest[]    @relation("DestinationLocation")
+  attendances           Attendance[]
+  holidays              Holiday[]
+  payrollCycleSettings  PayrollCycleSetting[]
+  temporaryAssignments  TemporaryAssignment[]
 
   @@map("locations")
 }
 
 model Employee {
-  id               String         @id @default(uuid())
-  name             String
-  nik              String?        @unique // Nomor Induk Kependudukan, optional at MVP intake
-  phone            String?
-  address          String?
-  employmentType   EmploymentType
-  status           EmployeeStatus @default(TRAINING)
-  joinDate         DateTime
-  trainingEndDate  DateTime?
-  resignDate       DateTime? // set when a RESIGN leave request is approved (§13)
-  coordinatorId    String? // User.id of the Koordinator responsible for this employee
+  id                        String         @id @default(uuid())
+  name                      String
+  nik                       String?        @unique // Nomor Induk Kependudukan, optional at MVP intake
+  phone                     String?
+  address                   String?
+  employmentType            EmploymentType
+  status                    EmployeeStatus @default(TRAINING)
+  joinDate                  DateTime
+  trainingEndDate           DateTime?
+  resignDate                DateTime? // set when a RESIGN leave request is approved (§13)
+  coordinatorId             String? // User.id of the Koordinator responsible for this employee
   // Tarif Harian Lepas (Rupiah/hari) — dipakai sebagai basis payroll HANYA
   // ketika karyawan tidak punya kontrak PKWT aktif yang mencakup periode
   // payroll (mis. masih training/sementara). Diisi manual per karyawan
   // karena tarifnya bervariasi (§15, keputusan bisnis: Rp90.000–97.000).
-  dailyRate        Int?
-  createdAt        DateTime       @default(now())
-  updatedAt        DateTime       @updatedAt
+  dailyRate                 Int?
+  employeeNumber            String?        @unique // NIP / employee ID
+  email                     String?
+  dateOfBirth               DateTime?      @db.Date
+  gender                    Gender?
+  bankAccountNumber         String?
+  bpjsKesehatanNumber       String?
+  bpjsKetenagakerjaanNumber String?
+  jobTitle                  String?
+  photoUrl                  String?
+  // Attendance eligibility belongs to the employee/staff profile, never role.
+  attendanceRequired        Boolean        @default(true)
+  attendanceExemptionReason String?
+  createdAt                 DateTime       @default(now())
+  updatedAt                 DateTime       @updatedAt
 
-  user               User?
-  contracts          Contract[]
-  placements         Placement[]
-  placementRequests  PlacementRequest[]
-  attendances        Attendance[]
-  device             EmployeeDevice?
-  leaveRequests      LeaveRequest[]
-  payrollSlips       PayrollSlip[]
+  user                  User?
+  contracts             Contract[]
+  placements            Placement[]
+  placementRequests     PlacementRequest[]
+  attendances           Attendance[]
+  device                EmployeeDevice?
+  leaveRequests         LeaveRequest[]
+  payrollSlips          PayrollSlip[]
+  profileChangeRequests EmployeeProfileChangeRequest[]
+  leaveBalances         LeaveBalance[]
+  temporaryAssignments  TemporaryAssignment[]
+  absenceCases          AbsenceCase[]
+  overtimeRequests      OvertimeRequest[]
 
   @@map("employees")
 }
 
+model EmployeeProfileChangeRequest {
+  id               String                      @id @default(uuid())
+  employeeId       String
+  employee         Employee                    @relation(fields: [employeeId], references: [id])
+  requestedChanges Json
+  status           EmployeeProfileChangeStatus @default(PENDING)
+  requestedById    String
+  requestedAt      DateTime                    @default(now())
+  reviewedById     String?
+  reviewedAt       DateTime?
+  reviewNote       String?
+  appliedChanges   Json?
+  createdAt        DateTime                    @default(now())
+  updatedAt        DateTime                    @updatedAt
+
+  @@index([employeeId, status])
+  @@index([status, requestedAt])
+  @@map("employee_profile_change_requests")
+}
+
 model Contract {
-  id         String         @id @default(uuid())
-  employeeId String
-  employee   Employee       @relation(fields: [employeeId], references: [id])
-  type       ContractType   @default(PKWT)
-  startDate  DateTime
-  endDate    DateTime?
-  status     ContractStatus @default(ACTIVE)
+  id          String         @id @default(uuid())
+  employeeId  String
+  employee    Employee       @relation(fields: [employeeId], references: [id])
+  type        ContractType   @default(PKWT)
+  startDate   DateTime
+  endDate     DateTime?
+  status      ContractStatus @default(ACTIVE)
   documentUrl String?
-  notes      String?
+  notes       String?
   // Gaji pokok bulanan sesuai PKWT — basis payroll utama saat kontrak ini
   // aktif dan mencakup periode payroll yang sedang diproses (§15, keputusan
   // bisnis: "Arsiparis & Borongan yang sudah kontrak, mengacu ke kontrak").
-  baseSalary Int?
-  createdAt  DateTime       @default(now())
-  updatedAt  DateTime       @updatedAt
+  baseSalary  Int?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
 
   @@map("contracts")
 }
@@ -192,49 +246,51 @@ model Contract {
 // Historical, period-based placement record (§10.1). Never hard-deleted
 // (BR-006) — ended by setting endDate + status ENDED when superseded.
 model Placement {
-  id         String          @id @default(uuid())
-  employeeId String
-  employee   Employee        @relation(fields: [employeeId], references: [id])
-  locationId String
-  location   Location        @relation(fields: [locationId], references: [id])
-  startDate  DateTime
-  endDate    DateTime?
-  status     PlacementStatus @default(ACTIVE)
-  sourceRequestId String?    @unique
-  sourceRequest   PlacementRequest? @relation(fields: [sourceRequestId], references: [id])
-  createdAt  DateTime        @default(now())
-  updatedAt  DateTime        @updatedAt
+  id                       String                @id @default(uuid())
+  employeeId               String
+  employee                 Employee              @relation(fields: [employeeId], references: [id])
+  locationId               String
+  location                 Location              @relation(fields: [locationId], references: [id])
+  startDate                DateTime
+  endDate                  DateTime?
+  status                   PlacementStatus       @default(ACTIVE)
+  sourceRequestId          String?               @unique
+  sourceRequest            PlacementRequest?     @relation(fields: [sourceRequestId], references: [id])
+  temporaryAssignmentsFrom TemporaryAssignment[]
+  createdAt                DateTime              @default(now())
+  updatedAt                DateTime              @updatedAt
 
   @@index([employeeId, status])
+  @@index([employeeId, startDate, endDate])
   @@map("placements")
 }
 
 model PlacementRequest {
-  id                  String                  @id @default(uuid())
-  employeeId          String
-  employee            Employee                @relation(fields: [employeeId], references: [id])
-  type                PlacementRequestType
-  originLocationId    String?
-  originLocation      Location?               @relation("OriginLocation", fields: [originLocationId], references: [id])
+  id                    String                 @id @default(uuid())
+  employeeId            String
+  employee              Employee               @relation(fields: [employeeId], references: [id])
+  type                  PlacementRequestType
+  originLocationId      String?
+  originLocation        Location?              @relation("OriginLocation", fields: [originLocationId], references: [id])
   destinationLocationId String
-  destinationLocation Location                @relation("DestinationLocation", fields: [destinationLocationId], references: [id])
-  startDate           DateTime
-  endDate             DateTime?
-  reason              String
-  status              PlacementRequestStatus  @default(PENDING_HR)
+  destinationLocation   Location               @relation("DestinationLocation", fields: [destinationLocationId], references: [id])
+  startDate             DateTime
+  endDate               DateTime?
+  reason                String
+  status                PlacementRequestStatus @default(PENDING_HR)
 
-  requestedById       String
-  requestedAt         DateTime                @default(now())
+  requestedById String
+  requestedAt   DateTime @default(now())
 
-  hrReviewedById      String?
-  hrReviewedAt        DateTime?
-  hrNote              String?
+  hrReviewedById String?
+  hrReviewedAt   DateTime?
+  hrNote         String?
 
   directorReviewedById String?
   directorReviewedAt   DateTime?
-  directorNote          String?
+  directorNote         String?
 
-  resultingPlacement  Placement?
+  resultingPlacement Placement?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -298,6 +354,31 @@ enum FaceVerificationStatus {
 enum AttendanceValidationStatus {
   VALID
   NEEDS_REVIEW // surfaced on the HR dashboard for manual look, per §11.4/§14
+  APPROVED_AFTER_REVIEW
+  REJECTED
+}
+
+enum AttendancePayableStatus {
+  PAYABLE
+  PENDING_REVIEW
+  NOT_PAYABLE
+}
+
+enum AttendanceReviewDecision {
+  APPROVED
+  REJECTED
+}
+
+enum AttendanceCheckoutSource {
+  EMPLOYEE
+  SYSTEM_AUTO_CLOSED
+  HR_CORRECTION
+}
+
+enum AbsenceCaseStatus {
+  PENDING_EXPLANATION
+  CONFIRMED_ALPHA
+  EXCUSED
 }
 
 enum LatenessStatus {
@@ -341,13 +422,13 @@ model Holiday {
 // browser/app install, not real hardware, since the check-in surface is a
 // web app; see README for that caveat.
 model EmployeeDevice {
-  id         String   @id @default(uuid())
-  employeeId String   @unique
-  employee   Employee @relation(fields: [employeeId], references: [id])
+  id         String    @id @default(uuid())
+  employeeId String    @unique
+  employee   Employee  @relation(fields: [employeeId], references: [id])
   deviceId   String // opaque client-generated identifier, persisted client-side
   label      String? // e.g. browser/user-agent snippet, for HR to recognize it
-  boundAt    DateTime @default(now())
-  lastUsedAt DateTime @updatedAt
+  boundAt    DateTime  @default(now())
+  lastUsedAt DateTime  @updatedAt
   resetById  String? // last HR/System Admin who reset this binding, if any
   resetAt    DateTime?
 
@@ -369,22 +450,22 @@ model Attendance {
   date       DateTime @db.Date
 
   checkInAt               DateTime?
-  checkInLatitude          Float?
-  checkInLongitude         Float?
-  checkInDistanceMeters    Float?
-  checkInSelfieUrl         String?
-  checkInGpsStatus         GpsStatus?
-  checkInFaceStatus        FaceVerificationStatus?
-  checkInMockLocationFlag  Boolean                 @default(false)
-  checkInDeviceInfo        String?
-  checkInDeviceId          String?
-  checkInFailureReason     EvidenceFailureReason?
-  checkInFailureNote       String?
-  checkInSyncedOffline     Boolean                 @default(false)
-  checkInClientRecordedAt  DateTime? // device-reported time, kept alongside server-trusted checkInAt
-  latenessStatus           LatenessStatus          @default(NOT_APPLICABLE)
+  checkInLatitude         Float?
+  checkInLongitude        Float?
+  checkInDistanceMeters   Float?
+  checkInSelfieUrl        String?
+  checkInGpsStatus        GpsStatus?
+  checkInFaceStatus       FaceVerificationStatus?
+  checkInMockLocationFlag Boolean                 @default(false)
+  checkInDeviceInfo       String?
+  checkInDeviceId         String?
+  checkInFailureReason    EvidenceFailureReason?
+  checkInFailureNote      String?
+  checkInSyncedOffline    Boolean                 @default(false)
+  checkInClientRecordedAt DateTime? // device-reported time, kept alongside server-trusted checkInAt
+  latenessStatus          LatenessStatus          @default(NOT_APPLICABLE)
 
-  checkOutAt              DateTime?
+  checkOutAt               DateTime?
   checkOutLatitude         Float?
   checkOutLongitude        Float?
   checkOutDistanceMeters   Float?
@@ -400,22 +481,61 @@ model Attendance {
   checkOutClientRecordedAt DateTime?
 
   validationStatus AttendanceValidationStatus @default(VALID)
+  payableStatus    AttendancePayableStatus?
   reviewNote       String?
+  reviewedById     String?
+  reviewedAt       DateTime?
+  checkOutSource   AttendanceCheckoutSource?
+  autoClosedAt     DateTime?
 
   // HR correction trail (§11.5 "koreksi absensi") — original captured
   // values are never overwritten silently; every correction is audit-logged
   // separately too (AuditLogService), this is just a quick on-record trail.
-  correctedById   String?
-  correctedAt     DateTime?
-  correctionNote  String?
+  correctedById  String?
+  correctedAt    DateTime?
+  correctionNote String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  reviews AttendanceReview[]
 
   @@unique([employeeId, date])
   @@index([date])
   @@index([locationId, date])
   @@map("attendances")
+}
+
+model AttendanceReview {
+  id           String                   @id @default(uuid())
+  attendanceId String
+  attendance   Attendance               @relation(fields: [attendanceId], references: [id])
+  decision     AttendanceReviewDecision
+  note         String
+  reviewedById String
+  reviewedAt   DateTime                 @default(now())
+  createdAt    DateTime                 @default(now())
+
+  @@index([attendanceId, reviewedAt])
+  @@map("attendance_reviews")
+}
+
+model AbsenceCase {
+  id            String            @id @default(uuid())
+  employeeId    String
+  employee      Employee          @relation(fields: [employeeId], references: [id])
+  date          DateTime          @db.Date
+  status        AbsenceCaseStatus @default(PENDING_EXPLANATION)
+  explanation   String?
+  confirmedById String?
+  confirmedAt   DateTime?
+  note          String?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  @@unique([employeeId, date])
+  @@index([status, date])
+  @@map("absence_cases")
 }
 
 // --- Phase 4: Cuti, Izin & Resign (PRD section 13) ----------------------
@@ -435,24 +555,54 @@ enum LeaveType {
 
 enum LeaveStatus {
   PENDING
+  PENDING_COORDINATOR
+  PENDING_HR
+  PENDING_DIRECTOR
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum LeaveApprovalStage {
+  COORDINATOR
+  HR
+  DIRECTOR
+}
+
+enum LeaveApprovalDecision {
+  APPROVED
+  REJECTED
+}
+
+enum LeaveBalanceTransactionType {
+  ENTITLEMENT
+  APPROVED_LEAVE
+  MANUAL_ADJUSTMENT
+  REVERSAL
+}
+
+enum OvertimeRequestStatus {
+  PENDING
   APPROVED
   REJECTED
   CANCELLED
 }
 
 model LeaveRequest {
-  id           String      @id @default(uuid())
-  employeeId   String
-  employee     Employee    @relation(fields: [employeeId], references: [id])
-  type         LeaveType
-  startDate    DateTime    @db.Date
-  endDate      DateTime?   @db.Date // omitted for single-day izin
-  reason       String
-  documentUrl  String?     // supporting document, optional per §13
-  status       LeaveStatus @default(PENDING)
+  id                      String      @id @default(uuid())
+  employeeId              String
+  employee                Employee    @relation(fields: [employeeId], references: [id])
+  type                    LeaveType
+  startDate               DateTime    @db.Date
+  endDate                 DateTime?   @db.Date // omitted for single-day izin
+  reason                  String
+  documentUrl             String? // supporting document, optional per §13
+  medicalDocumentUrl      String?
+  requiresMedicalDocument Boolean     @default(false)
+  status                  LeaveStatus @default(PENDING)
 
   requestedById String
-  requestedAt   DateTime   @default(now())
+  requestedAt   DateTime @default(now())
 
   reviewedById String?
   reviewedAt   DateTime?
@@ -461,8 +611,120 @@ model LeaveRequest {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  approvals           LeaveApproval[]
+  balanceTransactions LeaveBalanceTransaction[]
+
   @@index([employeeId, status])
   @@map("leave_requests")
+}
+
+model LeaveApproval {
+  id             String                @id @default(uuid())
+  leaveRequestId String
+  leaveRequest   LeaveRequest          @relation(fields: [leaveRequestId], references: [id])
+  stage          LeaveApprovalStage
+  decision       LeaveApprovalDecision
+  note           String?
+  decidedById    String
+  decidedAt      DateTime              @default(now())
+  createdAt      DateTime              @default(now())
+
+  @@unique([leaveRequestId, stage])
+  @@index([stage, decidedAt])
+  @@map("leave_approvals")
+}
+
+model LeaveBalance {
+  id              String   @id @default(uuid())
+  employeeId      String
+  employee        Employee @relation(fields: [employeeId], references: [id])
+  year            Int
+  entitlementDays Int
+  usedDays        Int      @default(0)
+  remainingDays   Int
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  transactions LeaveBalanceTransaction[]
+
+  @@unique([employeeId, year])
+  @@index([year])
+  @@map("leave_balances")
+}
+
+model LeaveBalanceTransaction {
+  id             String                      @id @default(uuid())
+  leaveBalanceId String
+  leaveBalance   LeaveBalance                @relation(fields: [leaveBalanceId], references: [id])
+  leaveRequestId String?
+  leaveRequest   LeaveRequest?               @relation(fields: [leaveRequestId], references: [id])
+  type           LeaveBalanceTransactionType
+  daysDelta      Int
+  balanceAfter   Int
+  reason         String?
+  createdById    String?
+  createdAt      DateTime                    @default(now())
+
+  @@index([leaveBalanceId, createdAt])
+  @@index([leaveRequestId])
+  @@map("leave_balance_transactions")
+}
+
+model OvertimeRequest {
+  id            String                @id @default(uuid())
+  employeeId    String
+  employee      Employee              @relation(fields: [employeeId], references: [id])
+  date          DateTime              @db.Date
+  startTime     DateTime?
+  endTime       DateTime?
+  reason        String
+  status        OvertimeRequestStatus @default(PENDING)
+  requestedById String
+  requestedAt   DateTime              @default(now())
+  reviewedById  String?
+  reviewedAt    DateTime?
+  reviewNote    String?
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+
+  @@index([employeeId, status, date])
+  @@map("overtime_requests")
+}
+
+enum TemporaryAssignmentStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+  COMPLETED
+}
+
+model TemporaryAssignment {
+  id                String                    @id @default(uuid())
+  employeeId        String
+  employee          Employee                  @relation(fields: [employeeId], references: [id])
+  originPlacementId String
+  originPlacement   Placement                 @relation(fields: [originPlacementId], references: [id])
+  clientId          String?
+  client            Client?                   @relation(fields: [clientId], references: [id])
+  locationId        String
+  location          Location                  @relation(fields: [locationId], references: [id])
+  startDate         DateTime                  @db.Date
+  endDate           DateTime                  @db.Date
+  reason            String
+  coordinationNote  String?
+  status            TemporaryAssignmentStatus @default(PENDING)
+  createdById       String
+  createdAt         DateTime                  @default(now())
+  approvedById      String?
+  approvedAt        DateTime?
+  approvalNote      String?
+  completedAt       DateTime?
+  updatedAt         DateTime                  @updatedAt
+
+  @@index([employeeId, status, startDate, endDate])
+  @@index([locationId, startDate, endDate])
+  @@map("temporary_assignments")
 }
 
 // --- Phase 6: Payroll (§15) ---------------------------------------------
@@ -475,7 +737,22 @@ model LeaveRequest {
 
 enum PayrollRunStatus {
   DRAFT // slips can still be edited (line items added/removed)
+  PENDING_DIRECTOR_APPROVAL
   FINALIZED // locked; visible to Keuangan/Direktur/Karyawan from this point
+}
+
+enum PayrollPeriodStatus {
+  OPEN
+  CLOSED
+}
+
+enum PayrollRevisionStatus {
+  DRAFT
+  PENDING_DIRECTOR_APPROVAL
+  APPROVED
+  REJECTED
+  FINALIZED
+  CANCELLED
 }
 
 enum PayrollBasis {
@@ -489,41 +766,129 @@ enum PayrollLineType {
 }
 
 model PayrollRun {
-  id           String           @id @default(uuid())
-  periodStart  DateTime
-  periodEnd    DateTime
-  status       PayrollRunStatus @default(DRAFT)
-  createdById  String
-  finalizedById String?
-  finalizedAt  DateTime?
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @updatedAt
+  id                   String           @id @default(uuid())
+  periodStart          DateTime
+  periodEnd            DateTime
+  status               PayrollRunStatus @default(DRAFT)
+  createdById          String
+  finalizedById        String?
+  finalizedAt          DateTime?
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+  payrollPeriodId      String?          @unique
+  payrollPeriod        PayrollPeriod?   @relation(fields: [payrollPeriodId], references: [id])
+  financeReviewedById  String?
+  financeReviewedAt    DateTime?
+  directorApprovedById String?
+  directorApprovedAt   DateTime?
 
-  slips PayrollSlip[]
+  slips     PayrollSlip[]
+  revisions PayrollRevision[]
 
   @@map("payroll_runs")
 }
 
 model PayrollSlip {
-  id            String       @id @default(uuid())
-  payrollRunId  String
-  payrollRun    PayrollRun   @relation(fields: [payrollRunId], references: [id])
-  employeeId    String
-  employee      Employee     @relation(fields: [employeeId], references: [id])
-  basis         PayrollBasis
-  baseSalary    Int // resolved at generation time — snapshot, not a live formula
-  dailyRate     Int? // snapshot of Employee.dailyRate, only when basis = DAILY_RATE
-  presentDays   Int? // count of hari hadir in period, only when basis = DAILY_RATE
-  totalEarnings Int          @default(0) // sum of EARNING line items (denormalized for speed)
-  totalDeductions Int        @default(0) // sum of DEDUCTION line items
-  netPay        Int // baseSalary + totalEarnings - totalDeductions
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
+  id              String       @id @default(uuid())
+  payrollRunId    String
+  payrollRun      PayrollRun   @relation(fields: [payrollRunId], references: [id])
+  employeeId      String
+  employee        Employee     @relation(fields: [employeeId], references: [id])
+  basis           PayrollBasis
+  baseSalary      Int // resolved at generation time — snapshot, not a live formula
+  dailyRate       Int? // snapshot of Employee.dailyRate, only when basis = DAILY_RATE
+  presentDays     Int? // count of hari hadir in period, only when basis = DAILY_RATE
+  totalEarnings   Int          @default(0) // sum of EARNING line items (denormalized for speed)
+  totalDeductions Int          @default(0) // sum of DEDUCTION line items
+  netPay          Int // baseSalary + totalEarnings - totalDeductions
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
 
-  items PayrollLineItem[]
+  items         PayrollLineItem[]
+  revisionItems PayrollRevisionItem[]
 
   @@unique([payrollRunId, employeeId])
   @@map("payroll_slips")
+}
+
+model PayrollCycleSetting {
+  id         String    @id @default(uuid())
+  clientId   String?
+  client     Client?   @relation(fields: [clientId], references: [id])
+  locationId String?
+  location   Location? @relation(fields: [locationId], references: [id])
+  startDay   Int
+  endDay     Int
+  isActive   Boolean   @default(true)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  periods PayrollPeriod[]
+
+  @@unique([clientId])
+  @@unique([locationId])
+  @@map("payroll_cycle_settings")
+}
+
+model PayrollPeriod {
+  id             String              @id @default(uuid())
+  cycleSettingId String
+  cycleSetting   PayrollCycleSetting @relation(fields: [cycleSettingId], references: [id])
+  periodStart    DateTime            @db.Date
+  periodEnd      DateTime            @db.Date
+  status         PayrollPeriodStatus @default(OPEN)
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  payrollRun PayrollRun?
+
+  @@unique([cycleSettingId, periodStart, periodEnd])
+  @@index([cycleSettingId, status, periodStart])
+  @@map("payroll_periods")
+}
+
+model PayrollRevision {
+  id                   String                @id @default(uuid())
+  payrollRunId         String
+  payrollRun           PayrollRun            @relation(fields: [payrollRunId], references: [id])
+  revisionNumber       Int
+  status               PayrollRevisionStatus @default(DRAFT)
+  reason               String
+  requestedById        String
+  requestedAt          DateTime              @default(now())
+  directorApprovedById String?
+  directorApprovedAt   DateTime?
+  approvalNote         String?
+  finalizedById        String?
+  finalizedAt          DateTime?
+  netAdjustment        Int                   @default(0)
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+
+  items PayrollRevisionItem[]
+
+  @@unique([payrollRunId, revisionNumber])
+  @@index([payrollRunId, status])
+  @@map("payroll_revisions")
+}
+
+model PayrollRevisionItem {
+  id                String          @id @default(uuid())
+  payrollRevisionId String
+  payrollRevision   PayrollRevision @relation(fields: [payrollRevisionId], references: [id])
+  payrollSlipId     String
+  payrollSlip       PayrollSlip     @relation(fields: [payrollSlipId], references: [id])
+  type              PayrollLineType
+  label             String
+  amount            Int
+  reason            String
+  previousValue     Json?
+  newValue          Json?
+  createdAt         DateTime        @default(now())
+
+  @@index([payrollRevisionId])
+  @@index([payrollSlipId])
+  @@map("payroll_revision_items")
 }
 
 model PayrollLineItem {
