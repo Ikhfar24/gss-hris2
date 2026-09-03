@@ -1,0 +1,39 @@
+import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../common/guards/roles.guard';
+import { Roles } from '../common/decorators/roles.decorator';
+import { CurrentUser, AuthenticatedUser } from '../common/decorators/current-user.decorator';
+import { Role } from '../common/enums/role.enum';
+import { LocationsService } from './locations.service';
+import { CreateLocationDto } from './dto/create-location.dto';
+import { UpdateLocationDto } from './dto/update-location.dto';
+
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Controller('locations')
+export class LocationsController {
+  constructor(private service: LocationsService) {}
+
+  @Roles(Role.ADMIN_HR, Role.SYSTEM_ADMIN, Role.KOORDINATOR, Role.DIREKTUR)
+  @Get()
+  findAll() {
+    return this.service.findAll();
+  }
+
+  @Roles(Role.ADMIN_HR, Role.SYSTEM_ADMIN, Role.KOORDINATOR, Role.DIREKTUR)
+  @Get(':id')
+  findOne(@Param('id') id: string) {
+    return this.service.findOne(id);
+  }
+
+  @Roles(Role.ADMIN_HR, Role.SYSTEM_ADMIN)
+  @Post()
+  create(@Body() dto: CreateLocationDto, @CurrentUser() actor: AuthenticatedUser) {
+    return this.service.create(dto, actor.userId);
+  }
+
+  @Roles(Role.ADMIN_HR, Role.SYSTEM_ADMIN)
+  @Patch(':id')
+  update(@Param('id') id: string, @Body() dto: UpdateLocationDto, @CurrentUser() actor: AuthenticatedUser) {
+    return this.service.update(id, dto, actor.userId);
+  }
+}

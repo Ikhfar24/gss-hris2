@@ -1,0 +1,541 @@
+// Papaiz HRIS - Phase 1: Foundation
+// Covers: User, Role (RBAC), Company Settings, Audit Log
+// Later phases (Employee, Placement, Attendance, Leave, Payroll) extend this schema.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// --- RBAC -------------------------------------------------------------
+// Fixed role set per PRD section 6/9. Kept as enum for Phase 1 simplicity;
+// a fully data-driven permission table can be layered on top later without
+// breaking this model (see Open Question: Komisaris & System Admin access).
+enum Role {
+  KARYAWAN
+  KOORDINATOR
+  ADMIN_HR
+  KEUANGAN
+  MARKETING
+  DIREKTUR
+  KOMISARIS
+  SYSTEM_ADMIN
+}
+
+model User {
+  id           String    @id @default(uuid())
+  employeeId   String?   @unique // links to Employee record
+  employee     Employee? @relation(fields: [employeeId], references: [id])
+  name         String
+  email        String    @unique
+  passwordHash String
+  role         Role      @default(KARYAWAN)
+  isActive     Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  auditLogs AuditLog[] @relation("AuditLogActor")
+
+  @@map("users")
+}
+
+// --- Phase 2: Employee & Placement (PRD section 8, 10, 20) -------------
+
+enum EmploymentType {
+  TENAGA_BORONGAN // §8.1 — fleksibel, penempatan dapat berubah cepat
+  TENAGA_ARSIPARIS // §8.2 — penempatan lebih tetap, perubahan lewat mutasi
+}
+
+enum EmployeeStatus {
+  TRAINING // masa training ±1 bulan (§8.1); karyawan tetap dapat resign
+  ACTIVE
+  ON_LEAVE
+  RESIGNED
+  TERMINATED
+}
+
+enum ContractType {
+  PKWT
+  PKWTT
+  OTHER
+}
+
+enum ContractStatus {
+  ACTIVE
+  EXPIRED
+  TERMINATED
+}
+
+enum PlacementStatus {
+  ACTIVE
+  ENDED
+}
+
+// Borongan uses a single-step HR approval (§10.2); Arsiparis uses a
+// multi-step mutation chain Koordinator -> HR/SDM -> Direktur (§8.2).
+// Kept as one model with a `type` discriminator so placement history and
+// business rules (BR-001..BR-007) stay in one place.
+enum PlacementRequestType {
+  REASSIGNMENT // Tenaga Borongan
+  MUTATION // Tenaga Arsiparis
+}
+
+enum PlacementRequestStatus {
+  PENDING_HR
+  PENDING_DIRECTOR // MUTATION only, after HR review
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+model Client {
+  id            String   @id @default(uuid())
+  name          String
+  address       String?
+  contactPerson String?
+  contactPhone  String?
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  locations Location[]
+
+  @@map("clients")
+}
+
+// Work location = where employees are placed. Carries the configurable
+// operational rules referenced in PRD section 5/12 (radius, jam kerja,
+// toleransi) so HR can change them without code, per BR-008.
+model Location {
+  id              String   @id @default(uuid())
+  name            String
+  address         String?
+  latitude        Float?
+  longitude       Float?
+  radiusMeters    Int      @default(300)
+  checkInTime     String   @default("08:00") // "HH:mm", kept as string: no timezone/date semantics needed
+  checkOutTime    String   @default("16:00")
+  toleranceMin    Int      @default(10)
+  workDays        Int[]    @default([1, 2, 3, 4, 5]) // 0=Sunday .. 6=Saturday
+  clientId        String?
+  client          Client?  @relation(fields: [clientId], references: [id])
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  placements Placement[]
+  placementRequestsFrom PlacementRequest[] @relation("OriginLocation")
+  placementRequestsTo   PlacementRequest[] @relation("DestinationLocation")
+  attendances Attendance[]
+  holidays    Holiday[]
+
+  @@map("locations")
+}
+
+model Employee {
+  id               String         @id @default(uuid())
+  name             String
+  nik              String?        @unique // Nomor Induk Kependudukan, optional at MVP intake
+  phone            String?
+  address          String?
+  employmentType   EmploymentType
+  status           EmployeeStatus @default(TRAINING)
+  joinDate         DateTime
+  trainingEndDate  DateTime?
+  resignDate       DateTime? // set when a RESIGN leave request is approved (§13)
+  coordinatorId    String? // User.id of the Koordinator responsible for this employee
+  // Tarif Harian Lepas (Rupiah/hari) — dipakai sebagai basis payroll HANYA
+  // ketika karyawan tidak punya kontrak PKWT aktif yang mencakup periode
+  // payroll (mis. masih training/sementara). Diisi manual per karyawan
+  // karena tarifnya bervariasi (§15, keputusan bisnis: Rp90.000–97.000).
+  dailyRate        Int?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  user               User?
+  contracts          Contract[]
+  placements         Placement[]
+  placementRequests  PlacementRequest[]
+  attendances        Attendance[]
+  device             EmployeeDevice?
+  leaveRequests      LeaveRequest[]
+  payrollSlips       PayrollSlip[]
+
+  @@map("employees")
+}
+
+model Contract {
+  id         String         @id @default(uuid())
+  employeeId String
+  employee   Employee       @relation(fields: [employeeId], references: [id])
+  type       ContractType   @default(PKWT)
+  startDate  DateTime
+  endDate    DateTime?
+  status     ContractStatus @default(ACTIVE)
+  documentUrl String?
+  notes      String?
+  // Gaji pokok bulanan sesuai PKWT — basis payroll utama saat kontrak ini
+  // aktif dan mencakup periode payroll yang sedang diproses (§15, keputusan
+  // bisnis: "Arsiparis & Borongan yang sudah kontrak, mengacu ke kontrak").
+  baseSalary Int?
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+
+  @@map("contracts")
+}
+
+// Historical, period-based placement record (§10.1). Never hard-deleted
+// (BR-006) — ended by setting endDate + status ENDED when superseded.
+model Placement {
+  id         String          @id @default(uuid())
+  employeeId String
+  employee   Employee        @relation(fields: [employeeId], references: [id])
+  locationId String
+  location   Location        @relation(fields: [locationId], references: [id])
+  startDate  DateTime
+  endDate    DateTime?
+  status     PlacementStatus @default(ACTIVE)
+  sourceRequestId String?    @unique
+  sourceRequest   PlacementRequest? @relation(fields: [sourceRequestId], references: [id])
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+
+  @@index([employeeId, status])
+  @@map("placements")
+}
+
+model PlacementRequest {
+  id                  String                  @id @default(uuid())
+  employeeId          String
+  employee            Employee                @relation(fields: [employeeId], references: [id])
+  type                PlacementRequestType
+  originLocationId    String?
+  originLocation      Location?               @relation("OriginLocation", fields: [originLocationId], references: [id])
+  destinationLocationId String
+  destinationLocation Location                @relation("DestinationLocation", fields: [destinationLocationId], references: [id])
+  startDate           DateTime
+  endDate             DateTime?
+  reason              String
+  status              PlacementRequestStatus  @default(PENDING_HR)
+
+  requestedById       String
+  requestedAt         DateTime                @default(now())
+
+  hrReviewedById      String?
+  hrReviewedAt        DateTime?
+  hrNote              String?
+
+  directorReviewedById String?
+  directorReviewedAt   DateTime?
+  directorNote          String?
+
+  resultingPlacement  Placement?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("placement_requests")
+}
+
+// --- Company Settings (White-label foundation, PRD section 18) --------
+model CompanySettings {
+  id           String   @id @default(uuid())
+  companyName  String   @default("Papaiz.corp")
+  appName      String   @default("Papaiz HR")
+  logoUrl      String?
+  faviconUrl   String?
+  email        String?
+  address      String?
+  primaryColor String?  @default("#0F172A")
+  updatedAt    DateTime @updatedAt
+  updatedById  String?
+
+  @@map("company_settings")
+}
+
+// --- Audit Log (PRD section 9.3 / 24) ----------------------------------
+model AuditLog {
+  id        String   @id @default(uuid())
+  actorId   String?
+  actor     User?    @relation("AuditLogActor", fields: [actorId], references: [id])
+  action    String // e.g. "USER_CREATE", "USER_ROLE_CHANGE", "COMPANY_SETTINGS_UPDATE"
+  entity    String // e.g. "User", "CompanySettings"
+  entityId  String?
+  oldValue  Json?
+  newValue  Json?
+  reason    String?
+  createdAt DateTime @default(now())
+
+  @@index([entity, entityId])
+  @@map("audit_logs")
+}
+
+// --- Phase 3: Attendance (PRD section 11, 12) ---------------------------
+// §11.5 originally left several details open. Decisions below are MVP
+// defaults, not final business rules — see README "Keputusan Phase 3".
+
+enum GpsStatus {
+  OK
+  OUT_OF_RADIUS
+  UNAVAILABLE // location has no lat/lng configured yet — can't validate radius
+  SUSPICIOUS // client reported a mock/fake-location indicator
+  FAILED // device could not obtain a GPS fix at all (§11.5)
+}
+
+// No face-matching vendor has been chosen (§11.5), so this is a stub state,
+// not a real verification result yet — see FaceVerificationService.
+enum FaceVerificationStatus {
+  NOT_VERIFIED
+  VERIFIED
+  FAILED
+}
+
+enum AttendanceValidationStatus {
+  VALID
+  NEEDS_REVIEW // surfaced on the HR dashboard for manual look, per §11.4/§14
+}
+
+enum LatenessStatus {
+  ON_TIME
+  LATE
+  NOT_APPLICABLE // holiday or non-workday check-in
+}
+
+// Why GPS/selfie evidence is missing for a given check-in/check-out (§11.5).
+enum EvidenceFailureReason {
+  GPS_FAILED
+  CAMERA_FAILED
+  OTHER
+}
+
+enum HolidayType {
+  NATIONAL
+  CUTI_BERSAMA
+  LOCATION_SPECIFIC
+}
+
+// National/company holidays (§12). LOCATION_SPECIFIC ties to one Location;
+// NATIONAL/CUTI_BERSAMA (locationId = null) apply everywhere.
+model Holiday {
+  id         String      @id @default(uuid())
+  date       DateTime    @db.Date
+  name       String
+  type       HolidayType @default(NATIONAL)
+  locationId String?
+  location   Location?   @relation(fields: [locationId], references: [id])
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+
+  @@unique([date, locationId])
+  @@map("holidays")
+}
+
+// Device binding (§11.5): one bound device per employee, self-registered on
+// first successful check-in. HR can reset it (e.g. employee got a new
+// phone) — see AttendanceService.enforceDeviceBinding. This binds a
+// browser/app install, not real hardware, since the check-in surface is a
+// web app; see README for that caveat.
+model EmployeeDevice {
+  id         String   @id @default(uuid())
+  employeeId String   @unique
+  employee   Employee @relation(fields: [employeeId], references: [id])
+  deviceId   String // opaque client-generated identifier, persisted client-side
+  label      String? // e.g. browser/user-agent snippet, for HR to recognize it
+  boundAt    DateTime @default(now())
+  lastUsedAt DateTime @updatedAt
+  resetById  String? // last HR/System Admin who reset this binding, if any
+  resetAt    DateTime?
+
+  @@map("employee_devices")
+}
+
+// One row per employee per calendar day (§11.2). Check-in and check-out
+// each carry their own GPS/selfie/face/device evidence since they can
+// happen from different places in principle (BR left for HR to review).
+model Attendance {
+  id         String   @id @default(uuid())
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id])
+  // Resolved from the employee's ACTIVE placement at check-in time (BR-002),
+  // not looked up again for check-out, so a mid-day placement change can't
+  // silently rewrite where this attendance record "belongs".
+  locationId String
+  location   Location @relation(fields: [locationId], references: [id])
+  date       DateTime @db.Date
+
+  checkInAt               DateTime?
+  checkInLatitude          Float?
+  checkInLongitude         Float?
+  checkInDistanceMeters    Float?
+  checkInSelfieUrl         String?
+  checkInGpsStatus         GpsStatus?
+  checkInFaceStatus        FaceVerificationStatus?
+  checkInMockLocationFlag  Boolean                 @default(false)
+  checkInDeviceInfo        String?
+  checkInDeviceId          String?
+  checkInFailureReason     EvidenceFailureReason?
+  checkInFailureNote       String?
+  checkInSyncedOffline     Boolean                 @default(false)
+  checkInClientRecordedAt  DateTime? // device-reported time, kept alongside server-trusted checkInAt
+  latenessStatus           LatenessStatus          @default(NOT_APPLICABLE)
+
+  checkOutAt              DateTime?
+  checkOutLatitude         Float?
+  checkOutLongitude        Float?
+  checkOutDistanceMeters   Float?
+  checkOutSelfieUrl        String?
+  checkOutGpsStatus        GpsStatus?
+  checkOutFaceStatus       FaceVerificationStatus?
+  checkOutMockLocationFlag Boolean                 @default(false)
+  checkOutDeviceInfo       String?
+  checkOutDeviceId         String?
+  checkOutFailureReason    EvidenceFailureReason?
+  checkOutFailureNote      String?
+  checkOutSyncedOffline    Boolean                 @default(false)
+  checkOutClientRecordedAt DateTime?
+
+  validationStatus AttendanceValidationStatus @default(VALID)
+  reviewNote       String?
+
+  // HR correction trail (§11.5 "koreksi absensi") — original captured
+  // values are never overwritten silently; every correction is audit-logged
+  // separately too (AuditLogService), this is just a quick on-record trail.
+  correctedById   String?
+  correctedAt     DateTime?
+  correctionNote  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([employeeId, date])
+  @@index([date])
+  @@index([locationId, date])
+  @@map("attendances")
+}
+
+// --- Phase 4: Cuti, Izin & Resign (PRD section 13) ----------------------
+// §13 explicitly leaves the approval workflow undecided ("Workflow approval
+// detail belum final"). MVP default: single-step Admin/HR approval for all
+// types, including RESIGN — see README "Keputusan Phase 4" for why, and
+// what should be re-confirmed with management before go-live.
+
+enum LeaveType {
+  CUTI
+  SAKIT
+  IZIN_PULANG_AWAL
+  IZIN_MENDADAK
+  IZIN_LAIN
+  RESIGN
+}
+
+enum LeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+model LeaveRequest {
+  id           String      @id @default(uuid())
+  employeeId   String
+  employee     Employee    @relation(fields: [employeeId], references: [id])
+  type         LeaveType
+  startDate    DateTime    @db.Date
+  endDate      DateTime?   @db.Date // omitted for single-day izin
+  reason       String
+  documentUrl  String?     // supporting document, optional per §13
+  status       LeaveStatus @default(PENDING)
+
+  requestedById String
+  requestedAt   DateTime   @default(now())
+
+  reviewedById String?
+  reviewedAt   DateTime?
+  reviewNote   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([employeeId, status])
+  @@map("leave_requests")
+}
+
+// --- Phase 6: Payroll (§15) ---------------------------------------------
+// Deliberately NOT automatic: lateness/absence deductions and overtime
+// are manual line items entered by HR/Keuangan (business decision — no
+// agreed formula exists, see README "Keputusan Phase 6"). The system's
+// job here is period management, base-pay calculation from
+// contract/daily-rate, arithmetic, and slip/rekap generation — not
+// policy enforcement.
+
+enum PayrollRunStatus {
+  DRAFT // slips can still be edited (line items added/removed)
+  FINALIZED // locked; visible to Keuangan/Direktur/Karyawan from this point
+}
+
+enum PayrollBasis {
+  CONTRACT // gaji pokok bulanan dari Contract.baseSalary
+  DAILY_RATE // Employee.dailyRate × hari hadir dalam periode
+}
+
+enum PayrollLineType {
+  EARNING // e.g. lembur (diajukan manual per proyek)
+  DEDUCTION // e.g. telat, alpa, sakit tanpa surat — nominal diputuskan HR
+}
+
+model PayrollRun {
+  id           String           @id @default(uuid())
+  periodStart  DateTime
+  periodEnd    DateTime
+  status       PayrollRunStatus @default(DRAFT)
+  createdById  String
+  finalizedById String?
+  finalizedAt  DateTime?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  slips PayrollSlip[]
+
+  @@map("payroll_runs")
+}
+
+model PayrollSlip {
+  id            String       @id @default(uuid())
+  payrollRunId  String
+  payrollRun    PayrollRun   @relation(fields: [payrollRunId], references: [id])
+  employeeId    String
+  employee      Employee     @relation(fields: [employeeId], references: [id])
+  basis         PayrollBasis
+  baseSalary    Int // resolved at generation time — snapshot, not a live formula
+  dailyRate     Int? // snapshot of Employee.dailyRate, only when basis = DAILY_RATE
+  presentDays   Int? // count of hari hadir in period, only when basis = DAILY_RATE
+  totalEarnings Int          @default(0) // sum of EARNING line items (denormalized for speed)
+  totalDeductions Int        @default(0) // sum of DEDUCTION line items
+  netPay        Int // baseSalary + totalEarnings - totalDeductions
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  items PayrollLineItem[]
+
+  @@unique([payrollRunId, employeeId])
+  @@map("payroll_slips")
+}
+
+model PayrollLineItem {
+  id            String          @id @default(uuid())
+  payrollSlipId String
+  payrollSlip   PayrollSlip     @relation(fields: [payrollSlipId], references: [id])
+  type          PayrollLineType
+  label         String // e.g. "Potongan telat 3x", "Lembur proyek gudang B"
+  amount        Int // always positive; sign is implied by `type`
+  note          String?
+  createdById   String
+  createdAt     DateTime        @default(now())
+
+  @@map("payroll_line_items")
+}

@@ -1,0 +1,16 @@
+# Local development database only. Not intended for production deployment.
+version: '3.8'
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: papaiz_hris
+    ports:
+      - '5432:5432'
+    volumes:
+      - papaiz_pg_data:/var/lib/postgresql/data
+
+volumes:
+  papaiz_pg_data:
