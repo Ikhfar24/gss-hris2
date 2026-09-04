@@ -1,9 +1,12 @@
-import { IsDateString, IsEnum, IsInt, IsOptional, IsString, Min } from 'class-validator';
+import { IsBoolean, IsDateString, IsEnum, IsInt, IsOptional, IsString, Min } from 'class-validator';
 
 export enum EmploymentTypeDto {
   TENAGA_BORONGAN = 'TENAGA_BORONGAN',
   TENAGA_ARSIPARIS = 'TENAGA_ARSIPARIS',
 }
+
+export enum GenderDto { MALE = 'MALE', FEMALE = 'FEMALE' }
+export enum EmployeeStatusCreateDto { TRAINING = 'TRAINING', ACTIVE = 'ACTIVE', INACTIVE = 'INACTIVE', ON_LEAVE = 'ON_LEAVE', RESIGNED = 'RESIGNED', TERMINATED = 'TERMINATED' }
 
 export class CreateEmployeeDto {
   @IsString()
@@ -15,14 +18,54 @@ export class CreateEmployeeDto {
 
   @IsOptional()
   @IsString()
+  employeeNumber?: string;
+
+  @IsOptional()
+  @IsString()
   phone?: string;
 
   @IsOptional()
   @IsString()
   address?: string;
 
+  @IsOptional()
+  @IsString()
+  email?: string;
+
+  @IsOptional()
+  @IsDateString()
+  dateOfBirth?: string;
+
+  @IsOptional()
+  @IsEnum(GenderDto)
+  gender?: GenderDto;
+
+  @IsOptional()
+  @IsString()
+  bankAccountNumber?: string;
+
+  @IsOptional()
+  @IsString()
+  bpjsKesehatanNumber?: string;
+
+  @IsOptional()
+  @IsString()
+  bpjsKetenagakerjaanNumber?: string;
+
+  @IsOptional()
+  @IsString()
+  jobTitle?: string;
+
+  @IsOptional()
+  @IsString()
+  photoUrl?: string;
+
   @IsEnum(EmploymentTypeDto)
   employmentType: EmploymentTypeDto;
+
+  @IsOptional()
+  @IsEnum(EmployeeStatusCreateDto)
+  status?: EmployeeStatusCreateDto;
 
   @IsDateString()
   joinDate: string;
@@ -41,6 +84,14 @@ export class CreateEmployeeDto {
   @IsInt()
   @Min(0)
   dailyRate?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  attendanceRequired?: boolean;
+
+  @IsOptional()
+  @IsString()
+  attendanceExemptionReason?: string;
 
   // Optional first placement so a new employee isn't left "location-less".
   @IsOptional()

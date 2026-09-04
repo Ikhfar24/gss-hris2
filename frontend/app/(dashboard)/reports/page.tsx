@@ -9,6 +9,7 @@ interface EmployeeOption {
   id: string;
   name: string;
 }
+interface EmployeeResponse { data: EmployeeOption[] }
 interface LocationOption {
   id: string;
   name: string;
@@ -29,7 +30,7 @@ export default function ReportsPage() {
 
   useEffect(() => {
     Promise.all([
-      apiFetch<EmployeeOption[]>('/employees').catch(() => []),
+      apiFetch<EmployeeResponse>('/employees').then((response) => response.data).catch(() => []),
       apiFetch<LocationOption[]>('/locations').catch(() => []),
     ]).then(([emps, locs]) => {
       setEmployees(emps);

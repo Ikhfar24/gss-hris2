@@ -17,6 +17,7 @@ const PROTECTED_PREFIXES = [
   '/devices',
   '/reports',
   '/payroll',
+  '/profile-change-requests',
 ];
 
 export function middleware(req: NextRequest) {
@@ -47,5 +48,6 @@ export const config = {
     '/devices/:path*',
     '/reports/:path*',
     '/payroll/:path*',
+    '/profile-change-requests/:path*',
   ],
 };

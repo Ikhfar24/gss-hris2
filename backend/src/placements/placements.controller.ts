@@ -11,7 +11,7 @@ import { PlacementsService } from './placements.service';
 export class PlacementsController {
   constructor(private service: PlacementsService) {}
 
-  @Roles(Role.ADMIN_HR, Role.SYSTEM_ADMIN, Role.KOORDINATOR, Role.DIREKTUR)
+  @Roles(Role.ADMIN_HR, Role.SYSTEM_ADMIN, Role.KOORDINATOR, Role.DIREKTUR, Role.KOMISARIS, Role.MARKETING)
   @Get('active')
   findAllActive(@CurrentUser() actor: AuthenticatedUser) {
     return this.service.findAllActive(actor);

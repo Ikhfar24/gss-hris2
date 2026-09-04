@@ -52,6 +52,9 @@ export class AttendanceService {
       include: { placements: { where: { status: { in: ['ACTIVE', 'SCHEDULED'] } }, include: { location: true }, orderBy: { startDate: 'desc' } } },
     });
     if (!employee) throw new NotFoundException('Data karyawan tidak ditemukan');
+    if (!employee.attendanceRequired) {
+      throw new BadRequestException('Profil Anda tidak diwajibkan melakukan absensi');
+    }
 
     const today = startOfDay(attendanceAt);
     const activePlacement = employee.placements.find((placement) => placement.startDate <= today && (!placement.endDate || placement.endDate >= today));

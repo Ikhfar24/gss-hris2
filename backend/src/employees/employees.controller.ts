@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -7,6 +7,7 @@ import { Role } from '../common/enums/role.enum';
 import { EmployeesService } from './employees.service';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
+import { LifecycleDto } from '../users/dto/lifecycle.dto';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('employees')
@@ -16,11 +17,15 @@ export class EmployeesController {
   // Koordinator/Direktur read for monitoring (§9.2/§9.6); Karyawan's own
   // profile is served separately (not implemented here — Phase 4/5 concern
   // once self-service "my profile" endpoints are scoped).
-  @Roles(Role.ADMIN_HR, Role.SYSTEM_ADMIN, Role.KOORDINATOR, Role.DIREKTUR)
+  @Roles(Role.ADMIN_HR, Role.SYSTEM_ADMIN, Role.KOORDINATOR, Role.DIREKTUR, Role.KOMISARIS)
   @Get()
-  findAll(@CurrentUser() actor: AuthenticatedUser) {
-    return this.service.findAll(actor);
+  findAll(@CurrentUser() actor: AuthenticatedUser, @Query() query: any) {
+    return this.service.findAll(actor, query);
   }
+
+  @Roles(Role.MARKETING, Role.ADMIN_HR, Role.SYSTEM_ADMIN, Role.DIREKTUR, Role.KOMISARIS)
+  @Get('manpower')
+  manpower() { return this.service.manpower(); }
 
   // Self-service profile — must be declared before ':id' so "me" isn't
   // captured as an id param. No @Roles: any authenticated account can call
@@ -30,7 +35,7 @@ export class EmployeesController {
     return this.service.findByUserId(actor.userId);
   }
 
-  @Roles(Role.ADMIN_HR, Role.SYSTEM_ADMIN, Role.KOORDINATOR, Role.DIREKTUR)
+  @Roles(Role.ADMIN_HR, Role.SYSTEM_ADMIN, Role.KOORDINATOR, Role.DIREKTUR, Role.KOMISARIS)
   @Get(':id')
   findOne(@Param('id') id: string, @CurrentUser() actor: AuthenticatedUser) {
     return this.service.findOne(id, actor);
@@ -39,12 +44,24 @@ export class EmployeesController {
   @Roles(Role.ADMIN_HR, Role.SYSTEM_ADMIN)
   @Post()
   create(@Body() dto: CreateEmployeeDto, @CurrentUser() actor: AuthenticatedUser) {
-    return this.service.create(dto, actor.userId);
+    return this.service.create(dto, actor);
   }
 
   @Roles(Role.ADMIN_HR, Role.SYSTEM_ADMIN)
   @Patch(':id')
   update(@Param('id') id: string, @Body() dto: UpdateEmployeeDto, @CurrentUser() actor: AuthenticatedUser) {
-    return this.service.update(id, dto, actor.userId);
+    return this.service.update(id, dto, actor);
   }
+
+  @Roles(Role.ADMIN_HR, Role.SYSTEM_ADMIN)
+  @Patch(':id/deactivate')
+  deactivate(@Param('id') id: string, @Body() dto: LifecycleDto, @CurrentUser() actor: AuthenticatedUser) { return this.service.deactivate(id, dto.reason, actor); }
+
+  @Roles(Role.ADMIN_HR, Role.SYSTEM_ADMIN)
+  @Patch(':id/reactivate')
+  reactivate(@Param('id') id: string, @Body() dto: LifecycleDto, @CurrentUser() actor: AuthenticatedUser) { return this.service.reactivate(id, dto.reason, actor); }
+
+  @Roles(Role.ADMIN_HR, Role.SYSTEM_ADMIN)
+  @Delete(':id')
+  remove(@Param('id') id: string, @Body() dto: LifecycleDto, @CurrentUser() actor: AuthenticatedUser) { return this.service.remove(id, dto.reason, actor); }
 }

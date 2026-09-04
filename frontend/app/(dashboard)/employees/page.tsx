@@ -2,7 +2,7 @@
 
 import { Fragment, useEffect, useState, FormEvent } from 'react';
 import { apiFetch, ApiError } from '@/lib/api';
-import { getToken } from '@/lib/auth';
+import { getUser } from '@/lib/auth';
 
 interface LocationOption {
   id: string;
@@ -25,9 +25,13 @@ interface EmployeeRow {
   status: string;
   joinDate: string;
   dailyRate: number | null;
+  employeeNumber?: string | null;
+  jobTitle?: string | null;
+  attendanceRequired?: boolean;
   placements: { location: { name: string } }[];
   contracts?: ContractRow[];
 }
+interface EmployeeResponse { data: EmployeeRow[]; meta: { total: number } }
 
 const TYPE_LABEL: Record<string, string> = {
   TENAGA_BORONGAN: 'Tenaga Borongan',
@@ -48,6 +52,7 @@ function formatRupiah(n: number | null) {
 }
 
 export default function EmployeesPage() {
+  const canManage = ['ADMIN_HR', 'SYSTEM_ADMIN'].includes(getUser()?.role ?? '');
   const [employees, setEmployees] = useState<EmployeeRow[]>([]);
   const [locations, setLocations] = useState<LocationOption[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -58,6 +63,10 @@ export default function EmployeesPage() {
   const [contractForm, setContractForm] = useState({ type: 'PKWT', startDate: '', endDate: '', baseSalary: '' });
   const [form, setForm] = useState({
     name: '',
+    employeeNumber: '',
+    phone: '',
+    address: '',
+    jobTitle: '',
     employmentType: 'TENAGA_BORONGAN',
     joinDate: '',
     initialLocationId: '',
@@ -66,12 +75,11 @@ export default function EmployeesPage() {
 
   async function load() {
     try {
-      const token = getToken();
       const [emps, locs] = await Promise.all([
-        apiFetch<EmployeeRow[]>('/employees', { token }),
-        apiFetch<LocationOption[]>('/locations', { token }),
+        apiFetch<EmployeeResponse>('/employees'),
+        apiFetch<LocationOption[]>('/locations'),
       ]);
-      setEmployees(emps);
+      setEmployees(emps.data);
       setLocations(locs);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Gagal memuat data karyawan');
@@ -89,9 +97,12 @@ export default function EmployeesPage() {
     try {
       await apiFetch('/employees', {
         method: 'POST',
-        token: getToken(),
         body: {
           ...form,
+          employeeNumber: form.employeeNumber || undefined,
+          phone: form.phone || undefined,
+          address: form.address || undefined,
+          jobTitle: form.jobTitle || undefined,
           initialLocationId: form.initialLocationId || undefined,
           dailyRate: form.dailyRate ? Number(form.dailyRate) : undefined,
         },
@@ -105,6 +116,26 @@ export default function EmployeesPage() {
     }
   }
 
+  async function editEmployee(employee: EmployeeRow) {
+    const name = window.prompt('Nama karyawan', employee.name);
+    if (!name) return;
+    const jobTitle = window.prompt('Jabatan', employee.jobTitle ?? '') ?? undefined;
+    const reason = window.prompt('Alasan perubahan (wajib jika mengubah data sensitif):') ?? undefined;
+    try {
+      await apiFetch(`/employees/${employee.id}`, { method: 'PATCH', body: { name, jobTitle, reason } });
+      await load();
+    } catch (err) { setError(err instanceof ApiError ? err.message : 'Gagal memperbarui karyawan'); }
+  }
+
+  async function lifecycle(employee: EmployeeRow, action: 'deactivate' | 'reactivate' | 'delete') {
+    const reason = window.prompt('Alasan wajib:');
+    if (!reason || (action === 'delete' && !window.confirm('Hapus hanya jika tanpa riwayat. Lanjutkan?'))) return;
+    try {
+      await apiFetch(`/employees/${employee.id}${action === 'delete' ? '' : `/${action}`}`, { method: action === 'delete' ? 'DELETE' : 'PATCH', body: { reason } });
+      await load();
+    } catch (err) { setError(err instanceof ApiError ? err.message : 'Aksi lifecycle gagal'); }
+  }
+
   async function toggleContracts(employeeId: string) {
     if (expandedId === employeeId) {
       setExpandedId(null);
@@ -113,7 +144,7 @@ export default function EmployeesPage() {
     setExpandedId(employeeId);
     if (!contracts[employeeId]) {
       try {
-        const data = await apiFetch<ContractRow[]>(`/contracts/employee/${employeeId}`, { token: getToken() });
+        const data = await apiFetch<ContractRow[]>(`/contracts/employee/${employeeId}`);
         setContracts((c) => ({ ...c, [employeeId]: data }));
       } catch (err) {
         setError(err instanceof ApiError ? err.message : 'Gagal memuat kontrak');
@@ -127,7 +158,6 @@ export default function EmployeesPage() {
     try {
       await apiFetch('/contracts', {
         method: 'POST',
-        token: getToken(),
         body: {
           employeeId,
           type: contractForm.type,
@@ -137,7 +167,7 @@ export default function EmployeesPage() {
         },
       });
       setContractForm({ type: 'PKWT', startDate: '', endDate: '', baseSalary: '' });
-      const data = await apiFetch<ContractRow[]>(`/contracts/employee/${employeeId}`, { token: getToken() });
+      const data = await apiFetch<ContractRow[]>(`/contracts/employee/${employeeId}`);
       setContracts((c) => ({ ...c, [employeeId]: data }));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Gagal menambah kontrak');
@@ -148,16 +178,20 @@ export default function EmployeesPage() {
     <div>
       <div className="mb-4 flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Data Karyawan</h1>
-        <button onClick={() => setShowForm((s) => !s)} className="rounded-lg bg-slate-900 px-4 py-2 text-sm text-white hover:bg-slate-800">
+        {canManage && <button onClick={() => setShowForm((s) => !s)} className="rounded-lg bg-slate-900 px-4 py-2 text-sm text-white hover:bg-slate-800">
           {showForm ? 'Batal' : '+ Tambah Karyawan'}
-        </button>
+        </button>}
       </div>
 
       {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
 
       {showForm && (
         <form onSubmit={onCreate} className="mb-6 grid max-w-xl gap-3 rounded-xl border border-slate-200 bg-white p-4">
-          <input required placeholder="Nama lengkap" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+           <input required placeholder="Nama lengkap" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+           <input placeholder="NIP" value={form.employeeNumber} onChange={(e) => setForm({ ...form, employeeNumber: e.target.value })} className="rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+           <input placeholder="Nomor telepon/WhatsApp" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className="rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+           <input placeholder="Alamat" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} className="rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+           <input placeholder="Jabatan" value={form.jobTitle} onChange={(e) => setForm({ ...form, jobTitle: e.target.value })} className="rounded-lg border border-slate-300 px-3 py-2 text-sm" />
           <select value={form.employmentType} onChange={(e) => setForm({ ...form, employmentType: e.target.value })} className="rounded-lg border border-slate-300 px-3 py-2 text-sm">
             <option value="TENAGA_BORONGAN">Tenaga Borongan</option>
             <option value="TENAGA_ARSIPARIS">Tenaga Arsiparis</option>
@@ -198,7 +232,7 @@ export default function EmployeesPage() {
             {employees.map((emp) => (
               <Fragment key={emp.id}>
                 <tr className="border-t border-slate-100">
-                  <td className="px-4 py-2">{emp.name}</td>
+                   <td className="px-4 py-2">{emp.name}</td>
                   <td className="px-4 py-2">{TYPE_LABEL[emp.employmentType]}</td>
                   <td className="px-4 py-2">
                     <span className={`rounded-full px-2 py-0.5 text-xs ${STATUS_STYLE[emp.status] ?? 'bg-slate-100'}`}>
@@ -208,9 +242,10 @@ export default function EmployeesPage() {
                   <td className="px-4 py-2">{emp.placements[0]?.location?.name ?? '-'}</td>
                   <td className="px-4 py-2">{formatRupiah(emp.dailyRate)}</td>
                   <td className="px-4 py-2 text-right">
-                    <button onClick={() => toggleContracts(emp.id)} className="text-xs text-slate-500 underline hover:text-slate-900">
+                    {canManage && <button onClick={() => toggleContracts(emp.id)} className="text-xs text-slate-500 underline hover:text-slate-900">
                       {expandedId === emp.id ? 'Tutup' : 'Kelola Kontrak'}
-                    </button>
+                    </button>}
+                    {canManage && <><button onClick={() => editEmployee(emp)} className="ml-2 text-xs underline">Edit</button><button onClick={() => lifecycle(emp, emp.status === 'INACTIVE' ? 'reactivate' : 'deactivate')} className="ml-2 text-xs underline">{emp.status === 'INACTIVE' ? 'Aktifkan' : 'Nonaktifkan'}</button><button onClick={() => lifecycle(emp, 'delete')} className="ml-2 text-xs text-red-700 underline">Hapus</button></>}
                   </td>
                 </tr>
                 {expandedId === emp.id && (

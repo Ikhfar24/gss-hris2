@@ -19,6 +19,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
 import { ReportsModule } from './reports/reports.module';
 import { PayrollModule } from './payroll/payroll.module';
 import { MediaModule } from './media/media.module';
+import { EmployeeProfileChangeRequestsModule } from './employee-profile-change-requests/employee-profile-change-requests.module';
 
 @Module({
   imports: [
@@ -47,6 +48,7 @@ import { MediaModule } from './media/media.module';
     // Phase 6: Payroll (PRD §15)
     PayrollModule,
     MediaModule,
+    EmployeeProfileChangeRequestsModule,
   ],
 })
 export class AppModule {}

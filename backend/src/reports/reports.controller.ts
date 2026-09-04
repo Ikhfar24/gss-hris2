@@ -12,7 +12,7 @@ import { CurrentUser, AuthenticatedUser } from '../common/decorators/current-use
 // same role set as the Phase 5 dashboard (Koordinator included since they
 // reasonably need exports for their own team, scoping is a later
 // refinement — see README "Keputusan Phase 5").
-const REPORT_ROLES = [Role.ADMIN_HR, Role.SYSTEM_ADMIN, Role.DIREKTUR, Role.KOORDINATOR];
+const REPORT_ROLES = [Role.ADMIN_HR, Role.SYSTEM_ADMIN, Role.DIREKTUR, Role.KOORDINATOR, Role.KOMISARIS];
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(...REPORT_ROLES)

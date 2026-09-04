@@ -54,6 +54,7 @@ enum EmploymentType {
 enum EmployeeStatus {
   TRAINING // masa training ±1 bulan (§8.1); karyawan tetap dapat resign
   ACTIVE
+  INACTIVE
   ON_LEAVE
   RESIGNED
   TERMINATED
@@ -316,18 +317,23 @@ model CompanySettings {
 
 // --- Audit Log (PRD section 9.3 / 24) ----------------------------------
 model AuditLog {
-  id        String   @id @default(uuid())
-  actorId   String?
-  actor     User?    @relation("AuditLogActor", fields: [actorId], references: [id])
-  action    String // e.g. "USER_CREATE", "USER_ROLE_CHANGE", "COMPANY_SETTINGS_UPDATE"
-  entity    String // e.g. "User", "CompanySettings"
-  entityId  String?
-  oldValue  Json?
-  newValue  Json?
-  reason    String?
-  createdAt DateTime @default(now())
+  id              String   @id @default(uuid())
+  actorId         String?
+  actor           User?    @relation("AuditLogActor", fields: [actorId], references: [id])
+  actorRole       Role?
+  action          String // e.g. "USER_CREATE", "USER_ROLE_CHANGE", "COMPANY_SETTINGS_UPDATE"
+  entity          String // e.g. "User", "CompanySettings"
+  entityId        String?
+  oldValue        Json?
+  newValue        Json?
+  reason          String?
+  source          String?
+  relatedEntityId String?
+  createdAt       DateTime @default(now())
 
   @@index([entity, entityId])
+  @@index([actorId, createdAt])
+  @@index([action, createdAt])
   @@map("audit_logs")
 }
 

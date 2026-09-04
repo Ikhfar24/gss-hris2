@@ -24,6 +24,13 @@ papaiz-hris/
   di backend lewat `@Roles()` + `RolesGuard` — **bukan** hanya di frontend.
 - **User management**: create/update/deactivate user oleh Admin/HR & System
   Admin. Deactivate bersifat soft (tidak menghapus data) sesuai §24.
+- **Lifecycle User & Karyawan**: Admin/HR dan System Admin dapat mengubah
+  identitas akun, role utama, tautan User-Karyawan, menonaktifkan/
+  mengaktifkan kembali dengan alasan, dan melakukan safe-delete hanya bila
+  tidak ada riwayat terlindungi. Karyawan resign tidak dapat diaktifkan
+  kembali tanpa proses employment baru.
+- **Profile Change Request**: karyawan/staff mengajukan perubahan profil
+  terbatas; HR mereview secara atomik dan perubahan beserta keputusan diaudit.
 - **Company settings**: nama, logo, warna, email, alamat — configurable lewat
   dashboard tanpa perlu ubah kode (§18).
 - **Audit log**: semua login, perubahan role/status user, dan perubahan
@@ -259,9 +266,15 @@ npm run dev                # http://localhost:3000
 | GET    | `/api/v1/users`          | Admin/HR, System Admin, Direktur   |
 | POST   | `/api/v1/users`          | Admin/HR, System Admin             |
 | PATCH  | `/api/v1/users/:id`      | Admin/HR, System Admin             |
+| PATCH  | `/api/v1/users/:id/deactivate` atau `/reactivate` | Admin/HR, System Admin (alasan wajib) |
+| POST   | `/api/v1/users/:id/reset-password` | Admin/HR, System Admin (ter-audit) |
+| DELETE | `/api/v1/users/:id` | Admin/HR, System Admin (hanya tanpa history terlindungi) |
 | GET/POST | `/api/v1/clients`      | Read: HR/Koordinator/Direktur; Write: Admin/HR |
 | GET/POST | `/api/v1/locations`    | Read: HR/Koordinator/Direktur; Write: Admin/HR |
-| GET/POST | `/api/v1/employees`    | Read: HR/Koordinator/Direktur; Write: Admin/HR |
+| GET/POST | `/api/v1/employees`    | Read: scoped HR/Koordinator/Direktur/Komisaris; Write: Admin/HR |
+| PATCH/DELETE | `/api/v1/employees/:id` | Admin/HR, System Admin; perubahan sensitif/delete aman |
+| POST/GET | `/api/v1/employees/me/profile-change-requests` | Profil milik sendiri |
+| GET/PATCH | `/api/v1/employee-profile-change-requests` | Admin/HR, System Admin review |
 | POST   | `/api/v1/contracts`      | Admin/HR, System Admin             |
 | GET    | `/api/v1/placements/active` | HR, Koordinator, Direktur       |
 | GET/POST | `/api/v1/placement-requests` | Read: HR/Koordinator/Direktur; Create: Koordinator/HR |

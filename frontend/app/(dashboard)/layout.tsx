@@ -35,12 +35,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <Link href="/leave-requests" className="rounded-lg px-3 py-2 hover:bg-slate-100">
             Cuti, Izin & Resign
           </Link>
+          <Link href="/profile-change-requests" className="rounded-lg px-3 py-2 hover:bg-slate-100">
+            Perubahan Profil
+          </Link>
           <RoleGate allow={['ADMIN_HR', 'SYSTEM_ADMIN', 'KEUANGAN', 'DIREKTUR', 'KARYAWAN']}>
             <Link href="/payroll" className="rounded-lg px-3 py-2 hover:bg-slate-100">
               Payroll
             </Link>
           </RoleGate>
-          <RoleGate allow={['ADMIN_HR', 'SYSTEM_ADMIN', 'KOORDINATOR', 'DIREKTUR']}>
+          <RoleGate allow={['ADMIN_HR', 'SYSTEM_ADMIN', 'KOORDINATOR', 'DIREKTUR', 'KOMISARIS']}>
             <Link href="/employees" className="rounded-lg px-3 py-2 hover:bg-slate-100">
               Data Karyawan
             </Link>
@@ -75,7 +78,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               Perangkat Terikat
             </Link>
           </RoleGate>
-          <RoleGate allow={['ADMIN_HR', 'SYSTEM_ADMIN', 'DIREKTUR']}>
+          <RoleGate allow={['ADMIN_HR', 'SYSTEM_ADMIN']}>
             <Link href="/users" className="rounded-lg px-3 py-2 hover:bg-slate-100">
               Manajemen User
             </Link>
