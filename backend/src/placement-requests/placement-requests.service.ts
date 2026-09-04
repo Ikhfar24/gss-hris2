@@ -222,6 +222,9 @@ export class PlacementRequestsService {
     endDate?: Date | null;
   }) {
     await this.prisma.$transaction(async (tx) => {
+      // A scheduled record becomes historical/active only when its effective
+      // date arrives; creating it must never close today's active placement.
+      await this.activateDuePlacements(tx, request.employeeId, startOfCalendarDay(new Date()));
       const placements = await tx.placement.findMany({
         where: { employeeId: request.employeeId },
         select: { id: true, startDate: true, endDate: true, status: true },
@@ -274,5 +277,23 @@ export class PlacementRequestsService {
         },
       });
     });
+  }
+
+  private async activateDuePlacements(tx: any, employeeId: string, today: Date) {
+    const due = await tx.placement.findMany({
+      where: { employeeId, status: 'SCHEDULED', startDate: { lte: today } },
+      orderBy: { startDate: 'asc' },
+    });
+    for (const scheduled of due) {
+      const effectiveStart = startOfCalendarDay(scheduled.startDate);
+      await tx.placement.updateMany({
+        where: { employeeId, status: 'ACTIVE' },
+        data: { status: 'ENDED', endDate: new Date(effectiveStart.getTime() - 86400000) },
+      });
+      await tx.placement.update({
+        where: { id: scheduled.id },
+        data: { status: scheduled.endDate && startOfCalendarDay(scheduled.endDate) < today ? 'ENDED' : 'ACTIVE' },
+      });
+    }
   }
 }

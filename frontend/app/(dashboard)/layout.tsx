@@ -53,6 +53,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               Pengajuan Penempatan
             </Link>
           </RoleGate>
+          <RoleGate allow={['ADMIN_HR', 'SYSTEM_ADMIN', 'KOORDINATOR']}>
+            <Link href="/temporary-assignments" className="rounded-lg px-3 py-2 hover:bg-slate-100">
+              Penugasan Sementara
+            </Link>
+          </RoleGate>
+          <Link href="/absence-cases" className="rounded-lg px-3 py-2 hover:bg-slate-100">
+            Kasus Ketidakhadiran
+          </Link>
           <RoleGate allow={['ADMIN_HR', 'SYSTEM_ADMIN', 'KOORDINATOR', 'DIREKTUR']}>
             <Link href="/locations" className="rounded-lg px-3 py-2 hover:bg-slate-100">
               Lokasi Kerja

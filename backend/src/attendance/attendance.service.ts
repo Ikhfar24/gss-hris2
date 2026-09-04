@@ -6,11 +6,13 @@ import { Role } from '../common/enums/role.enum';
 import { distanceInMeters } from '../common/utils/geo.util';
 import { saveBase64Image, toProtectedMediaPath } from '../common/utils/file-storage.util';
 import { payableAttendanceState } from '../common/domain/attendance-payable';
+import { effectiveWorkLocation } from '../common/domain/temporary-assignment';
 import { CheckInDto } from './dto/check-in.dto';
 import { CheckOutDto } from './dto/check-out.dto';
 import { QueryAttendanceDto, QueryOpenAttendanceDto } from './dto/query-attendance.dto';
 import { CorrectAttendanceDto } from './dto/correct-attendance.dto';
 import { ResetDeviceDto } from './dto/reset-device.dto';
+import { ReviewAttendanceDto } from './dto/review-attendance.dto';
 
 function startOfDay(d: Date): Date {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate());
@@ -47,9 +49,16 @@ export class AttendanceService {
     if (!user?.employeeId) {
       throw new BadRequestException('Akun ini belum terhubung ke data karyawan. Hubungi HR.');
     }
+    const eventDay = startOfDay(attendanceAt);
+    if (eventDay.getTime() >= startOfDay(new Date()).getTime()) {
+      await this.activateDuePlacements(user.employeeId, eventDay);
+    }
     const employee = await this.prisma.employee.findUnique({
       where: { id: user.employeeId },
-      include: { placements: { where: { status: { in: ['ACTIVE', 'SCHEDULED'] } }, include: { location: true }, orderBy: { startDate: 'desc' } } },
+      include: {
+        placements: { where: { status: { in: ['ACTIVE', 'SCHEDULED'] } }, include: { location: true }, orderBy: { startDate: 'desc' } },
+        temporaryAssignments: { where: { status: 'APPROVED' }, include: { location: true }, orderBy: { startDate: 'desc' } },
+      },
     });
     if (!employee) throw new NotFoundException('Data karyawan tidak ditemukan');
     if (!employee.attendanceRequired) {
@@ -61,7 +70,16 @@ export class AttendanceService {
     if (!activePlacement) {
       throw new BadRequestException('Karyawan belum memiliki penempatan aktif, tidak dapat absen.');
     }
-    return { employee, location: activePlacement.location };
+    const locationId = effectiveWorkLocation(
+      activePlacement.locationId,
+      attendanceAt,
+      employee.temporaryAssignments,
+    );
+    const location = locationId === activePlacement.locationId
+      ? activePlacement.location
+      : employee.temporaryAssignments.find((assignment) => assignment.locationId === locationId)?.location;
+    if (!location) throw new NotFoundException('Lokasi penugasan sementara tidak ditemukan');
+    return { employee, location };
   }
 
   /**
@@ -224,16 +242,18 @@ export class AttendanceService {
       entity: 'Attendance',
       entityId: attendance.id,
       newValue: { checkInAt, gpsStatus: evidence.gpsStatus, distance: evidence.distance, latenessStatus, isOffline },
+      actorRole: actor.role,
+      source: 'EMPLOYEE',
+      reason: evidence.failureNote ?? 'Employee check-in',
     });
 
     return this.present(attendance);
   }
 
   async checkOut(dto: CheckOutDto, actor: AuthenticatedUser) {
-    const { employee } = await this.getEmployeeForUser(actor.userId);
-    await this.enforceDeviceBinding(employee.id, dto.deviceId, dto.deviceInfo);
-
     const { at: checkOutAt, clientAt, isOffline } = this.resolveEventTime(dto.clientRecordedAt);
+    const { employee } = await this.getEmployeeForUser(actor.userId, checkOutAt);
+    await this.enforceDeviceBinding(employee.id, dto.deviceId, dto.deviceInfo);
     const today = startOfDay(checkOutAt);
 
     const existing = await this.prisma.attendance.findUnique({
@@ -288,6 +308,9 @@ export class AttendanceService {
       entity: 'Attendance',
       entityId: updated.id,
       newValue: { checkOutAt, gpsStatus: evidence.gpsStatus, distance: evidence.distance, isOffline },
+      actorRole: actor.role,
+      source: 'EMPLOYEE',
+      reason: evidence.failureNote ?? 'Employee check-out',
     });
 
     return this.present(updated);
@@ -346,18 +369,30 @@ export class AttendanceService {
 
     const nextCheckInAt = dto.checkInAt ? new Date(dto.checkInAt) : existing.checkInAt;
     const nextCheckOutAt = dto.clearCheckOut ? null : dto.checkOutAt ? new Date(dto.checkOutAt) : existing.checkOutAt;
+    if (nextCheckInAt && nextCheckOutAt && nextCheckOutAt <= nextCheckInAt) {
+      throw new BadRequestException('Waktu check-out harus setelah check-in');
+    }
 
     const latenessStatus = nextCheckInAt
       ? await this.computeLatenessStatus(existing.location, nextCheckInAt, existing.date)
       : existing.latenessStatus;
 
+    const nextValidationStatus = dto.validationStatus ?? existing.validationStatus;
+    const nextCheckOutSource = dto.clearCheckOut ? null : dto.checkOutAt ? 'HR_CORRECTION' : existing.checkOutSource;
     const updated = await this.prisma.attendance.update({
       where: { id },
       data: {
         checkInAt: nextCheckInAt,
         checkOutAt: nextCheckOutAt,
         latenessStatus,
-        validationStatus: dto.validationStatus ?? existing.validationStatus,
+        validationStatus: nextValidationStatus,
+        checkOutSource: nextCheckOutSource,
+        payableStatus: payableAttendanceState({
+          checkInAt: nextCheckInAt,
+          checkOutAt: nextCheckOutAt,
+          validationStatus: nextValidationStatus,
+          checkOutSource: nextCheckOutSource,
+        }),
         correctedById: actor.userId,
         correctedAt: new Date(),
         correctionNote: dto.reason,
@@ -373,9 +408,145 @@ export class AttendanceService {
       oldValue: { checkInAt: existing.checkInAt, checkOutAt: existing.checkOutAt, validationStatus: existing.validationStatus },
       newValue: { checkInAt: nextCheckInAt, checkOutAt: nextCheckOutAt, validationStatus: updated.validationStatus },
       reason: dto.reason,
+      actorRole: actor.role,
+      source: 'HR_CORRECTION',
     });
 
     return this.present(updated);
+  }
+
+  async review(id: string, dto: ReviewAttendanceDto, actor: AuthenticatedUser) {
+    const attendance = await this.prisma.attendance.findUnique({
+      where: { id },
+      include: { employee: { select: { id: true, coordinatorId: true } }, location: true },
+    });
+    if (!attendance) throw new NotFoundException('Data absensi tidak ditemukan');
+    const reviewer = await this.prisma.user.findUnique({ where: { id: actor.userId }, select: { employeeId: true } });
+    if (reviewer?.employeeId === attendance.employee.id) {
+      throw new ForbiddenException('Karyawan tidak dapat meninjau absensinya sendiri');
+    }
+    this.assertMayReview(attendance.employee.coordinatorId, actor);
+    if (attendance.validationStatus !== 'NEEDS_REVIEW') {
+      throw new BadRequestException('Hanya absensi yang perlu ditinjau yang dapat direview');
+    }
+
+    const validationStatus = dto.decision === 'APPROVED' ? 'APPROVED_AFTER_REVIEW' : 'REJECTED';
+    const payableStatus = payableAttendanceState({
+      checkInAt: attendance.checkInAt,
+      checkOutAt: attendance.checkOutAt,
+      validationStatus,
+      checkOutSource: attendance.checkOutSource,
+    });
+    const [review, updated] = await this.prisma.$transaction([
+      this.prisma.attendanceReview.create({
+        data: { attendanceId: id, decision: dto.decision, note: dto.note, reviewedById: actor.userId },
+      }),
+      this.prisma.attendance.update({
+        where: { id },
+        data: { validationStatus, payableStatus, reviewNote: dto.note, reviewedById: actor.userId, reviewedAt: new Date() },
+        include: INCLUDE,
+      }),
+    ]);
+
+    await this.auditLog.record({
+      actorId: actor.userId,
+      actorRole: actor.role,
+      action: 'ATTENDANCE_REVIEW',
+      entity: 'Attendance',
+      entityId: id,
+      oldValue: { validationStatus: attendance.validationStatus, payableStatus: attendance.payableStatus },
+      newValue: { reviewId: review.id, decision: dto.decision, validationStatus, payableStatus },
+      reason: dto.note,
+      source: 'ATTENDANCE_REVIEW',
+      relatedEntityId: review.id,
+    });
+    return this.present(updated);
+  }
+
+  async autoCloseForgottenCheckout(id: string, reason: string, actor: AuthenticatedUser) {
+    const attendance = await this.prisma.attendance.findUnique({ where: { id }, include: { location: true } });
+    if (!attendance) throw new NotFoundException('Data absensi tidak ditemukan');
+    if (!attendance.checkInAt || attendance.checkOutAt) throw new BadRequestException('Absensi ini tidak memiliki check-out yang terlupa');
+
+    const [hour, minute] = attendance.location.checkOutTime.split(':').map(Number);
+    const checkOutAt = new Date(attendance.date);
+    checkOutAt.setHours(hour, minute, 0, 0);
+    if (checkOutAt <= attendance.checkInAt) checkOutAt.setDate(checkOutAt.getDate() + 1);
+    const updated = await this.prisma.attendance.update({
+      where: { id },
+      data: {
+        checkOutAt,
+        checkOutSource: 'SYSTEM_AUTO_CLOSED',
+        autoClosedAt: new Date(),
+        forgottenCheckout: true,
+        validationStatus: 'NEEDS_REVIEW',
+        payableStatus: 'PENDING_REVIEW',
+        reviewNote: 'Check-out otomatis karena karyawan lupa check-out',
+      },
+      include: INCLUDE,
+    });
+    await this.auditLog.record({
+      actorId: actor.userId,
+      actorRole: actor.role,
+      action: 'ATTENDANCE_AUTO_CLOSE',
+      entity: 'Attendance',
+      entityId: id,
+      oldValue: { checkOutAt: attendance.checkOutAt, validationStatus: attendance.validationStatus },
+      newValue: { checkOutAt, checkOutSource: 'SYSTEM_AUTO_CLOSED', forgottenCheckout: true, payableStatus: 'PENDING_REVIEW' },
+      reason,
+      source: 'SYSTEM_AUTO_CLOSED',
+    });
+    return this.present(updated);
+  }
+
+  async attention(actor: AuthenticatedUser) {
+    const records = await this.prisma.attendance.findMany({
+      where: {
+        OR: [{ validationStatus: 'NEEDS_REVIEW' }, { forgottenCheckout: true }, { checkInAt: { not: null }, checkOutAt: null }],
+        ...(actor.role === Role.KOORDINATOR ? { employee: { coordinatorId: actor.userId } } : {}),
+      },
+      include: { ...INCLUDE, reviews: { orderBy: { reviewedAt: 'desc' } } },
+      orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
+    });
+    return records.map((record) => this.present(record));
+  }
+
+  async reviewHistory(id: string, actor: AuthenticatedUser) {
+    const attendance = await this.prisma.attendance.findUnique({ where: { id }, include: { employee: { select: { coordinatorId: true } } } });
+    if (!attendance) throw new NotFoundException('Data absensi tidak ditemukan');
+    this.assertMayReview(attendance.employee.coordinatorId, actor);
+    return this.prisma.attendanceReview.findMany({ where: { attendanceId: id }, orderBy: { reviewedAt: 'desc' } });
+  }
+
+  private assertMayReview(coordinatorId: string | null, actor: AuthenticatedUser) {
+    if (actor.role === Role.KOORDINATOR && coordinatorId === actor.userId) return;
+    if (actor.role === Role.ADMIN_HR || actor.role === Role.SYSTEM_ADMIN) return;
+    throw new ForbiddenException('Anda tidak berwenang meninjau absensi ini');
+  }
+
+  // Applies scheduled primary placement only at the date it becomes effective.
+  // This preserves history and makes offline attendance resolve by event date.
+  private async activateDuePlacements(employeeId: string, date: Date) {
+    const due = await this.prisma.placement.findMany({
+      where: { employeeId, status: 'SCHEDULED', startDate: { lte: date } },
+      orderBy: { startDate: 'asc' },
+    });
+    for (const scheduled of due) {
+      const effectiveStart = startOfDay(scheduled.startDate);
+      await this.prisma.$transaction(async (tx) => {
+        await tx.placement.updateMany({
+          where: { employeeId, status: 'ACTIVE' },
+          data: { status: 'ENDED', endDate: new Date(effectiveStart.getTime() - 86400000) },
+        });
+        await tx.placement.update({
+          where: { id: scheduled.id },
+          data: { status: scheduled.endDate && startOfDay(scheduled.endDate) < date ? 'ENDED' : 'ACTIVE' },
+        });
+        await tx.auditLog.create({
+          data: { action: 'PLACEMENT_EFFECTIVE_ACTIVATION', entity: 'Placement', entityId: scheduled.id, newValue: { status: 'ACTIVE', effectiveStart }, source: 'SYSTEM_EFFECTIVE_DATING', relatedEntityId: employeeId },
+        });
+      });
+    }
   }
 
   async summary(dateStr?: string, actor?: AuthenticatedUser) {
@@ -432,6 +603,8 @@ export class AttendanceService {
       entityId: employeeId,
       oldValue: { deviceId: existing.deviceId, label: existing.label },
       reason: dto.reason,
+      actorRole: actor.role,
+      source: 'DEVICE_MANAGEMENT',
     });
 
     return { reset: true };

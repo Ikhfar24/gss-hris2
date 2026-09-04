@@ -13,8 +13,16 @@ interface AttendanceRecord {
   checkInDistanceMeters: number | null;
   latenessStatus: string;
   validationStatus: string;
+  forgottenCheckout?: boolean;
   location: { name: string; radiusMeters: number };
 }
+
+const VALIDATION_LABEL: Record<string, { label: string; style: string }> = {
+  VALID: { label: 'Valid', style: 'bg-slate-100 text-slate-600' },
+  NEEDS_REVIEW: { label: 'Perlu ditinjau', style: 'bg-yellow-100 text-yellow-700' },
+  APPROVED_AFTER_REVIEW: { label: 'Disetujui setelah tinjauan', style: 'bg-green-100 text-green-700' },
+  REJECTED: { label: 'Ditolak', style: 'bg-red-100 text-red-700' },
+};
 
 interface TodayResponse {
   attendance: AttendanceRecord | null;
@@ -296,13 +304,16 @@ function SelfCheckIn() {
 
       <div className="mb-4 rounded-xl border border-slate-200 bg-white p-4 text-sm">
         <div className="flex justify-between py-1">
-          <span className="text-slate-500">Check-in</span>
+          <span className="text-slate-500">Masuk</span>
           <span>{att?.checkInAt ? new Date(att.checkInAt).toLocaleTimeString('id-ID') : '-'}</span>
         </div>
         <div className="flex justify-between py-1">
-          <span className="text-slate-500">Check-out</span>
-          <span>{att?.checkOutAt ? new Date(att.checkOutAt).toLocaleTimeString('id-ID') : '-'}</span>
+          <span className="text-slate-500">Pulang</span>
+          <span className={att?.checkInAt && !att?.checkOutAt ? 'font-medium text-red-600' : ''}>{att?.checkOutAt ? new Date(att.checkOutAt).toLocaleTimeString('id-ID') : att?.checkInAt ? 'Belum check-out' : '-'}</span>
         </div>
+        {att?.checkInAt && !att?.checkOutAt && (
+          <p className="mt-2 rounded-lg bg-yellow-50 px-3 py-2 text-xs text-yellow-800">Anda belum check-out. Lakukan check-out sebelum meninggalkan lokasi kerja.</p>
+        )}
         {att?.latenessStatus && att.latenessStatus !== 'NOT_APPLICABLE' && (
           <div className="flex justify-between py-1">
             <span className="text-slate-500">Status</span>
@@ -387,24 +398,28 @@ function MonitoringDashboard() {
   const [summary, setSummary] = useState<{ hadir: number; terlambat: number; tidakHadir: number; perluDitinjau: number } | null>(null);
   const [rows, setRows] = useState<any[]>([]);
   const [openRows, setOpenRows] = useState<any[]>([]);
+  const [attentionRows, setAttentionRows] = useState<any[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [showOpen, setShowOpen] = useState(false);
   const [correctingId, setCorrectingId] = useState<string | null>(null);
   const [correctionForm, setCorrectionForm] = useState({ checkInAt: '', checkOutAt: '', reason: '' });
   const role = getUser()?.role;
   const canCorrect = role === 'ADMIN_HR' || role === 'SYSTEM_ADMIN';
+  const canReview = role === 'ADMIN_HR' || role === 'SYSTEM_ADMIN' || role === 'KOORDINATOR';
 
   async function load() {
     try {
       const token = getToken();
-      const [s, r, o] = await Promise.all([
+      const [s, r, o, a] = await Promise.all([
         apiFetch<any>('/attendance/summary', { token }),
         apiFetch<any[]>('/attendance', { token }),
         canCorrect ? apiFetch<any[]>('/attendance/open', { token }) : Promise.resolve([]),
+        canReview ? apiFetch<any[]>('/attendance/attention', { token }) : Promise.resolve([]),
       ]);
       setSummary(s);
       setRows(r);
       setOpenRows(o);
+      setAttentionRows(a);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Gagal memuat data absensi');
     }
@@ -454,6 +469,17 @@ function MonitoringDashboard() {
     }
   }
 
+  async function review(id: string, decision: 'APPROVED' | 'REJECTED') {
+    const note = window.prompt(decision === 'APPROVED' ? 'Catatan persetujuan (minimal 5 karakter):' : 'Alasan penolakan (minimal 5 karakter):');
+    if (!note || note.trim().length < 5) return;
+    try {
+      await apiFetch(`/attendance/${id}/review`, { method: 'POST', token: getToken(), body: { decision, note: note.trim() } });
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Gagal meninjau absensi');
+    }
+  }
+
   return (
     <div>
       <h1 className="mb-4 text-2xl font-semibold">Monitoring Absensi</h1>
@@ -465,6 +491,26 @@ function MonitoringDashboard() {
           <StatCard label="Terlambat" value={summary.terlambat} style="text-yellow-600" />
           <StatCard label="Tidak Hadir" value={summary.tidakHadir} style="text-red-600" />
           <StatCard label="Perlu Ditinjau" value={summary.perluDitinjau} style="text-blue-600" />
+        </div>
+      )}
+
+      {canReview && attentionRows.length > 0 && (
+        <div className="mb-6 rounded-xl border border-yellow-200 bg-yellow-50 p-4">
+          <h2 className="mb-2 text-sm font-semibold text-yellow-900">Perlu Perhatian</h2>
+          <div className="space-y-2 text-sm">
+            {attentionRows.map((r) => (
+              <div key={r.id} className="flex flex-wrap items-center gap-2 border-t border-yellow-200 pt-2 first:border-t-0 first:pt-0">
+                <span className="font-medium">{r.employee.name}</span>
+                <span>{new Date(r.date).toLocaleDateString('id-ID')}</span>
+                {r.forgottenCheckout && <span className="rounded-full bg-orange-100 px-2 py-0.5 text-xs text-orange-800">Lupa check-out</span>}
+                {r.checkInAt && !r.checkOutAt && <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs text-red-700">Belum check-out</span>}
+                {r.validationStatus === 'NEEDS_REVIEW' && <>
+                  <button onClick={() => review(r.id, 'APPROVED')} className="rounded-lg bg-green-600 px-2 py-1 text-xs text-white hover:bg-green-700">Setujui</button>
+                  <button onClick={() => review(r.id, 'REJECTED')} className="rounded-lg bg-red-600 px-2 py-1 text-xs text-white hover:bg-red-700">Tolak</button>
+                </>}
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
@@ -537,8 +583,8 @@ function MonitoringDashboard() {
             <tr>
               <th className="px-4 py-2">Karyawan</th>
               <th className="px-4 py-2">Lokasi</th>
-              <th className="px-4 py-2">Check-in</th>
-              <th className="px-4 py-2">Check-out</th>
+              <th className="px-4 py-2">Masuk</th>
+              <th className="px-4 py-2">Pulang</th>
               <th className="px-4 py-2">Status</th>
               <th className="px-4 py-2">Validasi</th>
               {canCorrect && <th className="px-4 py-2"></th>}
@@ -550,7 +596,7 @@ function MonitoringDashboard() {
                 <td className="px-4 py-2">{r.employee.name}</td>
                 <td className="px-4 py-2">{r.location.name}</td>
                 <td className="px-4 py-2">{r.checkInAt ? new Date(r.checkInAt).toLocaleTimeString('id-ID') : '-'}</td>
-                <td className="px-4 py-2">{r.checkOutAt ? new Date(r.checkOutAt).toLocaleTimeString('id-ID') : '-'}</td>
+                <td className="px-4 py-2">{r.checkOutAt ? new Date(r.checkOutAt).toLocaleTimeString('id-ID') : <span className="font-medium text-red-600">Belum check-out</span>}</td>
                 <td className="px-4 py-2">
                   {r.latenessStatus === 'LATE' ? (
                     <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs text-red-700">Terlambat</span>
@@ -561,11 +607,11 @@ function MonitoringDashboard() {
                   )}
                 </td>
                 <td className="px-4 py-2">
-                  {r.validationStatus === 'NEEDS_REVIEW' ? (
-                    <span className="rounded-full bg-yellow-100 px-2 py-0.5 text-xs text-yellow-700">Perlu ditinjau</span>
-                  ) : (
-                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500">Valid</span>
-                  )}
+                  {(() => {
+                    const status = VALIDATION_LABEL[r.validationStatus] ?? { label: r.validationStatus, style: 'bg-slate-100 text-slate-600' };
+                    return <span className={`rounded-full px-2 py-0.5 text-xs ${status.style}`}>{status.label}</span>;
+                  })()}
+                  {r.forgottenCheckout && <div className="mt-1 text-xs font-medium text-orange-700">Checkout otomatis: terlupa</div>}
                 </td>
                 {canCorrect && (
                   <td className="px-4 py-2 text-right">

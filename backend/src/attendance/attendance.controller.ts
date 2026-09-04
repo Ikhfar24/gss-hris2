@@ -10,8 +10,11 @@ import { CheckOutDto } from './dto/check-out.dto';
 import { QueryAttendanceDto, QueryOpenAttendanceDto } from './dto/query-attendance.dto';
 import { CorrectAttendanceDto } from './dto/correct-attendance.dto';
 import { ResetDeviceDto } from './dto/reset-device.dto';
+import { ReviewAttendanceDto } from './dto/review-attendance.dto';
+import { AutoCloseAttendanceDto } from './dto/auto-close-attendance.dto';
 
 const REVIEWER_ROLES = [Role.ADMIN_HR, Role.SYSTEM_ADMIN, Role.KOORDINATOR, Role.DIREKTUR];
+const ATTENDANCE_REVIEWER_ROLES = [Role.ADMIN_HR, Role.SYSTEM_ADMIN, Role.KOORDINATOR];
 const HR_ROLES = [Role.ADMIN_HR, Role.SYSTEM_ADMIN];
 
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -47,6 +50,12 @@ export class AttendanceController {
     return this.service.findOpen(query, actor);
   }
 
+  @Roles(...ATTENDANCE_REVIEWER_ROLES)
+  @Get('attention')
+  attention(@CurrentUser() actor: AuthenticatedUser) {
+    return this.service.attention(actor);
+  }
+
   @Roles(...REVIEWER_ROLES)
   @Get('summary')
   summary(@Query('date') date: string | undefined, @CurrentUser() actor: AuthenticatedUser) {
@@ -77,6 +86,28 @@ export class AttendanceController {
     @CurrentUser() actor: AuthenticatedUser,
   ) {
     return this.service.correct(id, dto, actor);
+  }
+
+  @Roles(...ATTENDANCE_REVIEWER_ROLES)
+  @Post(':id/review')
+  review(
+    @Param('id') id: string,
+    @Body() dto: ReviewAttendanceDto,
+    @CurrentUser() actor: AuthenticatedUser,
+  ) {
+    return this.service.review(id, dto, actor);
+  }
+
+  @Roles(...HR_ROLES)
+  @Post(':id/auto-close')
+  autoCloseForgottenCheckout(@Param('id') id: string, @Body() dto: AutoCloseAttendanceDto, @CurrentUser() actor: AuthenticatedUser) {
+    return this.service.autoCloseForgottenCheckout(id, dto.reason, actor);
+  }
+
+  @Roles(...ATTENDANCE_REVIEWER_ROLES)
+  @Get(':id/reviews')
+  reviewHistory(@Param('id') id: string, @CurrentUser() actor: AuthenticatedUser) {
+    return this.service.reviewHistory(id, actor);
   }
 
   @Roles(...REVIEWER_ROLES)

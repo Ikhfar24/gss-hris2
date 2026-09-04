@@ -486,13 +486,14 @@ model Attendance {
   checkOutSyncedOffline    Boolean                 @default(false)
   checkOutClientRecordedAt DateTime?
 
-  validationStatus AttendanceValidationStatus @default(VALID)
-  payableStatus    AttendancePayableStatus?
-  reviewNote       String?
-  reviewedById     String?
-  reviewedAt       DateTime?
-  checkOutSource   AttendanceCheckoutSource?
-  autoClosedAt     DateTime?
+  validationStatus  AttendanceValidationStatus @default(VALID)
+  payableStatus     AttendancePayableStatus?
+  reviewNote        String?
+  reviewedById      String?
+  reviewedAt        DateTime?
+  checkOutSource    AttendanceCheckoutSource?
+  autoClosedAt      DateTime?
+  forgottenCheckout Boolean                    @default(false)
 
   // HR correction trail (§11.5 "koreksi absensi") — original captured
   // values are never overwritten silently; every correction is audit-logged
