@@ -31,11 +31,7 @@ export class LeaveRequestsController {
     return this.service.create(dto, actor);
   }
 
-  // §13: single-step Admin/HR approval (MVP default — see README "Keputusan
-  // Phase 4"). Koordinator is deliberately NOT given approval rights here,
-  // consistent with BR-005's placement precedent (field staff propose,
-  // HR/SDM decides).
-  @Roles(Role.ADMIN_HR, Role.SYSTEM_ADMIN)
+  @Roles(Role.KOORDINATOR, Role.ADMIN_HR, Role.SYSTEM_ADMIN, Role.DIREKTUR)
   @Patch(':id/review')
   review(
     @Param('id') id: string,
@@ -43,6 +39,22 @@ export class LeaveRequestsController {
     @CurrentUser() actor: AuthenticatedUser,
   ) {
     return this.service.review(id, dto, actor);
+  }
+
+  @Roles(Role.ADMIN_HR, Role.SYSTEM_ADMIN)
+  @Patch(':id/intervene')
+  intervene(
+    @Param('id') id: string,
+    @Body() dto: ReviewLeaveRequestDto,
+    @CurrentUser() actor: AuthenticatedUser,
+  ) {
+    return this.service.intervene(id, dto, actor);
+  }
+
+  @Roles(Role.ADMIN_HR, Role.SYSTEM_ADMIN)
+  @Patch(':id/finalize-resignation')
+  finalizeResignation(@Param('id') id: string, @CurrentUser() actor: AuthenticatedUser) {
+    return this.service.finalizeResignation(id, actor);
   }
 
   @Patch(':id/cancel')

@@ -30,6 +30,11 @@ export class AbsenceCasesController {
     return this.service.attention(query, actor);
   }
 
+  @Get('my')
+  findMy(@CurrentUser() actor: AuthenticatedUser) {
+    return this.service.findMy(actor);
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string, @CurrentUser() actor: AuthenticatedUser) {
     return this.service.findOne(id, actor);

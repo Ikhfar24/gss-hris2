@@ -22,6 +22,7 @@ import { MediaModule } from './media/media.module';
 import { EmployeeProfileChangeRequestsModule } from './employee-profile-change-requests/employee-profile-change-requests.module';
 import { TemporaryAssignmentsModule } from './temporary-assignments/temporary-assignments.module';
 import { AbsenceCasesModule } from './absence-cases/absence-cases.module';
+import { OvertimeRequestsModule } from './overtime-requests/overtime-requests.module';
 
 @Module({
   imports: [
@@ -53,6 +54,7 @@ import { AbsenceCasesModule } from './absence-cases/absence-cases.module';
     EmployeeProfileChangeRequestsModule,
     TemporaryAssignmentsModule,
     AbsenceCasesModule,
+    OvertimeRequestsModule,
   ],
 })
 export class AppModule {}

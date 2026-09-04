@@ -32,9 +32,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <Link href="/attendance" className="rounded-lg px-3 py-2 hover:bg-slate-100">
             Absensi
           </Link>
-          <Link href="/leave-requests" className="rounded-lg px-3 py-2 hover:bg-slate-100">
-            Cuti, Izin & Resign
-          </Link>
+           <Link href="/leave-requests" className="rounded-lg px-3 py-2 hover:bg-slate-100">
+             Cuti, Izin & Resign
+           </Link>
+           <RoleGate allow={['KARYAWAN', 'KOORDINATOR', 'ADMIN_HR', 'SYSTEM_ADMIN']}>
+             <Link href="/overtime-requests" className="rounded-lg px-3 py-2 hover:bg-slate-100">
+               Pengajuan Lembur
+             </Link>
+           </RoleGate>
           <Link href="/profile-change-requests" className="rounded-lg px-3 py-2 hover:bg-slate-100">
             Perubahan Profil
           </Link>

@@ -16,6 +16,7 @@ const INCLUDE = {
 
 const HR_ROLES = [Role.ADMIN_HR, Role.SYSTEM_ADMIN];
 const ATTENTION_STATUSES = ['PENDING_EXPLANATION', 'CONFIRMED_ALPHA'] as const;
+const ABSENCE_BLOCKING_LEAVE_TYPES = ['CUTI', 'SAKIT', 'IZIN_PULANG_AWAL', 'IZIN_MENDADAK', 'IZIN_LAIN'] as const;
 
 @Injectable()
 export class AbsenceCasesService {
@@ -28,6 +29,7 @@ export class AbsenceCasesService {
     const date = startOfCalendarDay(dto.date);
     const employee = await this.prisma.employee.findUnique({ where: { id: dto.employeeId }, select: { id: true } });
     if (!employee) throw new NotFoundException('Data karyawan tidak ditemukan');
+    await this.assertNoApprovedLeave(dto.employeeId, date);
 
     const placement = await this.prisma.placement.findFirst({
       where: {
@@ -93,6 +95,15 @@ export class AbsenceCasesService {
     return absenceCase;
   }
 
+  async findMy(actor: AuthenticatedUser) {
+    const employeeId = await this.resolveOwnEmployeeId(actor.userId);
+    return this.prisma.absenceCase.findMany({
+      where: { employeeId },
+      include: INCLUDE,
+      orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
+    });
+  }
+
   async submitExplanation(id: string, dto: SubmitAbsenceExplanationDto, actor: AuthenticatedUser) {
     const absenceCase = await this.getCase(id);
     const employeeId = await this.resolveOwnEmployeeId(actor.userId);
@@ -126,6 +137,7 @@ export class AbsenceCasesService {
     if (Date.now() - absenceCase.createdAt.getTime() < 24 * 60 * 60 * 1000) {
       throw new BadRequestException('Kasus harus belum terselesaikan setidaknya 24 jam sebelum dapat diputuskan');
     }
+    if (dto.decision !== 'EXCUSE') await this.assertNoApprovedLeave(absenceCase.employeeId, absenceCase.date);
 
     const status = dto.decision === 'EXCUSE' ? 'EXCUSED' : 'CONFIRMED_ALPHA';
     const updated = await this.prisma.absenceCase.update({
@@ -147,6 +159,20 @@ export class AbsenceCasesService {
     const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { employeeId: true } });
     if (!user?.employeeId) throw new BadRequestException('Akun ini belum terhubung ke data karyawan. Hubungi HR.');
     return user.employeeId;
+  }
+
+  private async assertNoApprovedLeave(employeeId: string, date: Date) {
+    const leave = await this.prisma.leaveRequest.findFirst({
+      where: {
+        employeeId,
+        status: 'APPROVED',
+        type: { in: [...ABSENCE_BLOCKING_LEAVE_TYPES] },
+        startDate: { lte: date },
+        OR: [{ endDate: { gte: date } }, { endDate: null, startDate: date }],
+      },
+      select: { id: true },
+    });
+    if (leave) throw new BadRequestException('Tanggal tersebut tercakup pengajuan cuti/izin yang telah disetujui');
   }
 
   private async assertCanAccess(absenceCase: { employeeId: string; employee: { coordinatorId: string | null } }, actor: AuthenticatedUser) {

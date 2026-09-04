@@ -141,6 +141,7 @@ test('holiday attendance is not late and no absence case is created for a holida
   const absence = new AbsenceCasesService({
     employee: { findUnique: async () => ({ id: 'employee-1' }) },
     placement: { findFirst: async () => ({ location: { id: 'location-1', workDays: [1] } }) },
+    leaveRequest: { findFirst: async () => null },
     holiday: { findFirst: async () => ({ id: 'holiday-1' }) },
     absenceCase: { create: async () => { throw new Error('must not create'); } },
   }, {});

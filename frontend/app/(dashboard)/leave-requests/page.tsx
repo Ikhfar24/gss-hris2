@@ -20,6 +20,7 @@ interface LeaveRequestRow {
   requestedAt: string;
   reviewNote: string | null;
   employee: { id: string; name: string };
+  approvals: { id: string; stage: string; decision: string; note: string | null; decidedAt: string }[];
 }
 
 const TYPE_LABEL: Record<string, string> = {
@@ -32,11 +33,16 @@ const TYPE_LABEL: Record<string, string> = {
 };
 
 const STATUS_LABEL: Record<string, { label: string; style: string }> = {
-  PENDING: { label: 'Menunggu Review', style: 'bg-yellow-100 text-yellow-700' },
+  PENDING: { label: 'Menunggu HR', style: 'bg-yellow-100 text-yellow-700' },
+  PENDING_COORDINATOR: { label: 'Menunggu Koordinator', style: 'bg-yellow-100 text-yellow-700' },
+  PENDING_HR: { label: 'Menunggu HR', style: 'bg-yellow-100 text-yellow-700' },
+  PENDING_DIRECTOR: { label: 'Menunggu Direktur', style: 'bg-yellow-100 text-yellow-700' },
   APPROVED: { label: 'Disetujui', style: 'bg-green-100 text-green-700' },
   REJECTED: { label: 'Ditolak', style: 'bg-red-100 text-red-700' },
   CANCELLED: { label: 'Dibatalkan', style: 'bg-slate-200 text-slate-600' },
 };
+
+const STAGE_LABEL: Record<string, string> = { COORDINATOR: 'Koordinator', HR: 'HR', DIRECTOR: 'Direktur' };
 
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -59,7 +65,7 @@ export default function LeaveRequestsPage() {
 
   const isHr = role === 'ADMIN_HR' || role === 'SYSTEM_ADMIN';
   const isKaryawan = role === 'KARYAWAN';
-  const canCreate = isHr || isKaryawan;
+  const canCreate = Boolean(role);
 
   async function load() {
     try {
@@ -118,6 +124,29 @@ export default function LeaveRequestsPage() {
     }
   }
 
+  async function intervene(id: string, approve: boolean) {
+    const note = window.prompt('Alasan intervensi (wajib):');
+    if (!note?.trim()) return;
+    try {
+      await apiFetch(`/leave-requests/${id}/intervene`, { method: 'PATCH', token: getToken(), body: { approve, note } });
+      await load();
+    } catch (err) { setError(err instanceof ApiError ? err.message : 'Gagal melakukan intervensi'); }
+  }
+
+  async function finalizeResignation(id: string) {
+    try {
+      await apiFetch(`/leave-requests/${id}/finalize-resignation`, { method: 'PATCH', token: getToken() });
+      await load();
+    } catch (err) { setError(err instanceof ApiError ? err.message : 'Gagal memfinalisasi resign'); }
+  }
+
+  function canReview(request: LeaveRequestRow) {
+    return (request.status === 'PENDING_COORDINATOR' && role === 'KOORDINATOR')
+      || (request.status === 'PENDING_HR' && isHr)
+      || (request.status === 'PENDING_DIRECTOR' && (role === 'DIREKTUR' || role === 'SYSTEM_ADMIN'))
+      || (request.status === 'PENDING' && isHr);
+  }
+
   async function cancel(id: string) {
     setError(null);
     try {
@@ -168,8 +197,8 @@ export default function LeaveRequestsPage() {
           </div>
           <textarea required placeholder="Alasan" value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })} className="rounded-lg border border-slate-300 px-3 py-2 text-sm" rows={3} />
           <label className="text-sm">
-            Dokumen pendukung (opsional, JPEG/PNG/PDF)
-            <input type="file" accept="image/jpeg,image/png,application/pdf" onChange={(e) => setFile(e.target.files?.[0] ?? null)} className="mt-1 w-full text-sm" />
+            {form.type === 'SAKIT' ? 'Bukti medis (wajib, JPEG/PNG/PDF)' : 'Dokumen pendukung (opsional, JPEG/PNG/PDF)'}
+            <input required={form.type === 'SAKIT'} type="file" accept="image/jpeg,image/png,application/pdf" onChange={(e) => setFile(e.target.files?.[0] ?? null)} className="mt-1 w-full text-sm" />
           </label>
           <button type="submit" disabled={submitting} className="rounded-lg bg-slate-900 py-2 text-sm text-white hover:bg-slate-800 disabled:opacity-60">
             {submitting ? 'Mengirim...' : 'Kirim Pengajuan'}
@@ -185,7 +214,7 @@ export default function LeaveRequestsPage() {
               <th className="px-4 py-2">Jenis</th>
               <th className="px-4 py-2">Tanggal</th>
               <th className="px-4 py-2">Alasan</th>
-              <th className="px-4 py-2">Status</th>
+               <th className="px-4 py-2">Status & Riwayat</th>
               <th className="px-4 py-2"></th>
             </tr>
           </thead>
@@ -209,20 +238,23 @@ export default function LeaveRequestsPage() {
                     )}
                   </td>
                   <td className="px-4 py-2">
-                    <span className={`rounded-full px-2 py-0.5 text-xs ${st.style}`}>{st.label}</span>
-                    {r.reviewNote && <div className="mt-1 text-xs text-slate-400">{r.reviewNote}</div>}
+                     <span className={`rounded-full px-2 py-0.5 text-xs ${st.style}`}>{st.label}</span>
+                     {r.reviewNote && <div className="mt-1 text-xs text-slate-400">{r.reviewNote}</div>}
+                     {r.approvals.length > 0 && <div className="mt-2 space-y-1 text-xs text-slate-500">{r.approvals.map((approval) => <div key={approval.id}>{STAGE_LABEL[approval.stage] ?? approval.stage}: {approval.decision === 'APPROVED' ? 'disetujui' : 'ditolak'}{approval.note ? ` (${approval.note})` : ''} · {new Date(approval.decidedAt).toLocaleDateString('id-ID')}</div>)}</div>}
                   </td>
                   <td className="px-4 py-2">
                     <div className="flex flex-wrap gap-2">
-                      {isHr && r.status === 'PENDING' && (
+                       {canReview(r) && (
                         <>
                           <button onClick={() => review(r.id, true)} className="rounded-lg bg-green-600 px-2 py-1 text-xs text-white hover:bg-green-700">Setujui</button>
                           <button onClick={() => review(r.id, false)} className="rounded-lg bg-red-600 px-2 py-1 text-xs text-white hover:bg-red-700">Tolak</button>
                         </>
-                      )}
-                      {r.status === 'PENDING' && (isHr || isKaryawan) && (
+                       )}
+                       {isHr && ['PENDING', 'PENDING_COORDINATOR', 'PENDING_HR', 'PENDING_DIRECTOR'].includes(r.status) && !canReview(r) && <><button onClick={() => intervene(r.id, true)} className="rounded-lg border border-green-600 px-2 py-1 text-xs text-green-700">Intervensi setujui</button><button onClick={() => intervene(r.id, false)} className="rounded-lg border border-red-600 px-2 py-1 text-xs text-red-700">Intervensi tolak</button></>}
+                       {['PENDING', 'PENDING_COORDINATOR', 'PENDING_HR', 'PENDING_DIRECTOR'].includes(r.status) && (isHr || isKaryawan) && (
                         <button onClick={() => cancel(r.id)} className="rounded-lg border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50">Batalkan</button>
-                      )}
+                       )}
+                       {isHr && r.type === 'RESIGN' && r.status === 'APPROVED' && <button onClick={() => finalizeResignation(r.id)} className="rounded-lg border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50">Finalisasi resign</button>}
                     </div>
                   </td>
                 </tr>
