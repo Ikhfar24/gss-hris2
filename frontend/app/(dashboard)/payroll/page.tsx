@@ -1,359 +1,83 @@
 'use client';
 
-import { useEffect, useState, FormEvent } from 'react';
-import { apiFetch, downloadFile, ApiError } from '@/lib/api';
+import { FormEvent, useEffect, useState } from 'react';
+import { ApiError, apiFetch, downloadFile } from '@/lib/api';
 import { getToken, getUser } from '@/lib/auth';
 
-interface RunListItem {
-  id: string;
-  periodStart: string;
-  periodEnd: string;
-  status: 'DRAFT' | 'FINALIZED';
-  _count: { slips: number };
-}
+type RunStatus = 'DRAFT' | 'PENDING_DIRECTOR_APPROVAL' | 'FINALIZED';
+interface Run { id: string; periodStart: string; periodEnd: string; status: RunStatus; _count: { slips: number }; financeReviewedAt?: string | null; sourceMonitorOnly?: boolean; }
+interface Item { id: string; type: 'EARNING' | 'DEDUCTION'; label: string; amount: number; note?: string | null; }
+interface Slip { id: string; employee: { id: string; name: string }; basis: 'CONTRACT' | 'DAILY_RATE'; baseSalary: number; dailyRate?: number | null; presentDays?: number | null; totalEarnings: number; totalDeductions: number; netPay: number; items: Item[]; }
+interface Payment { id: string; amount: number; reference: string; paidAt: string; reason: string; }
+interface RunDetail extends Run { slips: Slip[]; payments: Payment[]; skipped?: string[]; }
+interface Cycle { id: string; clientId?: string | null; locationId?: string | null; client?: { name: string } | null; location?: { name: string } | null; startDay: number; endDay: number; isActive: boolean; }
+interface Period { id: string; cycleSettingId: string; periodStart: string; periodEnd: string; status: 'OPEN' | 'CLOSED'; payrollRun?: { id: string; status: RunStatus } | null; cycleSetting: Cycle; }
+interface Revision { id: string; payrollRunId: string; revisionNumber: number; status: string; reason: string; netAdjustment: number; approvalNote?: string | null; items: { id: string; payrollSlipId: string; type: 'EARNING' | 'DEDUCTION'; label: string; amount: number; reason: string }[]; payrollRun: { periodStart: string; periodEnd: string; status: RunStatus }; }
+interface MySlip { id: string; netPay: number; payrollRun: { periodStart: string; periodEnd: string }; }
 
-interface LineItem {
-  id: string;
-  type: 'EARNING' | 'DEDUCTION';
-  label: string;
-  amount: number;
-  note: string | null;
-}
-
-interface SlipRow {
-  id: string;
-  employee: { id: string; name: string };
-  basis: 'CONTRACT' | 'DAILY_RATE';
-  baseSalary: number;
-  dailyRate: number | null;
-  presentDays: number | null;
-  totalEarnings: number;
-  totalDeductions: number;
-  netPay: number;
-  items: LineItem[];
-}
-
-interface RunDetail extends RunListItem {
-  slips: SlipRow[];
-  skipped?: string[];
-}
-
-interface MySlip {
-  id: string;
-  netPay: number;
-  baseSalary: number;
-  payrollRun: { periodStart: string; periodEnd: string; status: string };
-}
-
-function formatRupiah(n: number) {
-  return `Rp ${n.toLocaleString('id-ID')}`;
-}
+const money = (value: number) => `Rp ${value.toLocaleString('id-ID')}`;
+const date = (value: string) => new Date(value).toLocaleDateString('id-ID');
+const periodLabel = (run: { periodStart: string; periodEnd: string }) => `${date(run.periodStart)} - ${date(run.periodEnd)}`;
+const errorMessage = (error: unknown, fallback: string) => error instanceof ApiError ? error.message : fallback;
+const statusLabel: Record<string, string> = { DRAFT: 'Draft', PENDING_DIRECTOR_APPROVAL: 'Menunggu Direktur', FINALIZED: 'Final', OPEN: 'Terbuka', CLOSED: 'Ditutup', APPROVED: 'Disetujui', REJECTED: 'Ditolak' };
+const button = 'rounded-lg px-3 py-1.5 text-xs font-medium disabled:cursor-not-allowed disabled:opacity-50';
 
 export default function PayrollPage() {
   const role = getUser()?.role;
-  if (role === 'KARYAWAN') return <MySlipsView />;
-  return <ManagementView role={role} />;
+  if (role === 'KARYAWAN') return <MySlips />;
+  if (role === 'KEUANGAN') return <FinancePayroll />;
+  if (role === 'DIREKTUR') return <DirectorApprovals />;
+  if (role === 'ADMIN_HR') return <HrMonitor />;
+  return <p className="text-sm text-slate-500">Anda tidak memiliki akses ke payroll.</p>;
 }
 
-// -----------------------------------------------------------------------
-// Karyawan: own finalized slips only
-// -----------------------------------------------------------------------
-function MySlipsView() {
-  const [slips, setSlips] = useState<MySlip[]>([]);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    apiFetch<MySlip[]>('/payroll/my-slips', { token: getToken() })
-      .then(setSlips)
-      .catch((err) => setError(err instanceof ApiError ? err.message : 'Gagal memuat slip gaji'));
-  }, []);
-
-  async function download(slipId: string) {
-    try {
-      await downloadFile(`/payroll/slips/${slipId}/export`, getToken(), 'slip-gaji.pdf');
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Gagal mengunduh slip');
-    }
-  }
-
-  return (
-    <div>
-      <h1 className="mb-4 text-2xl font-semibold">Slip Gaji Saya</h1>
-      {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
-      {slips.length === 0 && <p className="text-sm text-slate-400">Belum ada slip gaji yang final.</p>}
-      <div className="grid gap-3 sm:grid-cols-2">
-        {slips.map((s) => (
-          <div key={s.id} className="rounded-xl border border-slate-200 bg-white p-4">
-            <div className="text-sm text-slate-500">
-              {new Date(s.payrollRun.periodStart).toLocaleDateString('id-ID')} – {new Date(s.payrollRun.periodEnd).toLocaleDateString('id-ID')}
-            </div>
-            <div className="mt-1 text-xl font-semibold">{formatRupiah(s.netPay)}</div>
-            <button onClick={() => download(s.id)} className="mt-3 rounded-lg bg-slate-900 px-3 py-1.5 text-xs text-white hover:bg-slate-800">
-              Download Slip (PDF)
-            </button>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
+function MySlips() {
+  const [slips, setSlips] = useState<MySlip[]>([]); const [error, setError] = useState<string | null>(null);
+  useEffect(() => { apiFetch<MySlip[]>('/payroll/my-slips', { token: getToken() }).then(setSlips).catch((e) => setError(errorMessage(e, 'Gagal memuat slip gaji'))); }, []);
+  async function exportSlip(id: string) { try { await downloadFile(`/payroll/slips/${id}/export`, getToken(), 'slip-gaji.pdf'); } catch (e) { setError(errorMessage(e, 'Gagal mengunduh slip')); } }
+  return <section><h1 className="mb-4 text-2xl font-semibold">Slip Gaji Saya</h1>{error && <Notice message={error} />}{slips.length === 0 ? <Empty text="Belum ada slip gaji yang sudah final." /> : <div className="grid gap-3 sm:grid-cols-2">{slips.map((slip) => <article key={slip.id} className="rounded-xl border border-slate-200 bg-white p-4"><p className="text-sm text-slate-500">{periodLabel(slip.payrollRun)}</p><p className="mt-1 text-xl font-semibold">{money(slip.netPay)}</p><button onClick={() => exportSlip(slip.id)} className={`${button} mt-3 bg-slate-900 text-white`}>Unduh Slip PDF</button></article>)}</div>}</section>;
 }
 
-// -----------------------------------------------------------------------
-// HR/System Admin (full control) + Keuangan/Direktur (read-only, finalized only)
-// -----------------------------------------------------------------------
-function ManagementView({ role }: { role?: string }) {
-  const isManager = role === 'ADMIN_HR' || role === 'SYSTEM_ADMIN';
-  const [runs, setRuns] = useState<RunListItem[]>([]);
-  const [selected, setSelected] = useState<RunDetail | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [showForm, setShowForm] = useState(false);
-  const [creating, setCreating] = useState(false);
-  const [period, setPeriod] = useState({ periodStart: '', periodEnd: '' });
-  const [itemForms, setItemForms] = useState<Record<string, { type: string; label: string; amount: string; note: string }>>({});
-
-  async function loadRuns() {
-    try {
-      const data = await apiFetch<RunListItem[]>('/payroll/runs', { token: getToken() });
-      setRuns(data);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Gagal memuat daftar payroll');
-    }
-  }
-
-  async function loadDetail(id: string) {
-    try {
-      const data = await apiFetch<RunDetail>(`/payroll/runs/${id}`, { token: getToken() });
-      setSelected(data);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Gagal memuat detail payroll');
-    }
-  }
-
-  useEffect(() => {
-    loadRuns();
-  }, []);
-
-  async function onCreateRun(e: FormEvent) {
-    e.preventDefault();
-    setCreating(true);
-    setError(null);
-    try {
-      const run = await apiFetch<RunDetail>('/payroll/runs', { method: 'POST', token: getToken(), body: period });
-      setShowForm(false);
-      setPeriod({ periodStart: '', periodEnd: '' });
-      await loadRuns();
-      setSelected(run);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Gagal membuat periode payroll');
-    } finally {
-      setCreating(false);
-    }
-  }
-
-  async function addItem(slipId: string) {
-    const f = itemForms[slipId];
-    if (!f || !f.label || !f.amount) return;
-    setError(null);
-    try {
-      await apiFetch(`/payroll/slips/${slipId}/items`, {
-        method: 'POST',
-        token: getToken(),
-        body: { type: f.type, label: f.label, amount: Number(f.amount), note: f.note || undefined },
-      });
-      setItemForms((s) => ({ ...s, [slipId]: { type: 'DEDUCTION', label: '', amount: '', note: '' } }));
-      if (selected) await loadDetail(selected.id);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Gagal menambah item');
-    }
-  }
-
-  async function removeItem(slipId: string, itemId: string) {
-    setError(null);
-    try {
-      await apiFetch(`/payroll/slips/${slipId}/items/${itemId}`, { method: 'DELETE', token: getToken() });
-      if (selected) await loadDetail(selected.id);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Gagal menghapus item');
-    }
-  }
-
-  async function finalizeRun() {
-    if (!selected) return;
-    if (!confirm('Finalisasi payroll ini? Setelah final, tidak bisa diubah lagi.')) return;
-    setError(null);
-    try {
-      await apiFetch(`/payroll/runs/${selected.id}/finalize`, { method: 'PATCH', token: getToken() });
-      await loadDetail(selected.id);
-      await loadRuns();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Gagal finalisasi payroll');
-    }
-  }
-
-  async function exportRun(format: 'xlsx' | 'pdf') {
-    if (!selected) return;
-    try {
-      await downloadFile(`/payroll/runs/${selected.id}/export?format=${format}`, getToken(), `rekap-payroll.${format}`);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Gagal export');
-    }
-  }
-
-  async function downloadSlip(slipId: string) {
-    try {
-      await downloadFile(`/payroll/slips/${slipId}/export`, getToken(), 'slip-gaji.pdf');
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Gagal mengunduh slip');
-    }
-  }
-
-  return (
-    <div>
-      <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Payroll</h1>
-        {isManager && (
-          <button onClick={() => setShowForm((s) => !s)} className="rounded-lg bg-slate-900 px-4 py-2 text-sm text-white hover:bg-slate-800">
-            {showForm ? 'Batal' : '+ Buat Periode Baru'}
-          </button>
-        )}
-      </div>
-
-      {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
-
-      {showForm && (
-        <form onSubmit={onCreateRun} className="mb-6 grid max-w-md gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:grid-cols-2">
-          <label className="text-sm">
-            Mulai periode
-            <input required type="date" value={period.periodStart} onChange={(e) => setPeriod({ ...period, periodStart: e.target.value })} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
-          </label>
-          <label className="text-sm">
-            Selesai periode
-            <input required type="date" value={period.periodEnd} onChange={(e) => setPeriod({ ...period, periodEnd: e.target.value })} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
-          </label>
-          <button type="submit" disabled={creating} className="rounded-lg bg-slate-900 py-2 text-sm text-white hover:bg-slate-800 disabled:opacity-60 sm:col-span-2">
-            {creating ? 'Membuat...' : 'Buat & Generate Slip'}
-          </button>
-        </form>
-      )}
-
-      <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
-        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-          {runs.length === 0 && <p className="p-4 text-sm text-slate-400">Belum ada periode payroll.</p>}
-          {runs.map((r) => (
-            <button
-              key={r.id}
-              onClick={() => loadDetail(r.id)}
-              className={`block w-full border-b border-slate-100 px-4 py-3 text-left text-sm hover:bg-slate-50 ${selected?.id === r.id ? 'bg-slate-50' : ''}`}
-            >
-              <div className="font-medium">
-                {new Date(r.periodStart).toLocaleDateString('id-ID')} – {new Date(r.periodEnd).toLocaleDateString('id-ID')}
-              </div>
-              <div className="mt-1 flex items-center gap-2">
-                <span className={`rounded-full px-2 py-0.5 text-xs ${r.status === 'FINALIZED' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
-                  {r.status === 'FINALIZED' ? 'Final' : 'Draft'}
-                </span>
-                <span className="text-xs text-slate-400">{r._count.slips} slip</span>
-              </div>
-            </button>
-          ))}
-        </div>
-
-        <div>
-          {!selected && <p className="text-sm text-slate-400">Pilih periode payroll di sebelah kiri untuk melihat detail.</p>}
-          {selected && (
-            <div>
-              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <h2 className="text-lg font-semibold">
-                    {new Date(selected.periodStart).toLocaleDateString('id-ID')} – {new Date(selected.periodEnd).toLocaleDateString('id-ID')}
-                  </h2>
-                  <span className={`rounded-full px-2 py-0.5 text-xs ${selected.status === 'FINALIZED' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
-                    {selected.status === 'FINALIZED' ? 'Final' : 'Draft — masih bisa diubah'}
-                  </span>
-                </div>
-                <div className="flex gap-2">
-                  <button onClick={() => exportRun('xlsx')} className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs hover:bg-slate-50">Excel</button>
-                  <button onClick={() => exportRun('pdf')} className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs hover:bg-slate-50">PDF</button>
-                  {isManager && selected.status === 'DRAFT' && (
-                    <button onClick={finalizeRun} className="rounded-lg bg-green-600 px-3 py-1.5 text-xs text-white hover:bg-green-700">Finalisasi</button>
-                  )}
-                </div>
-              </div>
-
-              {selected.skipped && selected.skipped.length > 0 && (
-                <p className="mb-3 rounded-lg bg-yellow-50 p-3 text-xs text-yellow-700">
-                  Dilewati (belum ada kontrak/tarif harian): {selected.skipped.join(', ')}
-                </p>
-              )}
-
-              <div className="space-y-3">
-                {selected.slips.map((slip) => (
-                  <div key={slip.id} className="rounded-xl border border-slate-200 bg-white p-4">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div>
-                        <div className="font-medium">{slip.employee.name}</div>
-                        <div className="text-xs text-slate-500">
-                          {slip.basis === 'CONTRACT' ? 'Gaji Kontrak' : `Harian (${slip.presentDays ?? 0} hari × ${formatRupiah(slip.dailyRate ?? 0)})`}
-                          {' · '}Pokok {formatRupiah(slip.baseSalary)}
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-lg font-semibold">{formatRupiah(slip.netPay)}</div>
-                        <button onClick={() => downloadSlip(slip.id)} className="text-xs text-slate-500 underline hover:text-slate-900">Download Slip</button>
-                      </div>
-                    </div>
-
-                    {slip.items.length > 0 && (
-                      <ul className="mt-3 space-y-1 border-t border-slate-100 pt-3 text-xs">
-                        {slip.items.map((it) => (
-                          <li key={it.id} className="flex items-center justify-between">
-                            <span className={it.type === 'EARNING' ? 'text-green-600' : 'text-red-600'}>
-                              {it.type === 'EARNING' ? '+ ' : '− '}{it.label}{it.note ? ` (${it.note})` : ''} — {formatRupiah(it.amount)}
-                            </span>
-                            {isManager && selected.status === 'DRAFT' && (
-                              <button onClick={() => removeItem(slip.id, it.id)} className="text-slate-400 hover:text-red-600">Hapus</button>
-                            )}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-
-                    {isManager && selected.status === 'DRAFT' && (
-                      <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
-                        <select
-                          value={itemForms[slip.id]?.type ?? 'DEDUCTION'}
-                          onChange={(e) => setItemForms((s) => ({ ...s, [slip.id]: { ...(s[slip.id] ?? { label: '', amount: '', note: '' }), type: e.target.value } }))}
-                          className="rounded-lg border border-slate-300 px-2 py-1 text-xs"
-                        >
-                          <option value="DEDUCTION">Potongan</option>
-                          <option value="EARNING">Tambahan (mis. lembur)</option>
-                        </select>
-                        <input
-                          placeholder="Keterangan"
-                          value={itemForms[slip.id]?.label ?? ''}
-                          onChange={(e) => setItemForms((s) => ({ ...s, [slip.id]: { ...(s[slip.id] ?? { type: 'DEDUCTION', amount: '', note: '' }), label: e.target.value } }))}
-                          className="w-40 rounded-lg border border-slate-300 px-2 py-1 text-xs"
-                        />
-                        <input
-                          type="number"
-                          min={1}
-                          placeholder="Nominal"
-                          value={itemForms[slip.id]?.amount ?? ''}
-                          onChange={(e) => setItemForms((s) => ({ ...s, [slip.id]: { ...(s[slip.id] ?? { type: 'DEDUCTION', label: '', note: '' }), amount: e.target.value } }))}
-                          className="w-28 rounded-lg border border-slate-300 px-2 py-1 text-xs"
-                        />
-                        <button onClick={() => addItem(slip.id)} className="rounded-lg bg-slate-900 px-3 py-1 text-xs text-white hover:bg-slate-800">
-                          Tambah
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
+function HrMonitor() {
+  const [runs, setRuns] = useState<Run[]>([]); const [selected, setSelected] = useState<Run | null>(null); const [error, setError] = useState<string | null>(null);
+  useEffect(() => { apiFetch<Run[]>('/payroll/runs', { token: getToken() }).then(setRuns).catch((e) => setError(errorMessage(e, 'Gagal memuat monitoring payroll'))); }, []);
+  return <section><h1 className="text-2xl font-semibold">Monitoring Payroll</h1><p className="mb-4 mt-1 text-sm text-slate-500">HR hanya dapat memantau status dan jumlah slip payroll.</p>{error && <Notice message={error} />}<RunList runs={runs} selected={selected?.id} onSelect={setSelected} />{selected && <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4 text-sm"><p className="font-medium">{periodLabel(selected)}</p><p className="mt-1 text-slate-500">Status: {statusLabel[selected.status] ?? selected.status} · {selected._count.slips} slip</p><p className="mt-2 text-xs text-slate-400">Rincian nominal dan tindakan payroll tidak tersedia untuk peran HR.</p></div>}</section>;
 }
+
+function DirectorApprovals() {
+  const [revisions, setRevisions] = useState<Revision[]>([]); const [error, setError] = useState<string | null>(null);
+  async function load() { try { setRevisions(await apiFetch<Revision[]>('/payroll-admin/revisions', { token: getToken() })); } catch (e) { setError(errorMessage(e, 'Gagal memuat persetujuan revisi')); } }
+  useEffect(() => { load(); }, []);
+  async function decide(revision: Revision, action: 'approve' | 'reject') { const note = prompt(action === 'approve' ? 'Catatan persetujuan:' : 'Alasan penolakan:'); if (!note?.trim() || !confirm(`${action === 'approve' ? 'Setujui' : 'Tolak'} revisi payroll ini?`)) return; try { await apiFetch(`/payroll-admin/revisions/${revision.id}/${action}`, { method: 'PATCH', token: getToken(), body: { note } }); await load(); } catch (e) { setError(errorMessage(e, 'Gagal memproses revisi')); } }
+  const pending = revisions.filter((revision) => revision.status === 'PENDING_DIRECTOR_APPROVAL');
+  return <section><h1 className="text-2xl font-semibold">Persetujuan Payroll</h1><p className="mb-4 mt-1 text-sm text-slate-500">Hanya revisi payroll yang menunggu keputusan Direktur ditampilkan.</p>{error && <Notice message={error} />}{pending.length === 0 ? <Empty text="Tidak ada revisi payroll yang menunggu persetujuan." /> : <div className="space-y-3">{pending.map((revision) => <article key={revision.id} className="rounded-xl border border-slate-200 bg-white p-4"><p className="font-medium">Revisi #{revision.revisionNumber} · {periodLabel(revision.payrollRun)}</p><p className="mt-1 text-sm text-slate-600">Alasan: {revision.reason} · Penyesuaian: {money(revision.netAdjustment)}</p><p className="mt-1 text-xs text-slate-500">{revision.items.map((item) => `${item.label} (${item.reason})`).join(', ')}</p><div className="mt-3 flex gap-2"><button onClick={() => decide(revision, 'approve')} className={`${button} bg-green-600 text-white`}>Setujui</button><button onClick={() => decide(revision, 'reject')} className={`${button} bg-red-600 text-white`}>Tolak</button></div></article>)}</div>}</section>;
+}
+
+function FinancePayroll() {
+  const [runs, setRuns] = useState<Run[]>([]); const [selected, setSelected] = useState<RunDetail | null>(null); const [cycles, setCycles] = useState<Cycle[]>([]); const [periods, setPeriods] = useState<Period[]>([]); const [revisions, setRevisions] = useState<Revision[]>([]); const [error, setError] = useState<string | null>(null);
+  const [runForm, setRunForm] = useState({ periodStart: '', periodEnd: '' }); const [cycleForm, setCycleForm] = useState({ scope: 'location', scopeId: '', startDay: '1', endDay: '31' }); const [periodForm, setPeriodForm] = useState({ cycleSettingId: '', periodStart: '', periodEnd: '' }); const [itemForm, setItemForm] = useState({ slipId: '', type: 'DEDUCTION', label: '', amount: '', reason: '' }); const [paymentForm, setPaymentForm] = useState({ amount: '', reference: '', paidAt: '', reason: '' }); const [revisionForm, setRevisionForm] = useState({ slipId: '', type: 'EARNING', label: '', amount: '', reason: '', itemReason: '' });
+  async function load() { try { const [nextRuns, nextCycles, nextPeriods, nextRevisions] = await Promise.all([apiFetch<Run[]>('/payroll/runs', { token: getToken() }), apiFetch<Cycle[]>('/payroll-admin/cycle-settings', { token: getToken() }), apiFetch<Period[]>('/payroll-admin/periods', { token: getToken() }), apiFetch<Revision[]>('/payroll-admin/revisions', { token: getToken() })]); setRuns(nextRuns); setCycles(nextCycles); setPeriods(nextPeriods); setRevisions(nextRevisions); } catch (e) { setError(errorMessage(e, 'Gagal memuat data payroll')); } }
+  async function loadDetail(id: string) { try { setSelected(await apiFetch<RunDetail>(`/payroll/runs/${id}`, { token: getToken() })); } catch (e) { setError(errorMessage(e, 'Gagal memuat rincian payroll')); } }
+  useEffect(() => { load(); }, []);
+  async function createRun(e: FormEvent) { e.preventDefault(); try { const run = await apiFetch<RunDetail>('/payroll/runs', { method: 'POST', token: getToken(), body: runForm }); setRunForm({ periodStart: '', periodEnd: '' }); await load(); setSelected(run); } catch (e) { setError(errorMessage(e, 'Gagal membuat payroll')); } }
+  async function createCycle(e: FormEvent) { e.preventDefault(); try { await apiFetch('/payroll-admin/cycle-settings', { method: 'POST', token: getToken(), body: { startDay: Number(cycleForm.startDay), endDay: Number(cycleForm.endDay), [cycleForm.scope === 'client' ? 'clientId' : 'locationId']: cycleForm.scopeId } }); setCycleForm({ scope: 'location', scopeId: '', startDay: '1', endDay: '31' }); await load(); } catch (e) { setError(errorMessage(e, 'Gagal menyimpan siklus payroll')); } }
+  async function createPeriod(e: FormEvent) { e.preventDefault(); try { await apiFetch('/payroll-admin/periods', { method: 'POST', token: getToken(), body: periodForm }); setPeriodForm({ cycleSettingId: '', periodStart: '', periodEnd: '' }); await load(); } catch (e) { setError(errorMessage(e, 'Gagal membuat periode payroll')); } }
+  async function updateCycle(cycle: Cycle, data: Partial<Cycle>) { try { await apiFetch(`/payroll-admin/cycle-settings/${cycle.id}`, { method: 'PATCH', token: getToken(), body: data }); await load(); } catch (e) { setError(errorMessage(e, 'Gagal memperbarui siklus')); } }
+  async function updatePeriod(period: Period, action: 'close' | 'reopen') { try { await apiFetch(`/payroll-admin/periods/${period.id}/${action}`, { method: 'PATCH', token: getToken() }); await load(); } catch (e) { setError(errorMessage(e, 'Gagal memperbarui periode')); } }
+  async function action(path: string, body?: unknown, confirmation?: string) { if (confirmation && !confirm(confirmation)) return; try { await apiFetch(path, { method: 'PATCH', token: getToken(), body }); await load(); if (selected) await loadDetail(selected.id); } catch (e) { setError(errorMessage(e, 'Gagal memproses payroll')); } }
+  async function addItem() { if (!itemForm.slipId || !itemForm.label || !itemForm.amount || !itemForm.reason) return; try { await apiFetch(`/payroll/slips/${itemForm.slipId}/items`, { method: 'POST', token: getToken(), body: { type: itemForm.type, label: itemForm.label, amount: Number(itemForm.amount), reason: itemForm.reason } }); setItemForm({ slipId: '', type: 'DEDUCTION', label: '', amount: '', reason: '' }); if (selected) await loadDetail(selected.id); } catch (e) { setError(errorMessage(e, 'Gagal menambah komponen manual')); } }
+  async function removeItem(slipId: string, itemId: string) { const reason = prompt('Alasan menghapus komponen manual:'); if (!reason?.trim()) return; try { await apiFetch(`/payroll/slips/${slipId}/items/${itemId}`, { method: 'DELETE', token: getToken(), body: { reason } }); if (selected) await loadDetail(selected.id); } catch (e) { setError(errorMessage(e, 'Gagal menghapus komponen')); } }
+  async function recordPayment(e: FormEvent) { e.preventDefault(); if (!selected || !confirm('Catat pembayaran payroll ini?')) return; try { await apiFetch(`/payroll/runs/${selected.id}/payments`, { method: 'POST', token: getToken(), body: { ...paymentForm, amount: Number(paymentForm.amount) } }); setPaymentForm({ amount: '', reference: '', paidAt: '', reason: '' }); await loadDetail(selected.id); } catch (e) { setError(errorMessage(e, 'Gagal mencatat pembayaran')); } }
+  async function createRevision(e: FormEvent) { e.preventDefault(); if (!selected || !confirm('Buat revisi payroll ini?')) return; try { await apiFetch(`/payroll-admin/runs/${selected.id}/revisions`, { method: 'POST', token: getToken(), body: { reason: revisionForm.reason, items: [{ payrollSlipId: revisionForm.slipId, type: revisionForm.type, label: revisionForm.label, amount: Number(revisionForm.amount), reason: revisionForm.itemReason }] } }); setRevisionForm({ slipId: '', type: 'EARNING', label: '', amount: '', reason: '', itemReason: '' }); await load(); } catch (e) { setError(errorMessage(e, 'Gagal membuat revisi')); } }
+  return <section><h1 className="text-2xl font-semibold">Payroll Keuangan</h1><p className="mb-4 mt-1 text-sm text-slate-500">Kelola siklus, periode, proses payroll, pembayaran, dan revisi.</p>{error && <Notice message={error} />}<div className="grid gap-4 xl:grid-cols-2"><Panel title="Pengaturan Siklus"><form onSubmit={createCycle} className="grid gap-2 sm:grid-cols-2"><select value={cycleForm.scope} onChange={(e) => setCycleForm({ ...cycleForm, scope: e.target.value })} className="input"><option value="location">ID Lokasi</option><option value="client">ID Klien</option></select><input required value={cycleForm.scopeId} onChange={(e) => setCycleForm({ ...cycleForm, scopeId: e.target.value })} placeholder="UUID cakupan" className="input" /><input required type="number" min="1" max="31" value={cycleForm.startDay} onChange={(e) => setCycleForm({ ...cycleForm, startDay: e.target.value })} placeholder="Hari mulai" className="input" /><input required type="number" min="1" max="31" value={cycleForm.endDay} onChange={(e) => setCycleForm({ ...cycleForm, endDay: e.target.value })} placeholder="Hari akhir" className="input" /><button className={`${button} bg-slate-900 text-white sm:col-span-2`}>Simpan Siklus</button></form><div className="mt-3 space-y-2 text-xs">{cycles.map((cycle) => <div key={cycle.id} className="flex items-center justify-between rounded-lg bg-slate-50 p-2"><span>{cycle.client?.name ?? cycle.location?.name ?? 'Cakupan'}: tgl {cycle.startDay}-{cycle.endDay} · {cycle.isActive ? 'Aktif' : 'Nonaktif'}</span><button onClick={() => updateCycle(cycle, { isActive: !cycle.isActive })} className="text-slate-600 underline">{cycle.isActive ? 'Nonaktifkan' : 'Aktifkan'}</button></div>)}</div></Panel><Panel title="Periode Payroll"><form onSubmit={createPeriod} className="grid gap-2 sm:grid-cols-3"><select required value={periodForm.cycleSettingId} onChange={(e) => setPeriodForm({ ...periodForm, cycleSettingId: e.target.value })} className="input"><option value="">Pilih siklus</option>{cycles.filter((cycle) => cycle.isActive).map((cycle) => <option key={cycle.id} value={cycle.id}>{cycle.client?.name ?? cycle.location?.name ?? cycle.id}</option>)}</select><input required type="date" value={periodForm.periodStart} onChange={(e) => setPeriodForm({ ...periodForm, periodStart: e.target.value })} className="input" /><input required type="date" value={periodForm.periodEnd} onChange={(e) => setPeriodForm({ ...periodForm, periodEnd: e.target.value })} className="input" /><button className={`${button} bg-slate-900 text-white sm:col-span-3`}>Buat Periode</button></form><div className="mt-3 space-y-2 text-xs">{periods.map((period) => <div key={period.id} className="flex items-center justify-between rounded-lg bg-slate-50 p-2"><span>{periodLabel(period)} · {statusLabel[period.status]}</span>{period.status === 'OPEN' ? <button onClick={() => updatePeriod(period, 'close')} className="underline">Tutup</button> : <button onClick={() => updatePeriod(period, 'reopen')} className="underline">Buka kembali</button>}</div>)}</div></Panel></div><Panel title="Buat Payroll" className="mt-4"><form onSubmit={createRun} className="flex flex-wrap gap-2"><input required type="date" value={runForm.periodStart} onChange={(e) => setRunForm({ ...runForm, periodStart: e.target.value })} className="input" /><input required type="date" value={runForm.periodEnd} onChange={(e) => setRunForm({ ...runForm, periodEnd: e.target.value })} className="input" /><button className={`${button} bg-slate-900 text-white`}>Buat dan Generate Slip</button></form></Panel><div className="mt-4 grid gap-5 lg:grid-cols-[280px_1fr]"><RunList runs={runs} selected={selected?.id} onSelect={(run) => loadDetail(run.id)} /><div>{selected && <FinanceDetail selected={selected} revisions={revisions.filter((revision) => revision.payrollRunId === selected.id)} itemForm={itemForm} setItemForm={setItemForm} paymentForm={paymentForm} setPaymentForm={setPaymentForm} revisionForm={revisionForm} setRevisionForm={setRevisionForm} onAction={action} onAddItem={addItem} onRemoveItem={removeItem} onPayment={recordPayment} onRevision={createRevision} />}{!selected && <Empty text="Pilih payroll untuk melihat rincian dan tindakan." />}</div></div></section>;
+}
+
+function FinanceDetail(props: { selected: RunDetail; revisions: Revision[]; itemForm: any; setItemForm: any; paymentForm: any; setPaymentForm: any; revisionForm: any; setRevisionForm: any; onAction: (path: string, body?: unknown, confirmation?: string) => Promise<void>; onAddItem: () => Promise<void>; onRemoveItem: (slipId: string, itemId: string) => Promise<void>; onPayment: (e: FormEvent) => Promise<void>; onRevision: (e: FormEvent) => Promise<void> }) {
+  const { selected, revisions } = props; const [submitReason, setSubmitReason] = useState('');
+  return <><Panel title={periodLabel(selected)}><div className="flex flex-wrap items-center gap-2 text-sm"><span className="rounded-full bg-slate-100 px-2 py-1">{statusLabel[selected.status]}</span><span>{selected.slips.length} slip</span>{selected.status === 'DRAFT' && <button onClick={() => props.onAction(`/payroll/runs/${selected.id}/review`)} className={`${button} border border-slate-300`}>Tandai Review</button>}{selected.status === 'DRAFT' && <><input required value={submitReason} onChange={(e) => setSubmitReason(e.target.value)} placeholder="Alasan pengajuan" className="input" /><button disabled={!submitReason.trim()} onClick={() => props.onAction(`/payroll/runs/${selected.id}/submit`, { reason: submitReason }, 'Kirim payroll ke Direktur untuk persetujuan?')} className={`${button} bg-slate-900 text-white`}>Ajukan ke Direktur</button></>}{selected.status === 'FINALIZED' && <button onClick={() => downloadFile(`/payroll/runs/${selected.id}/export?format=xlsx`, getToken(), 'rekap-payroll.xlsx')} className={`${button} border border-slate-300`}>Ekspor Excel</button>}</div>{selected.skipped?.length ? <p className="mt-3 text-xs text-yellow-700">Tidak dibuatkan slip: {selected.skipped.join(', ')}</p> : null}</Panel><div className="mt-4 space-y-3">{selected.slips.map((slip) => <article key={slip.id} className="rounded-xl border border-slate-200 bg-white p-4"><div className="flex justify-between gap-3"><div><p className="font-medium">{slip.employee.name}</p><p className="text-xs text-slate-500">{slip.basis === 'CONTRACT' ? 'Kontrak' : `Harian: ${slip.presentDays ?? 0} hari x ${money(slip.dailyRate ?? 0)}`} · Pokok {money(slip.baseSalary)}</p></div><p className="font-semibold">{money(slip.netPay)}</p></div>{slip.items.map((item) => <div key={item.id} className="mt-2 flex justify-between text-xs"><span>{item.type === 'EARNING' ? '+' : '-'} {item.label} · {money(item.amount)}{item.note ? ` (${item.note})` : ''}</span>{selected.status === 'DRAFT' && <button onClick={() => props.onRemoveItem(slip.id, item.id)} className="text-red-600">Hapus</button>}</div>)}</article>)}</div>{selected.status === 'DRAFT' && <Panel title="Komponen Manual" className="mt-4"><div className="grid gap-2 sm:grid-cols-3"><select value={props.itemForm.slipId} onChange={(e) => props.setItemForm({ ...props.itemForm, slipId: e.target.value })} className="input"><option value="">Pilih slip</option>{selected.slips.map((slip) => <option key={slip.id} value={slip.id}>{slip.employee.name}</option>)}</select><select value={props.itemForm.type} onChange={(e) => props.setItemForm({ ...props.itemForm, type: e.target.value })} className="input"><option value="EARNING">Tambahan</option><option value="DEDUCTION">Potongan</option></select><input value={props.itemForm.label} onChange={(e) => props.setItemForm({ ...props.itemForm, label: e.target.value })} placeholder="Komponen" className="input" /><input type="number" min="1" value={props.itemForm.amount} onChange={(e) => props.setItemForm({ ...props.itemForm, amount: e.target.value })} placeholder="Nominal" className="input" /><input value={props.itemForm.reason} onChange={(e) => props.setItemForm({ ...props.itemForm, reason: e.target.value })} placeholder="Alasan wajib" className="input" /><button disabled={!props.itemForm.slipId || !props.itemForm.label || !props.itemForm.amount || !props.itemForm.reason} onClick={props.onAddItem} className={`${button} bg-slate-900 text-white`}>Tambah Komponen</button></div></Panel>}{selected.status === 'FINALIZED' && <><Panel title="Catat Pembayaran" className="mt-4"><form onSubmit={props.onPayment} className="grid gap-2 sm:grid-cols-2"><input required type="number" min="1" value={props.paymentForm.amount} onChange={(e) => props.setPaymentForm({ ...props.paymentForm, amount: e.target.value })} placeholder="Nominal" className="input" /><input required value={props.paymentForm.reference} onChange={(e) => props.setPaymentForm({ ...props.paymentForm, reference: e.target.value })} placeholder="Referensi pembayaran" className="input" /><input required type="date" value={props.paymentForm.paidAt} onChange={(e) => props.setPaymentForm({ ...props.paymentForm, paidAt: e.target.value })} className="input" /><input required value={props.paymentForm.reason} onChange={(e) => props.setPaymentForm({ ...props.paymentForm, reason: e.target.value })} placeholder="Alasan/catatan" className="input" /><button className={`${button} bg-green-600 text-white sm:col-span-2`}>Catat Pembayaran</button></form>{selected.payments.map((payment) => <p key={payment.id} className="mt-2 text-xs text-slate-600">{date(payment.paidAt)} · {money(payment.amount)} · {payment.reference}</p>)}</Panel><Panel title="Revisi Payroll" className="mt-4"><form onSubmit={props.onRevision} className="grid gap-2 sm:grid-cols-3"><select required value={props.revisionForm.slipId} onChange={(e) => props.setRevisionForm({ ...props.revisionForm, slipId: e.target.value })} className="input"><option value="">Pilih slip</option>{selected.slips.map((slip) => <option key={slip.id} value={slip.id}>{slip.employee.name}</option>)}</select><select value={props.revisionForm.type} onChange={(e) => props.setRevisionForm({ ...props.revisionForm, type: e.target.value })} className="input"><option value="EARNING">Tambahan</option><option value="DEDUCTION">Potongan</option></select><input required value={props.revisionForm.label} onChange={(e) => props.setRevisionForm({ ...props.revisionForm, label: e.target.value })} placeholder="Komponen revisi" className="input" /><input required type="number" min="1" value={props.revisionForm.amount} onChange={(e) => props.setRevisionForm({ ...props.revisionForm, amount: e.target.value })} placeholder="Nominal" className="input" /><input required value={props.revisionForm.reason} onChange={(e) => props.setRevisionForm({ ...props.revisionForm, reason: e.target.value })} placeholder="Alasan revisi" className="input" /><input required value={props.revisionForm.itemReason} onChange={(e) => props.setRevisionForm({ ...props.revisionForm, itemReason: e.target.value })} placeholder="Alasan item" className="input" /><button className={`${button} bg-slate-900 text-white sm:col-span-3`}>Buat Revisi</button></form>{revisions.map((revision) => <div key={revision.id} className="mt-3 flex flex-wrap items-center gap-2 text-xs"><span>Revisi #{revision.revisionNumber}: {statusLabel[revision.status] ?? revision.status} · {money(revision.netAdjustment)}</span>{revision.status === 'DRAFT' && <button onClick={() => props.onAction(`/payroll-admin/revisions/${revision.id}/submit`, undefined, 'Ajukan revisi ini ke Direktur?')} className={`${button} border border-slate-300`}>Ajukan Revisi</button>}{revision.status === 'APPROVED' && <button onClick={() => props.onAction(`/payroll-admin/revisions/${revision.id}/finalize`, undefined, 'Finalisasi revisi yang telah disetujui?')} className={`${button} bg-green-600 text-white`}>Finalisasi Revisi</button>}</div>)}</Panel></>}</>;
+}
+
+function RunList({ runs, selected, onSelect }: { runs: Run[]; selected?: string; onSelect: (run: Run) => void }) { return <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">{runs.length === 0 && <Empty text="Belum ada payroll." />}{runs.map((run) => <button key={run.id} onClick={() => onSelect(run)} className={`block w-full border-b border-slate-100 p-3 text-left text-sm hover:bg-slate-50 ${selected === run.id ? 'bg-slate-50' : ''}`}><p className="font-medium">{periodLabel(run)}</p><p className="mt-1 text-xs text-slate-500">{statusLabel[run.status] ?? run.status} · {run._count.slips} slip</p></button>)}</div>; }
+function Panel({ title, className = '', children }: { title: string; className?: string; children: React.ReactNode }) { return <section className={`rounded-xl border border-slate-200 bg-white p-4 ${className}`}><h2 className="mb-3 font-semibold">{title}</h2>{children}</section>; }
+function Notice({ message }: { message: string }) { return <p className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{message}</p>; }
+function Empty({ text }: { text: string }) { return <p className="p-4 text-sm text-slate-400">{text}</p>; }

@@ -219,13 +219,13 @@ test('alpha cases require 24 hours before HR confirmation and payroll daily-rate
   await assert.rejects(() => absence.resolve('absence-1', { decision: 'CONFIRM_ALPHA', reason: 'No explanation' }, { userId: 'hr-1', role: 'ADMIN_HR' }), /24 jam/);
   const slips = [];
   const payroll = new PayrollService({
-    employee: { findMany: async () => [{ id: 'daily-1', name: 'Daily', dailyRate: 100000, contracts: [] }, { id: 'missing-1', name: 'Missing', dailyRate: null, contracts: [] }] },
+    employee: { findMany: async () => [{ id: 'daily-1', name: 'Daily', employmentType: 'TENAGA_BORONGAN', dailyRate: 100000, contracts: [] }, { id: 'missing-1', name: 'Missing', employmentType: 'TENAGA_BORONGAN', dailyRate: null, contracts: [] }] },
     payrollRun: { create: async () => ({ id: 'run-1' }) },
     attendance: { count: async () => 3 },
     payrollSlip: { create: async ({ data }) => { slips.push(data); } },
   }, { record: async () => {} });
-  payroll.findOne = async (_id, _actor, extra) => extra;
-  const result = await payroll.createRun({ periodStart: '2026-09-01', periodEnd: '2026-09-30' }, { userId: 'hr-1', role: 'ADMIN_HR' });
+  payroll.findOne = async () => ({ id: 'run-1' });
+  const result = await payroll.createRun({ periodStart: '2026-09-01', periodEnd: '2026-09-30' }, { userId: 'finance-1', role: 'KEUANGAN' });
   assert.deepEqual(slips[0], { payrollRunId: 'run-1', employeeId: 'daily-1', basis: 'DAILY_RATE', baseSalary: 300000, dailyRate: 100000, presentDays: 3, netPay: 300000 });
   assert.deepEqual(result.skipped, ['Missing']);
 });

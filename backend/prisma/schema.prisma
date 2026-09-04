@@ -791,6 +791,7 @@ model PayrollRun {
 
   slips     PayrollSlip[]
   revisions PayrollRevision[]
+  payments  PayrollPayment[]
 
   @@map("payroll_runs")
 }
@@ -910,4 +911,21 @@ model PayrollLineItem {
   createdAt     DateTime        @default(now())
 
   @@map("payroll_line_items")
+}
+
+// Payments are deliberately separate from the finalized payroll snapshot:
+// recording disbursement must never alter historical payroll totals.
+model PayrollPayment {
+  id           String     @id @default(uuid())
+  payrollRunId String
+  payrollRun   PayrollRun @relation(fields: [payrollRunId], references: [id])
+  amount       Int
+  reference    String
+  paidAt       DateTime
+  reason       String
+  recordedById String
+  createdAt    DateTime   @default(now())
+
+  @@index([payrollRunId, paidAt])
+  @@map("payroll_payments")
 }

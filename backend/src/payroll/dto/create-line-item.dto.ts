@@ -1,4 +1,4 @@
-import { IsEnum, IsInt, IsOptional, IsString, Min } from 'class-validator';
+import { IsEnum, IsInt, IsNotEmpty, IsString, Min } from 'class-validator';
 
 export enum PayrollLineTypeDto {
   EARNING = 'EARNING',
@@ -16,7 +16,7 @@ export class CreateLineItemDto {
   @Min(1)
   amount: number;
 
-  @IsOptional()
   @IsString()
-  note?: string;
+  @IsNotEmpty()
+  reason: string;
 }

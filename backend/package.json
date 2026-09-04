@@ -16,7 +16,8 @@
     "test:batch2": "nest build && node --test test/batch2.test.js",
     "test:batch3": "nest build && node --test test/batch3.test.js",
     "test:batch4": "nest build && node --test test/batch4.test.js",
-    "test:batch5": "nest build && node --test test/batch5.test.js"
+    "test:batch5": "nest build && node --test test/batch5.test.js",
+    "test:batch6": "nest build && node --test test/batch6.test.js"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.0",

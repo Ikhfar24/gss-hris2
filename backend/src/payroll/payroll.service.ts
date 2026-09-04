@@ -1,48 +1,68 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { Role } from '../common/enums/role.enum';
-import { buildXlsx, buildPdf, buildPayslipPdf, ExportColumn } from '../common/utils/export.util';
-import { CreatePayrollRunDto } from './dto/create-payroll-run.dto';
+import { buildPdf, buildPayslipPdf, buildXlsx, ExportColumn } from '../common/utils/export.util';
+import { PrismaService } from '../prisma/prisma.service';
 import { CreateLineItemDto } from './dto/create-line-item.dto';
+import { CreatePayrollRunDto } from './dto/create-payroll-run.dto';
+import { ReasonDto, RecordPaymentDto } from './dto/payroll-workflow.dto';
 
-const READ_ONLY_ROLES = [Role.KEUANGAN, Role.DIREKTUR];
-const MANAGE_ROLES = [Role.ADMIN_HR, Role.SYSTEM_ADMIN];
+const FINANCE = Role.KEUANGAN;
+const DIRECTOR = Role.DIREKTUR;
+const HR = Role.ADMIN_HR;
 
-function startOfDay(d: Date): Date {
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+function dateOnly(value: string): Date {
+  return new Date(`${value.slice(0, 10)}T00:00:00.000Z`);
 }
 
 @Injectable()
 export class PayrollService {
-  constructor(
-    private prisma: PrismaService,
-    private auditLog: AuditLogService,
-  ) {}
+  constructor(private prisma: PrismaService, private auditLog: AuditLogService) {}
 
-  // ---------------------------------------------------------------------
-  // Run generation
-  // ---------------------------------------------------------------------
+  private finance(actor: AuthenticatedUser) {
+    if (actor.role !== FINANCE) throw new ForbiddenException('Hanya Keuangan yang dapat mengelola payroll');
+  }
 
-  /**
-   * Creates a payroll period and generates a DRAFT slip per eligible
-   * employee. Base pay is a *snapshot* computed once here from either the
-   * employee's overlapping active Contract.baseSalary, or
-   * Employee.dailyRate × hari hadir dalam periode — never recomputed
-   * live, so later contract/rate edits don't silently reopen a run.
-   * Employees with neither a usable contract salary nor a dailyRate are
-   * skipped and reported back so HR can fill the missing data first.
-   */
+  private director(actor: AuthenticatedUser) {
+    if (actor.role !== DIRECTOR) throw new ForbiddenException('Hanya Direktur yang dapat menyetujui payroll');
+  }
+
+  private async audit(actor: AuthenticatedUser, action: string, entity: string, entityId: string, reason: string, newValue?: unknown) {
+    await this.auditLog.record({
+      actorId: actor.userId,
+      actorRole: actor.role,
+      action,
+      entity,
+      entityId,
+      reason,
+      source: 'PAYROLL_BATCH6',
+      newValue,
+    });
+  }
+
   async createRun(dto: CreatePayrollRunDto, actor: AuthenticatedUser) {
-    const periodStart = startOfDay(new Date(dto.periodStart));
-    const periodEnd = startOfDay(new Date(dto.periodEnd));
-    if (periodEnd < periodStart) {
-      throw new BadRequestException('Tanggal selesai periode tidak boleh sebelum tanggal mulai');
+    this.finance(actor);
+    const payrollPeriod = dto.payrollPeriodId
+      ? await this.prisma.payrollPeriod.findUnique({ where: { id: dto.payrollPeriodId }, include: { cycleSetting: true } })
+      : null;
+    if (dto.payrollPeriodId && (!payrollPeriod || payrollPeriod.status !== 'OPEN')) {
+      throw new BadRequestException('Periode payroll tidak ditemukan atau sudah ditutup');
     }
+    if (!payrollPeriod && (!dto.periodStart || !dto.periodEnd)) {
+      throw new BadRequestException('Pilih periode payroll atau isi rentang tanggal');
+    }
+    const periodStart = payrollPeriod?.periodStart ?? dateOnly(dto.periodStart!);
+    const periodEnd = payrollPeriod?.periodEnd ?? dateOnly(dto.periodEnd!);
+    if (periodEnd < periodStart) throw new BadRequestException('Tanggal selesai periode tidak boleh sebelum tanggal mulai');
 
+    const run = await this.prisma.payrollRun.create({ data: { periodStart, periodEnd, payrollPeriodId: payrollPeriod?.id, createdById: actor.userId } });
     const employees = await this.prisma.employee.findMany({
-      where: { status: { in: ['ACTIVE', 'TRAINING', 'ON_LEAVE'] } },
+      where: {
+        status: { in: ['ACTIVE', 'TRAINING', 'ON_LEAVE'] },
+        ...(payrollPeriod?.cycleSetting.locationId ? { placements: { some: { locationId: payrollPeriod.cycleSetting.locationId, startDate: { lte: periodEnd }, OR: [{ endDate: null }, { endDate: { gte: periodStart } }] } } } : {}),
+        ...(payrollPeriod?.cycleSetting.clientId ? { placements: { some: { location: { clientId: payrollPeriod.cycleSetting.clientId }, startDate: { lte: periodEnd }, OR: [{ endDate: null }, { endDate: { gte: periodStart } }] } } } : {}),
+      },
       include: {
         contracts: {
           where: {
@@ -55,96 +75,69 @@ export class PayrollService {
         },
       },
     });
-
-    const run = await this.prisma.payrollRun.create({
-      data: { periodStart, periodEnd, createdById: actor.userId },
-    });
-
     const skipped: string[] = [];
 
-    for (const emp of employees) {
-      const contract = emp.contracts[0];
+    for (const employee of employees) {
+      const contract = employee.contracts[0];
       if (contract?.baseSalary) {
         await this.prisma.payrollSlip.create({
-          data: {
-            payrollRunId: run.id,
-            employeeId: emp.id,
-            basis: 'CONTRACT',
-            baseSalary: contract.baseSalary,
-            netPay: contract.baseSalary,
-          },
+          data: { payrollRunId: run.id, employeeId: employee.id, basis: 'CONTRACT', baseSalary: contract.baseSalary, netPay: contract.baseSalary },
         });
         continue;
       }
 
-      if (emp.dailyRate) {
-        const presentDays = await this.prisma.attendance.count({
-          where: { employeeId: emp.id, date: { gte: periodStart, lte: periodEnd }, checkInAt: { not: null } },
+      if (employee.employmentType === 'TENAGA_BORONGAN' && employee.dailyRate) {
+        // Only reviewed and payable attendance can earn a Borongan daily rate.
+        const payableDays = await this.prisma.attendance.count({
+          where: { employeeId: employee.id, date: { gte: periodStart, lte: periodEnd }, payableStatus: 'PAYABLE' },
         });
-        const baseSalary = emp.dailyRate * presentDays;
+        const baseSalary = employee.dailyRate * payableDays;
         await this.prisma.payrollSlip.create({
           data: {
             payrollRunId: run.id,
-            employeeId: emp.id,
+            employeeId: employee.id,
             basis: 'DAILY_RATE',
+            dailyRate: employee.dailyRate,
+            presentDays: payableDays,
             baseSalary,
-            dailyRate: emp.dailyRate,
-            presentDays,
             netPay: baseSalary,
           },
         });
         continue;
       }
 
-      // Neither an active contract salary nor a daily rate is set — cannot
-      // compute a base pay. Deliberately skipped rather than defaulting to
-      // Rp0, which could be mistaken for "checked and confirmed zero".
-      skipped.push(emp.name);
+      skipped.push(employee.name);
     }
 
-    await this.auditLog.record({
-      actorId: actor.userId,
-      action: 'PAYROLL_RUN_CREATE',
-      entity: 'PayrollRun',
-      entityId: run.id,
-      newValue: { periodStart, periodEnd, skipped },
-    });
-
-    return this.findOne(run.id, actor, { skipped });
+    await this.audit(actor, 'PAYROLL_RUN_GENERATE', 'PayrollRun', run.id, 'Generate payroll', { periodStart, periodEnd, payrollPeriodId: payrollPeriod?.id ?? null, skipped });
+    return { ...(await this.findOne(run.id, actor)), skipped };
   }
-
-  // ---------------------------------------------------------------------
-  // Reads (role-scoped)
-  // ---------------------------------------------------------------------
 
   async findAll(actor: AuthenticatedUser) {
-    const isManager = MANAGE_ROLES.includes(actor.role as Role);
-    return this.prisma.payrollRun.findMany({
-      where: isManager ? {} : { status: 'FINALIZED' },
-      orderBy: { periodStart: 'desc' },
-      include: { _count: { select: { slips: true } } },
-    });
+    if (actor.role === HR) {
+      return this.prisma.payrollRun.findMany({
+        orderBy: { periodStart: 'desc' },
+        select: { id: true, periodStart: true, periodEnd: true, status: true, _count: { select: { slips: true } } },
+      });
+    }
+    this.finance(actor);
+    return this.prisma.payrollRun.findMany({ orderBy: { periodStart: 'desc' }, include: { _count: { select: { slips: true } } } });
   }
 
-  async findOne(id: string, actor: AuthenticatedUser, extra?: { skipped: string[] }) {
-    const isManager = MANAGE_ROLES.includes(actor.role as Role);
+  async findOne(id: string, actor: AuthenticatedUser) {
     const run = await this.prisma.payrollRun.findUnique({
       where: { id },
       include: {
-        slips: {
-          include: { employee: { select: { id: true, name: true, employmentType: true } }, items: true },
-          orderBy: { employee: { name: 'asc' } },
-        },
+        slips: { include: { employee: { select: { id: true, name: true, employmentType: true } }, items: true }, orderBy: { employee: { name: 'asc' } } },
+        payments: true,
       },
     });
     if (!run) throw new NotFoundException('Payroll run tidak ditemukan');
-    if (!isManager && run.status !== 'FINALIZED') {
-      throw new ForbiddenException('Payroll run ini belum final');
-    }
-    return extra ? { ...run, skipped: extra.skipped } : run;
+    if (actor.role === HR) return { id: run.id, periodStart: run.periodStart, periodEnd: run.periodEnd, status: run.status, sourceMonitorOnly: true };
+    this.finance(actor);
+    return run;
   }
 
-  /** Karyawan's own finalized slips — never their own DRAFT numbers. */
   async findMySlips(actor: AuthenticatedUser) {
     const employee = await this.prisma.employee.findFirst({ where: { user: { id: actor.userId } } });
     if (!employee) return [];
@@ -155,93 +148,100 @@ export class PayrollService {
     });
   }
 
-  // ---------------------------------------------------------------------
-  // Manual adjustments (DRAFT only)
-  // ---------------------------------------------------------------------
-
-  private async getEditableSlip(slipId: string) {
+  private async editableSlip(slipId: string) {
     const slip = await this.prisma.payrollSlip.findUnique({ where: { id: slipId }, include: { payrollRun: true } });
     if (!slip) throw new NotFoundException('Slip tidak ditemukan');
-    if (slip.payrollRun.status !== 'DRAFT') {
-      throw new BadRequestException('Payroll run sudah final, tidak bisa diubah lagi');
-    }
+    if (slip.payrollRun.status !== 'DRAFT') throw new BadRequestException('Hanya payroll DRAFT yang dapat diubah');
     return slip;
   }
 
-  private async recomputeSlip(slipId: string) {
-    const items = await this.prisma.payrollLineItem.findMany({ where: { payrollSlipId: slipId } });
-    const totalEarnings = items.filter((i) => i.type === 'EARNING').reduce((s, i) => s + i.amount, 0);
-    const totalDeductions = items.filter((i) => i.type === 'DEDUCTION').reduce((s, i) => s + i.amount, 0);
-    const slip = await this.prisma.payrollSlip.findUniqueOrThrow({ where: { id: slipId } });
-    return this.prisma.payrollSlip.update({
+  private async recomputeTotals(tx: any, slipId: string) {
+    const items = await tx.payrollLineItem.findMany({ where: { payrollSlipId: slipId } });
+    const totalEarnings = items.filter((item: any) => item.type === 'EARNING').reduce((total: number, item: any) => total + item.amount, 0);
+    const totalDeductions = items.filter((item: any) => item.type === 'DEDUCTION').reduce((total: number, item: any) => total + item.amount, 0);
+    const slip = await tx.payrollSlip.findUniqueOrThrow({ where: { id: slipId } });
+    return tx.payrollSlip.update({
       where: { id: slipId },
       data: { totalEarnings, totalDeductions, netPay: slip.baseSalary + totalEarnings - totalDeductions },
     });
   }
 
   async addLineItem(slipId: string, dto: CreateLineItemDto, actor: AuthenticatedUser) {
-    await this.getEditableSlip(slipId);
-    await this.prisma.payrollLineItem.create({
-      data: { payrollSlipId: slipId, type: dto.type, label: dto.label, amount: dto.amount, note: dto.note, createdById: actor.userId },
+    this.finance(actor);
+    await this.editableSlip(slipId);
+    const result = await this.prisma.$transaction(async (tx) => {
+      await tx.payrollLineItem.create({
+        data: { payrollSlipId: slipId, type: dto.type, label: dto.label, amount: dto.amount, note: dto.reason, createdById: actor.userId },
+      });
+      return this.recomputeTotals(tx, slipId);
     });
-    const updated = await this.recomputeSlip(slipId);
-    await this.auditLog.record({
-      actorId: actor.userId,
-      action: 'PAYROLL_LINE_ITEM_ADD',
-      entity: 'PayrollSlip',
-      entityId: slipId,
-      newValue: dto,
-    });
-    return updated;
+    await this.audit(actor, 'PAYROLL_LINE_ITEM_ADD', 'PayrollSlip', slipId, dto.reason, dto);
+    return result;
   }
 
-  async removeLineItem(slipId: string, itemId: string, actor: AuthenticatedUser) {
-    await this.getEditableSlip(slipId);
-    const item = await this.prisma.payrollLineItem.findUnique({ where: { id: itemId } });
-    if (!item || item.payrollSlipId !== slipId) throw new NotFoundException('Item tidak ditemukan');
-    await this.prisma.payrollLineItem.delete({ where: { id: itemId } });
-    const updated = await this.recomputeSlip(slipId);
-    await this.auditLog.record({
-      actorId: actor.userId,
-      action: 'PAYROLL_LINE_ITEM_REMOVE',
-      entity: 'PayrollSlip',
-      entityId: slipId,
-      oldValue: item,
+  async removeLineItem(slipId: string, itemId: string, dto: ReasonDto, actor: AuthenticatedUser) {
+    this.finance(actor);
+    await this.editableSlip(slipId);
+    const result = await this.prisma.$transaction(async (tx) => {
+      const item = await tx.payrollLineItem.findUnique({ where: { id: itemId } });
+      if (!item || item.payrollSlipId !== slipId) throw new NotFoundException('Item tidak ditemukan');
+      await tx.payrollLineItem.delete({ where: { id: itemId } });
+      return this.recomputeTotals(tx, slipId);
     });
-    return updated;
+    await this.audit(actor, 'PAYROLL_LINE_ITEM_REMOVE', 'PayrollSlip', slipId, dto.reason);
+    return result;
   }
 
-  // ---------------------------------------------------------------------
-  // Finalize (locks the run)
-  // ---------------------------------------------------------------------
-
-  async finalize(runId: string, actor: AuthenticatedUser) {
+  async review(runId: string, actor: AuthenticatedUser) {
+    this.finance(actor);
     const run = await this.prisma.payrollRun.findUnique({ where: { id: runId } });
-    if (!run) throw new NotFoundException('Payroll run tidak ditemukan');
-    if (run.status === 'FINALIZED') throw new BadRequestException('Payroll run sudah final sebelumnya');
-
+    if (!run || run.status !== 'DRAFT') throw new BadRequestException('Payroll tidak dapat direview');
     const updated = await this.prisma.payrollRun.update({
       where: { id: runId },
-      data: { status: 'FINALIZED', finalizedById: actor.userId, finalizedAt: new Date() },
+      data: { financeReviewedById: actor.userId, financeReviewedAt: new Date() },
     });
-
-    await this.auditLog.record({
-      actorId: actor.userId,
-      action: 'PAYROLL_RUN_FINALIZE',
-      entity: 'PayrollRun',
-      entityId: runId,
-    });
-
+    await this.audit(actor, 'PAYROLL_RUN_REVIEW', 'PayrollRun', runId, 'Finance review complete');
     return updated;
   }
 
-  // ---------------------------------------------------------------------
-  // Exports
-  // ---------------------------------------------------------------------
+  async submit(runId: string, dto: ReasonDto, actor: AuthenticatedUser) {
+    this.finance(actor);
+    const run = await this.prisma.payrollRun.findUnique({ where: { id: runId } });
+    if (!run?.financeReviewedAt || run.status !== 'DRAFT') throw new BadRequestException('Payroll harus direview Keuangan sebelum dikirim');
+    const updated = await this.prisma.payrollRun.update({ where: { id: runId }, data: { status: 'PENDING_DIRECTOR_APPROVAL' } });
+    await this.audit(actor, 'PAYROLL_RUN_SUBMIT', 'PayrollRun', runId, dto.reason);
+    return updated;
+  }
+
+  async directorDecision(runId: string, approve: boolean, dto: ReasonDto, actor: AuthenticatedUser) {
+    this.director(actor);
+    const run = await this.prisma.payrollRun.findUnique({ where: { id: runId } });
+    if (!run || run.status !== 'PENDING_DIRECTOR_APPROVAL') throw new BadRequestException('Payroll tidak menunggu persetujuan Direktur');
+    const now = new Date();
+    const updated = await this.prisma.payrollRun.update({
+      where: { id: runId },
+      data: approve
+        ? { status: 'FINALIZED', directorApprovedById: actor.userId, directorApprovedAt: now, finalizedById: actor.userId, finalizedAt: now }
+        : { status: 'DRAFT' },
+    });
+    await this.audit(actor, approve ? 'PAYROLL_RUN_APPROVE_FINALIZE' : 'PAYROLL_RUN_REJECT', 'PayrollRun', runId, dto.reason);
+    return updated;
+  }
+
+  async recordPayment(runId: string, dto: RecordPaymentDto, actor: AuthenticatedUser) {
+    this.finance(actor);
+    const run = await this.prisma.payrollRun.findUnique({ where: { id: runId } });
+    if (!run || run.status !== 'FINALIZED') throw new BadRequestException('Pembayaran hanya dapat dicatat setelah payroll final');
+    const payment = await this.prisma.payrollPayment.create({
+      data: { payrollRunId: runId, amount: dto.amount, reference: dto.reference, paidAt: new Date(dto.paidAt), reason: dto.reason, recordedById: actor.userId },
+    });
+    await this.audit(actor, 'PAYROLL_PAYMENT_RECORD', 'PayrollPayment', payment.id, dto.reason, { runId, amount: dto.amount, reference: dto.reference });
+    return payment;
+  }
 
   async exportRun(runId: string, format: 'xlsx' | 'pdf', actor: AuthenticatedUser) {
-    const run = await this.findOne(runId, actor); // enforces the same FINALIZED-only rule for Keuangan/Direktur
-
+    this.finance(actor);
+    const run: any = await this.findOne(runId, actor);
     const columns: ExportColumn[] = [
       { header: 'Karyawan', key: 'karyawan', width: 24 },
       { header: 'Basis', key: 'basis', width: 14 },
@@ -250,62 +250,42 @@ export class PayrollService {
       { header: 'Potongan', key: 'potongan', width: 14 },
       { header: 'Total Diterima', key: 'total', width: 16 },
     ];
-    const rows = run.slips.map((s: any) => ({
-      karyawan: s.employee.name,
-      basis: s.basis === 'CONTRACT' ? 'Kontrak' : `Harian (${s.presentDays ?? 0}h)`,
-      pokok: `Rp ${s.baseSalary.toLocaleString('id-ID')}`,
-      tambahan: `Rp ${s.totalEarnings.toLocaleString('id-ID')}`,
-      potongan: `Rp ${s.totalDeductions.toLocaleString('id-ID')}`,
-      total: `Rp ${s.netPay.toLocaleString('id-ID')}`,
+    const rows = run.slips.map((slip: any) => ({
+      karyawan: slip.employee.name,
+      basis: slip.basis === 'CONTRACT' ? 'Kontrak' : `Harian (${slip.presentDays ?? 0}h)`,
+      pokok: `Rp ${slip.baseSalary.toLocaleString('id-ID')}`,
+      tambahan: `Rp ${slip.totalEarnings.toLocaleString('id-ID')}`,
+      potongan: `Rp ${slip.totalDeductions.toLocaleString('id-ID')}`,
+      total: `Rp ${slip.netPay.toLocaleString('id-ID')}`,
     }));
-
-    const title = `Rekap Payroll ${new Date(run.periodStart).toLocaleDateString('id-ID')} – ${new Date(run.periodEnd).toLocaleDateString('id-ID')}`;
-    const filenameBase = `rekap-payroll-${run.periodStart.toString().slice(0, 10)}`;
-
-    if (format === 'xlsx') {
-      const buffer = await buildXlsx('Rekap Payroll', columns, rows);
-      return { buffer, filename: `${filenameBase}.xlsx`, mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' };
-    }
-    const buffer = await buildPdf(title, columns, rows);
-    return { buffer, filename: `${filenameBase}.pdf`, mime: 'application/pdf' };
+    const title = `Rekap Payroll ${new Date(run.periodStart).toLocaleDateString('id-ID')} - ${new Date(run.periodEnd).toLocaleDateString('id-ID')}`;
+    const filename = `rekap-payroll-${run.periodStart.toISOString().slice(0, 10)}`;
+    const buffer = format === 'xlsx' ? await buildXlsx('Rekap Payroll', columns, rows) : await buildPdf(title, columns, rows);
+    return { buffer, filename: `${filename}.${format}`, mime: format === 'xlsx' ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'application/pdf' };
   }
 
   async exportSlip(slipId: string, actor: AuthenticatedUser) {
-    const slip = await this.prisma.payrollSlip.findUnique({
+    const slip: any = await this.prisma.payrollSlip.findUnique({
       where: { id: slipId },
       include: { payrollRun: true, employee: { select: { name: true, user: { select: { id: true } } } }, items: true },
     });
     if (!slip) throw new NotFoundException('Slip tidak ditemukan');
-
-    const isManager = MANAGE_ROLES.includes(actor.role as Role);
-    const isReadOnlyReviewer = READ_ONLY_ROLES.includes(actor.role as Role);
     const isOwner = slip.employee.user?.id === actor.userId;
-
-    if (!isManager) {
-      if (isOwner || isReadOnlyReviewer) {
-        if (slip.payrollRun.status !== 'FINALIZED') {
-          throw new ForbiddenException('Slip ini belum final');
-        }
-      } else {
-        throw new ForbiddenException('Anda tidak berhak mengakses slip ini');
-      }
-    }
-
-    const companySettings = await this.prisma.companySettings.findFirst();
-    const periodLabel = `${new Date(slip.payrollRun.periodStart).toLocaleDateString('id-ID')} – ${new Date(slip.payrollRun.periodEnd).toLocaleDateString('id-ID')}`;
-
+    if (slip.payrollRun.status !== 'FINALIZED' || (!isOwner && actor.role !== FINANCE)) throw new ForbiddenException('Slip tidak dapat diakses');
+    const settings = await this.prisma.companySettings.findFirst();
     const buffer = await buildPayslipPdf({
-      companyName: companySettings?.companyName ?? 'Papaiz.corp',
+      companyName: settings?.companyName ?? 'Papaiz.corp',
       employeeName: slip.employee.name,
-      periodLabel,
-      basisLabel: slip.basis === 'CONTRACT' ? 'Gaji Kontrak (PKWT)' : `Harian Lepas (${slip.presentDays ?? 0} hari × Rp ${(slip.dailyRate ?? 0).toLocaleString('id-ID')})`,
+      periodLabel: `${slip.payrollRun.periodStart.toLocaleDateString('id-ID')} - ${slip.payrollRun.periodEnd.toLocaleDateString('id-ID')}`,
+      basisLabel: slip.basis === 'CONTRACT'
+        ? 'Gaji Kontrak (PKWT)'
+        : `Harian Lepas (${slip.presentDays ?? 0} hari x Rp ${(slip.dailyRate ?? 0).toLocaleString('id-ID')})`,
       baseSalary: slip.baseSalary,
-      earnings: slip.items.filter((i) => i.type === 'EARNING'),
-      deductions: slip.items.filter((i) => i.type === 'DEDUCTION'),
+      earnings: slip.items.filter((item: any) => item.type === 'EARNING'),
+      deductions: slip.items.filter((item: any) => item.type === 'DEDUCTION'),
       netPay: slip.netPay,
       generatedAt: new Date(),
     });
-
     return { buffer, filename: `slip-gaji-${slip.employee.name.replace(/\s+/g, '-')}.pdf`, mime: 'application/pdf' };
   }
 }

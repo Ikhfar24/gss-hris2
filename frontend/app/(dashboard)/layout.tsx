@@ -43,9 +43,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <Link href="/profile-change-requests" className="rounded-lg px-3 py-2 hover:bg-slate-100">
             Perubahan Profil
           </Link>
-          <RoleGate allow={['ADMIN_HR', 'SYSTEM_ADMIN', 'KEUANGAN', 'DIREKTUR', 'KARYAWAN']}>
+          <RoleGate allow={['ADMIN_HR', 'KEUANGAN', 'DIREKTUR', 'KARYAWAN']}>
             <Link href="/payroll" className="rounded-lg px-3 py-2 hover:bg-slate-100">
-              Payroll
+              Payroll & Slip Gaji
             </Link>
           </RoleGate>
           <RoleGate allow={['ADMIN_HR', 'SYSTEM_ADMIN', 'KOORDINATOR', 'DIREKTUR', 'KOMISARIS']}>

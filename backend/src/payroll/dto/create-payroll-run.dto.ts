@@ -1,9 +1,15 @@
-import { IsDateString } from 'class-validator';
+import { IsDateString, IsOptional, IsUUID } from 'class-validator';
 
 export class CreatePayrollRunDto {
-  @IsDateString()
-  periodStart: string;
+  @IsOptional()
+  @IsUUID()
+  payrollPeriodId?: string;
 
+  @IsOptional()
   @IsDateString()
-  periodEnd: string;
+  periodStart?: string;
+
+  @IsOptional()
+  @IsDateString()
+  periodEnd?: string;
 }

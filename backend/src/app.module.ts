@@ -23,6 +23,7 @@ import { EmployeeProfileChangeRequestsModule } from './employee-profile-change-r
 import { TemporaryAssignmentsModule } from './temporary-assignments/temporary-assignments.module';
 import { AbsenceCasesModule } from './absence-cases/absence-cases.module';
 import { OvertimeRequestsModule } from './overtime-requests/overtime-requests.module';
+import { PayrollAdminModule } from './payroll-admin/payroll-admin.module';
 
 @Module({
   imports: [
@@ -55,6 +56,7 @@ import { OvertimeRequestsModule } from './overtime-requests/overtime-requests.mo
     TemporaryAssignmentsModule,
     AbsenceCasesModule,
     OvertimeRequestsModule,
+    PayrollAdminModule,
   ],
 })
 export class AppModule {}
