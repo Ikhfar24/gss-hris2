@@ -25,6 +25,7 @@ export class CheckInDto {
 
   @IsOptional()
   @IsNumber()
+  @Min(0)
   accuracyMeters?: number;
 
   // Reported by the client app when it detects a mock-location provider.

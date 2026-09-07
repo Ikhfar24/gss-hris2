@@ -38,6 +38,22 @@ export async function downloadFile(path: string, token: string | null, fallbackN
   URL.revokeObjectURL(url);
 }
 
+export function protectedMediaUrl(path: string): string {
+  if (!path.startsWith('/api/v1/')) return path;
+  return `${API_URL}${path.slice('/api/v1'.length)}`;
+}
+
+export async function uploadFile<T>(path: string, file: File): Promise<T> {
+  const body = new FormData();
+  body.append('file', file);
+  const res = await fetch(`${API_URL}${path}`, { method: 'POST', credentials: 'include', body });
+  if (!res.ok) {
+    const payload = await res.json().catch(() => ({ message: res.statusText }));
+    throw new ApiError(res.status, payload.message ?? 'Gagal mengunggah file');
+  }
+  return res.json() as Promise<T>;
+}
+
 export async function apiFetch<T>(path: string, opts: RequestOptions = {}): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
     credentials: 'include',

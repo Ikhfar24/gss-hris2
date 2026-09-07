@@ -36,12 +36,25 @@ export class MediaService {
     return this.file('leave-documents', employeeId, filename);
   }
 
-  private mediaPaths(kind: 'selfies' | 'leave-documents', employeeId: string, filename: string) {
+  async openProfilePhoto(employeeId: string, filename: string, actor: AuthenticatedUser): Promise<StreamableFile> {
+    const paths = this.mediaPaths('profile-photos', employeeId, filename);
+    const employee = await this.prisma.employee.findFirst({
+      where: { id: employeeId, photoUrl: { in: paths } },
+      select: { employmentType: true },
+    });
+    if (!employee) throw new NotFoundException('Foto profil tidak ditemukan');
+    await this.assertAccess(employeeId, employee, actor);
+    return this.file('profile-photos', employeeId, filename);
+  }
+
+  private mediaPaths(kind: 'selfies' | 'leave-documents' | 'profile-photos', employeeId: string, filename: string) {
     const { relative } = resolveStoredFile(kind, employeeId, filename);
     const legacy = `/uploads/${relative}`;
     const protectedPath = kind === 'selfies'
       ? `/api/v1/media/selfies/${employeeId}/${filename}`
-      : `/api/v1/media/leave-documents/${employeeId}/${filename}`;
+      : kind === 'profile-photos'
+        ? `/api/v1/media/profile-photos/${employeeId}/${filename}`
+        : `/api/v1/media/leave-documents/${employeeId}/${filename}`;
     return [legacy, protectedPath];
   }
 
@@ -53,7 +66,7 @@ export class MediaService {
     throw new ForbiddenException('Anda tidak berhak mengakses file ini');
   }
 
-  private file(kind: 'selfies' | 'leave-documents', employeeId: string, filename: string) {
+  private file(kind: 'selfies' | 'leave-documents' | 'profile-photos', employeeId: string, filename: string) {
     const { absolute } = resolveStoredFile(kind, employeeId, filename);
     if (!existsSync(absolute)) throw new NotFoundException('File tidak ditemukan di penyimpanan');
     return new StreamableFile(createReadStream(absolute), { type: MIME[extname(filename).toLowerCase()] ?? 'application/octet-stream' });

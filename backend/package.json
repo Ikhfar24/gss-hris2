@@ -23,7 +23,10 @@
     "test:batch9": "nest build && node --test test/batch9.test.js",
     "test:uat-fix-01": "nest build && node --test test/uat-fix-01.test.js",
     "test:uat-fix-02": "nest build && node --test test/uat-fix-02.test.js",
-    "test:uat-fix-03": "nest build && node --test test/uat-fix-03.test.js"
+    "test:uat-fix-03": "nest build && node --test test/uat-fix-03.test.js",
+    "test:uat-fix-04": "nest build && node --test test/uat-fix-04.test.js",
+    "test:uat-fix-05": "nest build && node --test test/uat-fix-05.test.js",
+    "test:uat-fix-06": "nest build && node --test test/uat-fix-06.test.js"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.0",

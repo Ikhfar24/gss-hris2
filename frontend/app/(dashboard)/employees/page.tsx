@@ -27,6 +27,13 @@ interface EmployeeRow {
   joinDate: string;
   dailyRate: number | null;
   employeeNumber?: string | null;
+  nik?: string | null;
+  phone?: string | null;
+  address?: string | null;
+  email?: string | null;
+  dateOfBirth?: string | null;
+  gender?: string | null;
+  photoUrl?: string | null;
   jobTitle?: string | null;
   attendanceRequired?: boolean;
   placements: { location: { name: string } }[];
@@ -35,6 +42,7 @@ interface EmployeeRow {
 interface EmployeeResponse { data: EmployeeRow[]; meta: { page: number; pageSize: number; total: number } }
 interface ImportResult { dryRun: boolean; valid: boolean; rowCount?: number; created?: number; errors: { row: number; errors: string[] }[] }
 interface BulkResult { deactivated: number; failed: number; results: { employeeId: string; success: boolean; error?: string }[] }
+interface EmployeeEditForm { name: string; employeeNumber: string; nik: string; email: string; phone: string; address: string; jobTitle: string; reason: string }
 
 const TYPE_LABEL: Record<string, string> = {
   TENAGA_BORONGAN: 'Tenaga Borongan',
@@ -55,7 +63,8 @@ function formatRupiah(n: number | null) {
 }
 
 export default function EmployeesPage() {
-  const canManage = ['ADMIN_HR', 'SYSTEM_ADMIN'].includes(getUser()?.role ?? '');
+  const [role, setRole] = useState<string | null>(null);
+  const canManage = ['ADMIN_HR', 'SYSTEM_ADMIN'].includes(role ?? '');
   const [employees, setEmployees] = useState<EmployeeRow[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -69,9 +78,13 @@ export default function EmployeesPage() {
   const [bulkResult, setBulkResult] = useState<BulkResult | null>(null);
   const [locations, setLocations] = useState<LocationOption[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [editing, setEditing] = useState<EmployeeRow | null>(null);
+  const [editForm, setEditForm] = useState<EmployeeEditForm | null>(null);
+  const [savingEdit, setSavingEdit] = useState(false);
   const [contracts, setContracts] = useState<Record<string, ContractRow[]>>({});
   const [contractForm, setContractForm] = useState({ type: 'PKWT', startDate: '', endDate: '', baseSalary: '' });
   const [form, setForm] = useState({
@@ -107,6 +120,7 @@ export default function EmployeesPage() {
   }
 
   useEffect(() => {
+    setRole(getUser()?.role ?? null);
     load();
   }, []);
 
@@ -186,15 +200,51 @@ export default function EmployeesPage() {
     }
   }
 
-  async function editEmployee(employee: EmployeeRow) {
-    const name = window.prompt('Nama karyawan', employee.name);
-    if (!name) return;
-    const jobTitle = window.prompt('Jabatan', employee.jobTitle ?? '') ?? undefined;
-    const reason = window.prompt('Alasan perubahan (wajib jika mengubah data sensitif):') ?? undefined;
+  function editEmployee(employee: EmployeeRow) {
+    setEditing(employee);
+    setEditForm({
+      name: employee.name,
+      employeeNumber: employee.employeeNumber ?? '',
+      nik: employee.nik ?? '',
+      email: employee.email ?? '',
+      phone: employee.phone ?? '',
+      address: employee.address ?? '',
+      jobTitle: employee.jobTitle ?? '',
+      reason: '',
+    });
+    setError(null);
+    setSuccess(null);
+  }
+
+  async function saveEmployeeEdit(e: FormEvent) {
+    e.preventDefault();
+    if (!editing || !editForm || !editForm.name.trim() || !editForm.reason.trim()) {
+      setError('Nama dan alasan perubahan wajib diisi');
+      return;
+    }
+    setSavingEdit(true);
+    setError(null);
+    setSuccess(null);
     try {
-      await apiFetch(`/employees/${employee.id}`, { method: 'PATCH', body: { name, jobTitle, reason } });
+      await apiFetch(`/employees/${editing.id}`, { method: 'PATCH', body: {
+        name: editForm.name.trim(),
+        employeeNumber: editForm.employeeNumber.trim() || undefined,
+        nik: editForm.nik.trim() || undefined,
+        phone: editForm.phone.trim() || undefined,
+        address: editForm.address.trim() || undefined,
+        email: editForm.email.trim() || undefined,
+        jobTitle: editForm.jobTitle.trim() || undefined,
+        reason: editForm.reason.trim(),
+      } });
       await load();
-    } catch (err) { setError(err instanceof ApiError ? err.message : 'Gagal memperbarui karyawan'); }
+      setEditing(null);
+      setEditForm(null);
+      setSuccess('Data master karyawan berhasil diperbarui.');
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Gagal memperbarui karyawan');
+    } finally {
+      setSavingEdit(false);
+    }
   }
 
   async function lifecycle(employee: EmployeeRow, action: 'deactivate' | 'reactivate' | 'delete') {
@@ -255,6 +305,24 @@ export default function EmployeesPage() {
       </div>
 
       {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
+      {success && <p className="mb-4 text-sm text-green-700">{success}</p>}
+
+      {editing && editForm && <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
+        <form onSubmit={saveEmployeeEdit} className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-xl bg-white p-5 shadow-xl">
+          <div className="mb-4 flex items-center justify-between"><h2 className="text-lg font-semibold">Edit Data Karyawan</h2><button type="button" onClick={() => { setEditing(null); setEditForm(null); setError(null); }} className="text-sm text-slate-500 underline">Batal</button></div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <EditField label="Nama" required value={editForm.name} onChange={(value) => setEditForm({ ...editForm, name: value })} />
+            <EditField label="NIP" value={editForm.employeeNumber} onChange={(value) => setEditForm({ ...editForm, employeeNumber: value })} />
+            <EditField label="NIK" value={editForm.nik} onChange={(value) => setEditForm({ ...editForm, nik: value })} />
+            <EditField label="Email" type="email" value={editForm.email} onChange={(value) => setEditForm({ ...editForm, email: value })} />
+            <EditField label="Telepon" value={editForm.phone} onChange={(value) => setEditForm({ ...editForm, phone: value })} />
+            <EditField label="Jabatan" value={editForm.jobTitle} onChange={(value) => setEditForm({ ...editForm, jobTitle: value })} />
+            <label className="text-sm sm:col-span-2">Alamat<textarea rows={3} value={editForm.address} onChange={(e) => setEditForm({ ...editForm, address: e.target.value })} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" /></label>
+            <label className="text-sm sm:col-span-2">Alasan perubahan<input required value={editForm.reason} onChange={(e) => setEditForm({ ...editForm, reason: e.target.value })} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" /></label>
+          </div>
+          <div className="mt-4 flex justify-end gap-2"><button type="button" onClick={() => { setEditing(null); setEditForm(null); setError(null); }} className="rounded-lg border border-slate-300 px-4 py-2 text-sm">Batal</button><button disabled={savingEdit} className="rounded-lg bg-slate-900 px-4 py-2 text-sm text-white disabled:opacity-60">{savingEdit ? 'Menyimpan...' : 'Simpan Perubahan'}</button></div>
+        </form>
+      </div>}
 
       {showForm && (
         <form onSubmit={onCreate} className="mb-6 grid max-w-xl gap-3 rounded-xl border border-slate-200 bg-white p-4">
@@ -333,7 +401,7 @@ export default function EmployeesPage() {
                   <td className="px-4 py-2">{emp.placements[0]?.location?.name ?? '-'}</td>
                   <td className="px-4 py-2">{formatRupiah(emp.dailyRate)}</td>
                    <td className="px-4 py-2 text-right">
-                     <Link href={`/employees/${emp.id}/360`} className="text-xs underline">Employee 360</Link>
+                     <Link href={`/employees/${emp.id}/360`} className="text-xs underline">Profil Lengkap</Link>
                     {canManage && <button onClick={() => toggleContracts(emp.id)} className="text-xs text-slate-500 underline hover:text-slate-900">
                       {expandedId === emp.id ? 'Tutup' : 'Kelola Kontrak'}
                     </button>}
@@ -381,4 +449,8 @@ export default function EmployeesPage() {
       <div className="mt-4 flex items-center justify-between text-sm"><span>Total {total} karyawan</span><div className="flex items-center gap-2"><button onClick={() => load(page - 1)} disabled={page <= 1} className="rounded border border-slate-300 px-3 py-1 disabled:opacity-50">Sebelumnya</button><span>Halaman {page} / {Math.max(1, Math.ceil(total / 25))}</span><button onClick={() => load(page + 1)} disabled={page >= Math.ceil(total / 25)} className="rounded border border-slate-300 px-3 py-1 disabled:opacity-50">Berikutnya</button></div></div>
     </div>
   );
+}
+
+function EditField({ label, value, onChange, required = false, type = 'text' }: { label: string; value: string; onChange: (value: string) => void; required?: boolean; type?: string }) {
+  return <label className="text-sm">{label}<input required={required} type={type} value={value} onChange={(e) => onChange(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" /></label>;
 }

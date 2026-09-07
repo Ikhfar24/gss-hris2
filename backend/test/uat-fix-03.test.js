@@ -49,9 +49,22 @@ test('UAT Fix Pack 03 keeps Finance and Marketing out of profile self-service', 
 test('UAT Fix Pack 03 exposes the Coordinator overtime route and role-aware profile menu', () => {
   const overtimePage = fs.readFileSync('../frontend/app/(dashboard)/overtime-requests/page.tsx', 'utf8');
   const layout = fs.readFileSync('../frontend/app/(dashboard)/layout.tsx', 'utf8');
+  const roleGate = fs.readFileSync('../frontend/components/RoleGate.tsx', 'utf8');
+  const dashboard = fs.readFileSync('../frontend/app/(dashboard)/dashboard/page.tsx', 'utf8');
+  const placement = fs.readFileSync('../frontend/app/(dashboard)/placement-requests/page.tsx', 'utf8');
   assert.match(overtimePage, /role === 'KARYAWAN' \|\| role === 'KOORDINATOR'/);
   assert.match(layout, /allow=\{\['KARYAWAN', 'ADMIN_HR', 'SYSTEM_ADMIN'\]\}/);
   assert.doesNotMatch(layout, /allow=\{\['KOORDINATOR', 'KEUANGAN', 'MARKETING'\]\}/);
+  assert.match(layout, /<RoleGate role=\{user\?\.role\}/);
+  assert.doesNotMatch(roleGate, /getUser/);
+  assert.match(dashboard, /const \[authResolved, setAuthResolved\] = useState\(false\)/);
+  assert.match(dashboard, /!authResolved \? 'Memuat dashboard\.\.\.'/);
+  assert.doesNotMatch(dashboard, /useState<SessionUser \| null>\(\(\) => getUser\(\)\)/);
+  assert.match(placement, /const \[authResolved, setAuthResolved\] = useState\(false\)/);
+  assert.match(placement, /Array\.isArray\(emps\) \? emps : Array\.isArray\(emps\.data\) \? emps\.data : null/);
+  assert.match(placement, /setEmployees\(\[\]\)/);
+  assert.match(placement, /Tidak ada karyawan dalam cakupan Anda/);
+  assert.doesNotMatch(placement, /apiFetch<EmployeeOption\[\]>\('\/employees'/);
 });
 
 test('UAT Fix Pack 03 preserves CoordinatorScope-based overtime monitoring', async () => {

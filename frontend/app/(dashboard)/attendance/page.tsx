@@ -1,16 +1,41 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { apiFetch, ApiError } from '@/lib/api';
+import { apiFetch, ApiError, protectedMediaUrl } from '@/lib/api';
 import { getToken, getUser } from '@/lib/auth';
 import { getDeviceId } from '@/lib/device';
+import AttendanceMap from '@/components/AttendanceMap';
 
 interface AttendanceRecord {
   id: string;
+  date?: string;
   checkInAt: string | null;
   checkOutAt: string | null;
   checkInGpsStatus: string | null;
   checkInDistanceMeters: number | null;
+  checkInLatitude?: number | null;
+  checkInLongitude?: number | null;
+  checkInAccuracyMeters?: number | null;
+  checkInGeofenceLatitude?: number | null;
+  checkInGeofenceLongitude?: number | null;
+  checkInGeofenceRadiusMeters?: number | null;
+  checkInLocationName?: string | null;
+  checkInSelfieUrl?: string | null;
+  checkOutLatitude?: number | null;
+  checkOutLongitude?: number | null;
+  checkOutAccuracyMeters?: number | null;
+  checkOutDistanceMeters?: number | null;
+  checkOutGeofenceLatitude?: number | null;
+  checkOutGeofenceLongitude?: number | null;
+  checkOutGeofenceRadiusMeters?: number | null;
+  checkOutLocationName?: string | null;
+  checkOutGpsStatus?: string | null;
+  checkOutSelfieUrl?: string | null;
+  checkOutSource?: string | null;
+  reviewedAt?: string | null;
+  reviewNote?: string | null;
+  reviews?: { id: string; decision: string; note: string; reviewedAt: string; reviewer?: { name: string; role: string } | null }[];
+  employee?: { id: string; name: string; employmentType: string };
   latenessStatus: string;
   validationStatus: string;
   forgottenCheckout?: boolean;
@@ -26,17 +51,26 @@ const VALIDATION_LABEL: Record<string, { label: string; style: string }> = {
 
 interface TodayResponse {
   attendance: AttendanceRecord | null;
-  expectedLocation: { id: string; name: string; radiusMeters: number };
+  expectedLocation: { id: string; name: string; latitude: number | null; longitude: number | null; radiusMeters: number };
+}
+
+function distanceMeters(a: { latitude: number; longitude: number }, b: { latitude: number; longitude: number }) {
+  const rad = (value: number) => value * Math.PI / 180;
+  const dLat = rad(b.latitude - a.latitude);
+  const dLon = rad(b.longitude - a.longitude);
+  const value = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.latitude)) * Math.cos(rad(b.latitude)) * Math.sin(dLon / 2) ** 2;
+  return 6371000 * 2 * Math.atan2(Math.sqrt(value), Math.sqrt(1 - value));
 }
 
 export default function AttendancePage() {
-  const role = getUser()?.role;
+  const [role, setRole] = useState<string | null>(null);
   const [employee, setEmployee] = useState<{ attendanceRequired: boolean; status: string; placements?: { status: string }[] } | null | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
   const canMonitor = ['ADMIN_HR', 'SYSTEM_ADMIN', 'KOORDINATOR', 'DIREKTUR'].includes(role ?? '');
   const canSelfCheckIn = !!employee && employee.attendanceRequired && employee.status === 'ACTIVE' && employee.placements?.some((placement) => placement.status === 'ACTIVE');
 
   useEffect(() => {
+    setRole(getUser()?.role ?? null);
     apiFetch<{ attendanceRequired: boolean; status: string; placements?: { status: string }[] }>('/employees/me', { token: getToken() })
       .then(setEmployee)
       .catch((err) => {
@@ -52,7 +86,7 @@ export default function AttendancePage() {
   if (!canSelfCheckIn && !canMonitor) {
     return <p className="text-sm text-slate-500">Akun ini belum memiliki profil karyawan aktif yang wajib absensi.</p>;
   }
-  return <div className="space-y-8">{error && <p className="text-sm text-red-600">{error}</p>}{canSelfCheckIn && <SelfCheckIn />}{canMonitor && <MonitoringDashboard />}</div>;
+  return <div className="space-y-8">{error && <p className="text-sm text-red-600">{error}</p>}{canSelfCheckIn && <SelfCheckIn />}{canMonitor && role && <MonitoringDashboard role={role} />}</div>;
 }
 
 // ---------------------------------------------------------------------
@@ -95,6 +129,10 @@ function isLikelyNetworkError(err: unknown): boolean {
 // ---------------------------------------------------------------------
 function SelfCheckIn() {
   const [today, setToday] = useState<TodayResponse | null>(null);
+  const [history, setHistory] = useState<AttendanceRecord[]>([]);
+  const [detail, setDetail] = useState<AttendanceRecord | null>(null);
+  const [position, setPosition] = useState<{ latitude: number; longitude: number; accuracy: number } | null>(null);
+  const [locationState, setLocationState] = useState<'searching' | 'available' | 'denied' | 'unavailable'>('searching');
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -110,8 +148,12 @@ function SelfCheckIn() {
 
   async function load() {
     try {
-      const data = await apiFetch<TodayResponse>('/attendance/me/today', { token: getToken() });
+      const [data, historyData] = await Promise.all([
+        apiFetch<TodayResponse>('/attendance/me/today', { token: getToken() }),
+        apiFetch<AttendanceRecord[]>('/attendance/me/history', { token: getToken() }),
+      ]);
       setToday(data);
+      setHistory(historyData);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Gagal memuat status absensi');
     }
@@ -126,6 +168,28 @@ function SelfCheckIn() {
       window.removeEventListener('online', flushQueue);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!navigator.geolocation) {
+      setLocationState('unavailable');
+      return;
+    }
+    setLocationState('searching');
+    let watchId = 0;
+    watchId = navigator.geolocation.watchPosition(
+      (result) => {
+        setPosition({ latitude: result.coords.latitude, longitude: result.coords.longitude, accuracy: result.coords.accuracy });
+        setLocationState('available');
+      },
+      (failure) => {
+        setPosition(null);
+        setLocationState(failure.code === failure.PERMISSION_DENIED ? 'denied' : 'unavailable');
+        navigator.geolocation.clearWatch(watchId);
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 },
+    );
+    return () => navigator.geolocation.clearWatch(watchId);
   }, []);
 
   useEffect(() => {
@@ -207,6 +271,7 @@ function SelfCheckIn() {
     setBusy(true);
     setError(null);
     setInfo(null);
+    let capturedBody: Record<string, unknown> = {};
     try {
       const selfieBase64 = capturePhoto() ?? undefined;
 
@@ -215,10 +280,13 @@ function SelfCheckIn() {
       let accuracyMeters: number | undefined;
       let gpsFailedNow = gpsFailed;
       try {
+        // Submission always captures a fresh fix; the live map position is informational only.
         const pos = await getPosition();
         latitude = pos.coords.latitude;
         longitude = pos.coords.longitude;
         accuracyMeters = pos.coords.accuracy;
+        setPosition({ latitude, longitude, accuracy: accuracyMeters });
+        setLocationState('available');
       } catch {
         gpsFailedNow = true;
         setGpsFailed(true);
@@ -231,7 +299,7 @@ function SelfCheckIn() {
         return;
       }
 
-      const body: Record<string, unknown> = {
+      capturedBody = {
         latitude,
         longitude,
         accuracyMeters,
@@ -240,8 +308,8 @@ function SelfCheckIn() {
         deviceId: getDeviceId(),
       };
       if (needsFailureNote) {
-        body.failureReason = cameraFailed && gpsFailedNow ? 'OTHER' : cameraFailed ? 'CAMERA_FAILED' : 'GPS_FAILED';
-        body.failureNote = failureNote.trim();
+        capturedBody.failureReason = cameraFailed && gpsFailedNow ? 'OTHER' : cameraFailed ? 'CAMERA_FAILED' : 'GPS_FAILED';
+        capturedBody.failureNote = failureNote.trim();
       }
 
       const path = mode === 'check-in' ? '/attendance/check-in' : '/attendance/check-out';
@@ -252,7 +320,7 @@ function SelfCheckIn() {
       }
 
       try {
-        await apiFetch(path, { method, token: getToken(), body });
+        await apiFetch(path, { method, token: getToken(), body: capturedBody });
       } catch (err) {
         if (isLikelyNetworkError(err)) throw new Error('OFFLINE');
         throw err;
@@ -273,11 +341,10 @@ function SelfCheckIn() {
           path: mode === 'check-in' ? '/attendance/check-in' : '/attendance/check-out',
           method: mode === 'check-in' ? 'POST' : 'PATCH',
           body: {
-            deviceInfo: navigator.userAgent,
-            deviceId: getDeviceId(),
-            selfieBase64,
-            failureReason: cameraFailed || gpsFailed ? (cameraFailed ? 'CAMERA_FAILED' : 'GPS_FAILED') : undefined,
-            failureNote: failureNote.trim() || undefined,
+            ...capturedBody,
+            selfieBase64: capturedBody.selfieBase64 ?? selfieBase64,
+            failureReason: capturedBody.failureReason ?? (cameraFailed || gpsFailed ? (cameraFailed ? 'CAMERA_FAILED' : 'GPS_FAILED') : undefined),
+            failureNote: capturedBody.failureNote ?? (failureNote.trim() || undefined),
             clientRecordedAt: queuedAt,
           },
           queuedAt,
@@ -307,11 +374,40 @@ function SelfCheckIn() {
   }
 
   const att = today.attendance;
+  const workPoint = today.expectedLocation.latitude !== null && today.expectedLocation.longitude !== null
+    ? { latitude: today.expectedLocation.latitude, longitude: today.expectedLocation.longitude }
+    : null;
+  const liveDistance = workPoint && position ? distanceMeters(workPoint, position) : null;
+  const rangeStatus = locationState === 'denied' ? 'Izin lokasi ditolak'
+    : locationState === 'unavailable' ? 'GPS tidak tersedia'
+      : locationState === 'searching' ? 'Mencari lokasi...'
+        : liveDistance === null ? 'Lokasi Belum Tersedia'
+          : liveDistance <= today.expectedLocation.radiusMeters ? 'Dalam Jangkauan' : 'Di Luar Jangkauan';
+
+  async function openDetail(id: string) {
+    try {
+      setDetail(await apiFetch<AttendanceRecord>(`/attendance/${id}`, { token: getToken() }));
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Gagal memuat detail absensi');
+    }
+  }
 
   return (
-    <div className="max-w-md">
+    <div className="max-w-3xl">
       <h1 className="mb-1 text-2xl font-semibold">Absensi Hari Ini</h1>
       <p className="mb-4 text-sm text-slate-500">Lokasi penempatan: {today.expectedLocation.name}</p>
+
+      <div className="mb-4 rounded-xl border border-slate-200 bg-white p-4">
+        <AttendanceMap work={workPoint} current={position} radiusMeters={today.expectedLocation.radiusMeters} />
+        <div className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
+          <p><span className="text-slate-500">Lokasi kerja:</span> {today.expectedLocation.name}</p>
+          <p><span className="text-slate-500">Radius:</span> {today.expectedLocation.radiusMeters} m</p>
+          <p><span className="text-slate-500">Jarak saat ini:</span> {liveDistance === null ? '-' : `${Math.round(liveDistance)} m`}</p>
+          <p><span className="text-slate-500">Akurasi GPS:</span> {position ? `${Math.round(position.accuracy)} m` : '-'}</p>
+          <p className={`font-medium ${locationState !== 'available' || (liveDistance !== null && liveDistance > today.expectedLocation.radiusMeters) ? 'text-red-700' : 'text-green-700'}`}>{rangeStatus}</p>
+        </div>
+        <p className="mt-2 text-xs text-slate-500">Lokasi diperbarui hanya selama halaman Absensi ini terbuka. Keputusan check-in/check-out tetap divalidasi ulang oleh server.</p>
+      </div>
 
       {queueCount > 0 && (
         <div className="mb-4 flex items-center justify-between rounded-lg bg-yellow-50 px-3 py-2 text-xs text-yellow-800">
@@ -407,14 +503,39 @@ function SelfCheckIn() {
           </div>
         </div>
       )}
+
+      <div className="mt-8">
+        <h2 className="mb-2 text-lg font-semibold">Riwayat Absensi</h2>
+        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white"><table className="w-full min-w-[640px] text-sm"><thead className="bg-slate-50 text-left text-slate-500"><tr><th className="px-4 py-2">Tanggal</th><th className="px-4 py-2">Masuk</th><th className="px-4 py-2">Pulang</th><th className="px-4 py-2">Validasi</th><th /></tr></thead><tbody>{history.map((record) => <tr key={record.id} className="border-t border-slate-100"><td className="px-4 py-2">{record.date ? new Date(record.date).toLocaleDateString('id-ID') : '-'}</td><td className="px-4 py-2">{record.checkInAt ? new Date(record.checkInAt).toLocaleTimeString('id-ID') : '-'}</td><td className="px-4 py-2">{record.checkOutAt ? new Date(record.checkOutAt).toLocaleTimeString('id-ID') : '-'}</td><td className="px-4 py-2">{record.validationStatus}</td><td className="px-4 py-2 text-right"><button onClick={() => openDetail(record.id)} className="text-xs underline">Detail</button></td></tr>)}{history.length === 0 && <tr><td colSpan={5} className="px-4 py-5 text-center text-slate-500">Belum ada riwayat absensi.</td></tr>}</tbody></table></div>
+      </div>
+      {detail && <AttendanceDetail attendance={detail} onClose={() => setDetail(null)} />}
     </div>
   );
+}
+
+function AttendanceDetail({ attendance, onClose }: { attendance: AttendanceRecord; onClose: () => void }) {
+  return <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/50 p-4"><div className="mx-auto max-w-4xl rounded-xl bg-white p-5 shadow-xl">
+    <div className="mb-4 flex items-start justify-between"><div><h2 className="text-xl font-semibold">Detail Riwayat Absensi</h2><p className="text-sm text-slate-500">{attendance.employee?.name ?? 'Absensi saya'} · {attendance.date ? new Date(attendance.date).toLocaleDateString('id-ID') : '-'}</p></div><button onClick={onClose} className="text-sm underline">Tutup</button></div>
+    <div className="mb-4 grid gap-2 text-sm sm:grid-cols-3"><p><span className="text-slate-500">Status:</span> {attendance.latenessStatus}</p><p><span className="text-slate-500">Validasi:</span> {attendance.validationStatus}</p><p><span className="text-slate-500">Sumber checkout:</span> {attendance.checkOutSource ?? '-'}</p></div>
+    <div className="grid gap-4 lg:grid-cols-2">
+      <EvidenceDetail title="Check-in" at={attendance.checkInAt} latitude={attendance.checkInLatitude} longitude={attendance.checkInLongitude} accuracy={attendance.checkInAccuracyMeters} distance={attendance.checkInDistanceMeters} gpsStatus={attendance.checkInGpsStatus} geofenceLatitude={attendance.checkInGeofenceLatitude} geofenceLongitude={attendance.checkInGeofenceLongitude} radius={attendance.checkInGeofenceRadiusMeters} locationName={attendance.checkInLocationName} selfieUrl={attendance.checkInSelfieUrl} />
+      <EvidenceDetail title="Check-out" at={attendance.checkOutAt} latitude={attendance.checkOutLatitude} longitude={attendance.checkOutLongitude} accuracy={attendance.checkOutAccuracyMeters} distance={attendance.checkOutDistanceMeters} gpsStatus={attendance.checkOutGpsStatus} geofenceLatitude={attendance.checkOutGeofenceLatitude} geofenceLongitude={attendance.checkOutGeofenceLongitude} radius={attendance.checkOutGeofenceRadiusMeters} locationName={attendance.checkOutLocationName} selfieUrl={attendance.checkOutSelfieUrl} />
+    </div>
+    <div className="mt-4 rounded-xl border border-slate-200 p-4 text-sm"><h3 className="font-semibold">Review</h3><p className="mt-1"><span className="text-slate-500">Waktu review:</span> {attendance.reviewedAt ? new Date(attendance.reviewedAt).toLocaleString('id-ID') : '-'}</p><p><span className="text-slate-500">Catatan:</span> {attendance.reviewNote ?? '-'}</p>{attendance.reviews?.map((review) => <p key={review.id} className="mt-2 border-t border-slate-100 pt-2">{review.decision} oleh {review.reviewer?.name ?? review.reviewer?.role ?? 'Reviewer'} · {new Date(review.reviewedAt).toLocaleString('id-ID')} · {review.note}</p>)}</div>
+  </div></div>;
+}
+
+function EvidenceDetail(props: { title: string; at?: string | null; latitude?: number | null; longitude?: number | null; accuracy?: number | null; distance?: number | null; gpsStatus?: string | null; geofenceLatitude?: number | null; geofenceLongitude?: number | null; radius?: number | null; locationName?: string | null; selfieUrl?: string | null }) {
+  const work = props.geofenceLatitude !== null && props.geofenceLatitude !== undefined && props.geofenceLongitude !== null && props.geofenceLongitude !== undefined ? { latitude: props.geofenceLatitude, longitude: props.geofenceLongitude } : null;
+  const point = props.latitude !== null && props.latitude !== undefined && props.longitude !== null && props.longitude !== undefined ? { latitude: props.latitude, longitude: props.longitude, accuracy: props.accuracy ?? 0 } : null;
+  const hasHistory = !!work && !!point;
+  return <section className="rounded-xl border border-slate-200 p-4"><h3 className="mb-2 font-semibold">{props.title}</h3><div className="space-y-1 text-sm"><p><span className="text-slate-500">Waktu:</span> {props.at ? new Date(props.at).toLocaleString('id-ID') : '-'}</p><p><span className="text-slate-500">Lokasi:</span> {props.locationName ?? 'Lokasi historis tidak tersedia'}</p><p><span className="text-slate-500">Koordinat:</span> {point ? `${point.latitude.toFixed(6)}, ${point.longitude.toFixed(6)}` : 'Lokasi historis tidak tersedia'}</p><p><span className="text-slate-500">Akurasi:</span> {props.accuracy === null || props.accuracy === undefined ? '-' : `${Math.round(props.accuracy)} m`}</p><p><span className="text-slate-500">Jarak:</span> {props.distance === null || props.distance === undefined ? '-' : `${Math.round(props.distance)} m`}</p><p><span className="text-slate-500">Geofence:</span> {props.gpsStatus ?? '-'}</p></div>{hasHistory ? <div className="mt-3"><AttendanceMap work={work} current={point} radiusMeters={props.radius ?? 0} /></div> : <p className="mt-3 rounded-lg bg-slate-50 p-3 text-sm text-slate-500">Lokasi historis tidak tersedia</p>}{props.selfieUrl && <img src={protectedMediaUrl(props.selfieUrl)} alt={`Selfie ${props.title}`} className="mt-3 h-32 w-32 rounded-lg object-cover" />}</section>;
 }
 
 // ---------------------------------------------------------------------
 // Monitoring dashboard (HR/Koordinator/Direktur/System Admin) — §14
 // ---------------------------------------------------------------------
-function MonitoringDashboard() {
+function MonitoringDashboard({ role }: { role: string }) {
   const [summary, setSummary] = useState<{ hadir: number; terlambat: number; tidakHadir: number; perluDitinjau: number } | null>(null);
   const [rows, setRows] = useState<any[]>([]);
   const [openRows, setOpenRows] = useState<any[]>([]);
@@ -423,7 +544,7 @@ function MonitoringDashboard() {
   const [showOpen, setShowOpen] = useState(false);
   const [correctingId, setCorrectingId] = useState<string | null>(null);
   const [correctionForm, setCorrectionForm] = useState({ checkInAt: '', checkOutAt: '', reason: '' });
-  const role = getUser()?.role;
+  const [detail, setDetail] = useState<AttendanceRecord | null>(null);
   const canCorrect = role === 'ADMIN_HR' || role === 'SYSTEM_ADMIN';
   const canReview = role === 'ADMIN_HR' || role === 'SYSTEM_ADMIN' || role === 'KOORDINATOR';
 
@@ -486,6 +607,14 @@ function MonitoringDashboard() {
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Gagal menyimpan koreksi');
+    }
+  }
+
+  async function openDetail(id: string) {
+    try {
+      setDetail(await apiFetch<AttendanceRecord>(`/attendance/${id}`, { token: getToken() }));
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Gagal memuat detail absensi');
     }
   }
 
@@ -607,7 +736,7 @@ function MonitoringDashboard() {
               <th className="px-4 py-2">Pulang</th>
               <th className="px-4 py-2">Status</th>
               <th className="px-4 py-2">Validasi</th>
-              {canCorrect && <th className="px-4 py-2"></th>}
+              <th className="px-4 py-2"></th>
             </tr>
           </thead>
           <tbody>
@@ -633,23 +762,18 @@ function MonitoringDashboard() {
                   })()}
                   {r.forgottenCheckout && <div className="mt-1 text-xs font-medium text-orange-700">Checkout otomatis: terlupa</div>}
                 </td>
-                {canCorrect && (
-                  <td className="px-4 py-2 text-right">
-                    <button onClick={() => openCorrection(r)} className="text-xs font-medium text-slate-600 underline">
-                      Koreksi
-                    </button>
-                  </td>
-                )}
+                <td className="px-4 py-2 text-right"><button onClick={() => openDetail(r.id)} className="text-xs font-medium text-slate-600 underline">Detail</button>{canCorrect && <button onClick={() => openCorrection(r)} className="ml-2 text-xs font-medium text-slate-600 underline">Koreksi</button>}</td>
               </tr>
             ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={canCorrect ? 7 : 6} className="px-4 py-6 text-center text-slate-400">Belum ada data absensi hari ini.</td>
+                <td colSpan={7} className="px-4 py-6 text-center text-slate-400">Belum ada data absensi hari ini.</td>
               </tr>
             )}
           </tbody>
         </table>
       </div>
+      {detail && <AttendanceDetail attendance={detail} onClose={() => setDetail(null)} />}
     </div>
   );
 }

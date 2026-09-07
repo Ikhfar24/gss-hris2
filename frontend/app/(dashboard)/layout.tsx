@@ -35,32 +35,32 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
            <Link href="/leave-requests" className="rounded-lg px-3 py-2 hover:bg-slate-100">
              Cuti, Izin & Resign
            </Link>
-           <RoleGate allow={['KARYAWAN', 'KOORDINATOR', 'ADMIN_HR', 'SYSTEM_ADMIN']}>
+           <RoleGate role={user?.role} allow={['KARYAWAN', 'KOORDINATOR', 'ADMIN_HR', 'SYSTEM_ADMIN']}>
              <Link href="/overtime-requests" className="rounded-lg px-3 py-2 hover:bg-slate-100">
                Pengajuan Lembur
              </Link>
            </RoleGate>
-           <RoleGate allow={['KARYAWAN', 'ADMIN_HR', 'SYSTEM_ADMIN']}>
+           <RoleGate role={user?.role} allow={['KARYAWAN', 'ADMIN_HR', 'SYSTEM_ADMIN']}>
              <Link href="/profile-change-requests" className="rounded-lg px-3 py-2 hover:bg-slate-100">
                Perubahan Profil
              </Link>
            </RoleGate>
-          <RoleGate allow={['ADMIN_HR', 'KEUANGAN', 'DIREKTUR', 'KARYAWAN']}>
+          <RoleGate role={user?.role} allow={['ADMIN_HR', 'KEUANGAN', 'DIREKTUR', 'KARYAWAN']}>
             <Link href="/payroll" className="rounded-lg px-3 py-2 hover:bg-slate-100">
               Payroll & Slip Gaji
             </Link>
           </RoleGate>
-          <RoleGate allow={['ADMIN_HR', 'SYSTEM_ADMIN', 'KOORDINATOR', 'DIREKTUR', 'KOMISARIS']}>
+          <RoleGate role={user?.role} allow={['ADMIN_HR', 'SYSTEM_ADMIN', 'KOORDINATOR', 'DIREKTUR', 'KOMISARIS']}>
             <Link href="/employees" className="rounded-lg px-3 py-2 hover:bg-slate-100">
               Data Karyawan
             </Link>
           </RoleGate>
-          <RoleGate allow={['ADMIN_HR', 'SYSTEM_ADMIN', 'KOORDINATOR', 'DIREKTUR']}>
+          <RoleGate role={user?.role} allow={['ADMIN_HR', 'SYSTEM_ADMIN', 'KOORDINATOR', 'DIREKTUR']}>
             <Link href="/placement-requests" className="rounded-lg px-3 py-2 hover:bg-slate-100">
               Pengajuan Penempatan
             </Link>
           </RoleGate>
-          <RoleGate allow={['ADMIN_HR', 'SYSTEM_ADMIN', 'KOORDINATOR']}>
+          <RoleGate role={user?.role} allow={['ADMIN_HR', 'SYSTEM_ADMIN', 'KOORDINATOR']}>
             <Link href="/temporary-assignments" className="rounded-lg px-3 py-2 hover:bg-slate-100">
               Penugasan Sementara
             </Link>
@@ -68,37 +68,37 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <Link href="/absence-cases" className="rounded-lg px-3 py-2 hover:bg-slate-100">
             Kasus Ketidakhadiran
           </Link>
-          <RoleGate allow={['ADMIN_HR', 'SYSTEM_ADMIN', 'KOORDINATOR', 'DIREKTUR']}>
+          <RoleGate role={user?.role} allow={['ADMIN_HR', 'SYSTEM_ADMIN', 'KOORDINATOR', 'DIREKTUR']}>
             <Link href="/locations" className="rounded-lg px-3 py-2 hover:bg-slate-100">
               Lokasi Kerja
             </Link>
           </RoleGate>
-          <RoleGate allow={['ADMIN_HR', 'SYSTEM_ADMIN', 'KOORDINATOR', 'DIREKTUR']}>
+          <RoleGate role={user?.role} allow={['ADMIN_HR', 'SYSTEM_ADMIN', 'KOORDINATOR', 'DIREKTUR']}>
             <Link href="/clients" className="rounded-lg px-3 py-2 hover:bg-slate-100">
               Client
             </Link>
           </RoleGate>
-          <RoleGate allow={['ADMIN_HR', 'SYSTEM_ADMIN', 'KOORDINATOR', 'DIREKTUR']}>
+          <RoleGate role={user?.role} allow={['ADMIN_HR', 'SYSTEM_ADMIN', 'KOORDINATOR', 'DIREKTUR']}>
             <Link href="/holidays" className="rounded-lg px-3 py-2 hover:bg-slate-100">
               Hari Libur & Kalender
             </Link>
           </RoleGate>
-          <RoleGate allow={['ADMIN_HR', 'SYSTEM_ADMIN', 'KOORDINATOR', 'DIREKTUR', 'KOMISARIS']}>
+          <RoleGate role={user?.role} allow={['ADMIN_HR', 'SYSTEM_ADMIN', 'KOORDINATOR', 'DIREKTUR', 'KOMISARIS']}>
             <Link href="/reports" className="rounded-lg px-3 py-2 hover:bg-slate-100">
               Laporan
             </Link>
           </RoleGate>
-          <RoleGate allow={['ADMIN_HR', 'SYSTEM_ADMIN']}>
+          <RoleGate role={user?.role} allow={['ADMIN_HR', 'SYSTEM_ADMIN']}>
             <Link href="/devices" className="rounded-lg px-3 py-2 hover:bg-slate-100">
               Perangkat Terikat
             </Link>
           </RoleGate>
-          <RoleGate allow={['ADMIN_HR', 'SYSTEM_ADMIN']}>
+          <RoleGate role={user?.role} allow={['ADMIN_HR', 'SYSTEM_ADMIN']}>
             <Link href="/users" className="rounded-lg px-3 py-2 hover:bg-slate-100">
               Manajemen User
             </Link>
           </RoleGate>
-          <RoleGate allow={['ADMIN_HR', 'SYSTEM_ADMIN']}>
+          <RoleGate role={user?.role} allow={['SYSTEM_ADMIN']}>
             <Link href="/settings" className="rounded-lg px-3 py-2 hover:bg-slate-100">
               Company Settings
             </Link>

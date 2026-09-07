@@ -26,18 +26,25 @@ const PLACEMENT_SUMMARY_ROLES = ['ADMIN_HR', 'SYSTEM_ADMIN', 'DIREKTUR'];
 const REPORT_ROLES = ['ADMIN_HR', 'SYSTEM_ADMIN', 'KOORDINATOR', 'DIREKTUR', 'KOMISARIS'];
 
 export default function DashboardPage() {
-  const [user] = useState<SessionUser | null>(() => getUser());
-  return <Dashboard user={user} />;
+  const [user, setUser] = useState<SessionUser | null>(null);
+  const [authResolved, setAuthResolved] = useState(false);
+
+  useEffect(() => {
+    setUser(getUser());
+    setAuthResolved(true);
+  }, []);
+
+  return <Dashboard user={user} authResolved={authResolved} />;
 }
 
-function Dashboard({ user }: { user: SessionUser | null }) {
+function Dashboard({ user, authResolved }: { user: SessionUser | null; authResolved: boolean }) {
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [attention, setAttention] = useState<AttentionCard[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const role = user?.role;
+  const role = authResolved ? user?.role : undefined;
   const isKoordinator = role === 'KOORDINATOR';
   const [employee, setEmployee] = useState<{ attendanceRequired: boolean; status: string; placements?: { status: string }[] } | null>(null);
-  const hasSelfAttendance = !!employee && employee.attendanceRequired && employee.status === 'ACTIVE' && employee.placements?.some((placement) => placement.status === 'ACTIVE');
+  const hasSelfAttendance = authResolved && !!employee && employee.attendanceRequired && employee.status === 'ACTIVE' && employee.placements?.some((placement) => placement.status === 'ACTIVE');
   const showsAttendance = !!role && OPERATIONAL_ROLES.includes(role) && !!summary?.attendance;
   const showsLeaveSummary = !!role && LEAVE_SUMMARY_ROLES.includes(role) && summary?.pendingLeaveRequests !== undefined;
   const showsPlacementSummary = !!role && PLACEMENT_SUMMARY_ROLES.includes(role) && summary?.pendingPlacementRequests !== undefined;
@@ -68,7 +75,7 @@ function Dashboard({ user }: { user: SessionUser | null }) {
   return (
     <div>
       <h1 className="mb-1 text-2xl font-semibold">
-        {hasSelfAttendance ? `Selamat datang${user ? `, ${user.email}` : ''}` : `Dashboard ${isKoordinator ? 'Tim Anda' : 'Operasional'}`}
+         {!authResolved ? 'Memuat dashboard...' : hasSelfAttendance ? `Selamat datang${user ? `, ${user.email}` : ''}` : `Dashboard ${isKoordinator ? 'Tim Anda' : 'Operasional'}`}
       </h1>
       {hasSelfAttendance && (
         <p className="mb-4 text-sm text-slate-500">

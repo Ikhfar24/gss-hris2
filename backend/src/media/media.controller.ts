@@ -17,4 +17,9 @@ export class MediaController {
   leaveDocument(@Param('employeeId') employeeId: string, @Param('filename') filename: string, @CurrentUser() actor: AuthenticatedUser): Promise<StreamableFile> {
     return this.media.openLeaveDocument(employeeId, filename, actor);
   }
+
+  @Get('profile-photos/:employeeId/:filename')
+  profilePhoto(@Param('employeeId') employeeId: string, @Param('filename') filename: string, @CurrentUser() actor: AuthenticatedUser): Promise<StreamableFile> {
+    return this.media.openProfilePhoto(employeeId, filename, actor);
+  }
 }

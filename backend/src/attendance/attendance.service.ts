@@ -26,6 +26,11 @@ const INCLUDE = {
 
 interface ResolvedEvidence {
   distance: number | null;
+  accuracy: number | null;
+  geofenceLatitude: number | null;
+  geofenceLongitude: number | null;
+  geofenceRadiusMeters: number;
+  locationName: string;
   gpsStatus: 'OK' | 'OUT_OF_RADIUS' | 'UNAVAILABLE' | 'SUSPICIOUS' | 'FAILED' | null;
   selfieUrl: string | null;
   faceStatus: 'NOT_VERIFIED' | null;
@@ -121,10 +126,13 @@ export class AttendanceService {
    * is still a hard gate whenever coordinates ARE present.
    */
   private evaluateEvidence(
-    location: { latitude: number | null; longitude: number | null; radiusMeters: number },
+    location: { name: string; latitude: number | null; longitude: number | null; radiusMeters: number },
     dto: CheckInDto,
     employeeId: string,
   ): ResolvedEvidence {
+    if ((dto.latitude === undefined) !== (dto.longitude === undefined)) {
+      throw new BadRequestException('Latitude dan longitude harus dikirim bersama');
+    }
     const hasCoords = dto.latitude !== undefined && dto.longitude !== undefined;
     const hasSelfie = !!dto.selfieBase64;
 
@@ -169,6 +177,11 @@ export class AttendanceService {
 
     return {
       distance,
+      accuracy: dto.accuracyMeters ?? null,
+      geofenceLatitude: location.latitude,
+      geofenceLongitude: location.longitude,
+      geofenceRadiusMeters: location.radiusMeters,
+      locationName: location.name,
       gpsStatus,
       selfieUrl,
       faceStatus: hasSelfie ? 'NOT_VERIFIED' : null, // no vendor integrated yet, §11.5
@@ -219,7 +232,12 @@ export class AttendanceService {
         checkInClientRecordedAt: clientAt,
         checkInLatitude: dto.latitude,
         checkInLongitude: dto.longitude,
+        checkInAccuracyMeters: evidence.accuracy,
         checkInDistanceMeters: evidence.distance,
+        checkInGeofenceLatitude: evidence.geofenceLatitude,
+        checkInGeofenceLongitude: evidence.geofenceLongitude,
+        checkInGeofenceRadiusMeters: evidence.geofenceRadiusMeters,
+        checkInLocationName: evidence.locationName,
         checkInSelfieUrl: evidence.selfieUrl,
         checkInGpsStatus: evidence.gpsStatus,
         checkInFaceStatus: evidence.faceStatus,
@@ -282,7 +300,12 @@ export class AttendanceService {
         checkOutClientRecordedAt: clientAt,
         checkOutLatitude: dto.latitude,
         checkOutLongitude: dto.longitude,
+        checkOutAccuracyMeters: evidence.accuracy,
         checkOutDistanceMeters: evidence.distance,
+        checkOutGeofenceLatitude: evidence.geofenceLatitude,
+        checkOutGeofenceLongitude: evidence.geofenceLongitude,
+        checkOutGeofenceRadiusMeters: evidence.geofenceRadiusMeters,
+        checkOutLocationName: evidence.locationName,
         checkOutSelfieUrl: evidence.selfieUrl,
         checkOutGpsStatus: evidence.gpsStatus,
         checkOutFaceStatus: evidence.faceStatus,
@@ -326,6 +349,32 @@ export class AttendanceService {
       include: INCLUDE,
     });
     return { attendance: attendance ? this.present(attendance) : null, expectedLocation: location };
+  }
+
+  async myHistory(actor: AuthenticatedUser) {
+    const user = await this.prisma.user.findUnique({ where: { id: actor.userId }, select: { employeeId: true } });
+    if (!user?.employeeId) throw new BadRequestException('Akun ini belum terhubung ke data karyawan');
+    const records = await this.prisma.attendance.findMany({
+      where: { employeeId: user.employeeId },
+      include: INCLUDE,
+      orderBy: [{ date: 'desc' }, { checkInAt: 'desc' }],
+    });
+    return records.map((record) => this.present(record));
+  }
+
+  async findDetail(id: string, actor: AuthenticatedUser) {
+    const attendance = await this.prisma.attendance.findUnique({
+      where: { id },
+      include: { ...INCLUDE, reviews: { orderBy: { reviewedAt: 'desc' } } },
+    });
+    if (!attendance) throw new NotFoundException('Data absensi tidak ditemukan');
+    await this.assertMayViewAttendance(attendance, actor);
+    const reviewerIds = [...new Set(attendance.reviews.map((review) => review.reviewedById))];
+    const reviewers = reviewerIds.length
+      ? await this.prisma.user.findMany({ where: { id: { in: reviewerIds } }, select: { id: true, name: true, role: true } })
+      : [];
+    const reviewerById = new Map(reviewers.map((reviewer) => [reviewer.id, reviewer]));
+    return this.present({ ...attendance, reviews: attendance.reviews.map((review) => ({ ...review, reviewer: reviewerById.get(review.reviewedById) ?? null })) });
   }
 
   async findAll(query: QueryAttendanceDto, actor: AuthenticatedUser) {
@@ -524,6 +573,17 @@ export class AttendanceService {
     if (actor.role === Role.KOORDINATOR) { await this.scopes.assertEmployee(actor.userId, employee); return; }
     if (actor.role === Role.ADMIN_HR || actor.role === Role.SYSTEM_ADMIN) return;
     throw new ForbiddenException('Anda tidak berwenang meninjau absensi ini');
+  }
+
+  private async assertMayViewAttendance(attendance: { employeeId: string; employee: { employmentType: string } }, actor: AuthenticatedUser) {
+    if ([Role.ADMIN_HR, Role.SYSTEM_ADMIN, Role.DIREKTUR].includes(actor.role as Role)) return;
+    if (actor.role === Role.KOORDINATOR) {
+      await this.scopes.assertEmployee(actor.userId, attendance.employee);
+      return;
+    }
+    const user = await this.prisma.user.findUnique({ where: { id: actor.userId }, select: { employeeId: true } });
+    if (user?.employeeId === attendance.employeeId) return;
+    throw new ForbiddenException('Anda hanya dapat mengakses detail absensi yang diizinkan');
   }
 
   // Applies scheduled primary placement only at the date it becomes effective.

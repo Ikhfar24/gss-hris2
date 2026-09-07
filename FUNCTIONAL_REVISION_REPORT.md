@@ -51,3 +51,65 @@ remains separate.
 Profile Change Request self-service is KARYAWAN-only. Coordinator, Finance, and
 Marketing profile changes are managed directly by ADMIN_HR. This does not alter
 the mandatory attendance policy for linked employees.
+
+## Human UAT Fix Pack 04
+
+ADMIN_HR and SYSTEM_ADMIN retain direct Employee master-data administration via
+the audited Employee update workflow. KARYAWAN continues to use Profile Change
+Request self-service, while Coordinator, Finance, and Marketing profiles are
+maintained directly by HR. Employee master editing does not grant payroll run,
+payment, or finalized financial-record authority.
+
+Generic report PDF generation now uses the PDFKit CommonJS runtime correctly.
+All report files continue to be generated from backend-authorized projections;
+Coordinator queries remain limited by active CoordinatorScope assignments.
+
+Company Settings read and write access is SYSTEM_ADMIN-only at the backend,
+navigation, and page level.
+
+## Human UAT Fix Pack 05
+
+Employee master editing now uses an in-application form with prefilled HR-owned
+fields, explicit validation/result feedback, and the existing audited Employee
+update endpoint. User-facing Employee 360 terminology is now `Profil Lengkap`;
+internal API routes and service terminology remain unchanged.
+
+Profile photos extend the existing protected local media architecture. ADMIN_HR
+alone can upload or replace validated JPEG, PNG, or WebP images up to 5 MB.
+Employee records store only a protected media URL, retrieval verifies the
+current Employee reference and existing Employee/CoordinatorScope visibility,
+and audit metadata records only upload/replace state without storage paths or
+image bytes. Replaced physical files are not automatically deleted because no
+safe media-retention/cleanup policy currently exists; stale URLs are unusable
+because retrieval requires the current Employee photo reference.
+
+## Human UAT Fix Pack 06
+
+The Attendance page now uses Leaflet with OpenStreetMap to show the assigned
+work point, configured geofence, current device point, reported GPS accuracy,
+and live distance/range state. `watchPosition` exists only for the mounted
+Attendance self-service page and is cleared on navigation, unmount, or terminal
+location error; no movement stream is persisted or tracked in the background.
+The live fix is informational: each submission requests a fresh position and
+does not reuse a stale map coordinate after a location failure.
+
+Check-in and check-out continue to be authorized and recalculated by the
+backend. Each event now stores nullable device accuracy plus a snapshot of the
+location name, geofence center, and radius used for that event. This preserves
+historical evidence if Location master data changes. Existing records remain
+unchanged and explicitly show `Lokasi historis tidak tersedia` when no snapshot
+exists.
+
+Linked employees can view their own attendance history and evidence details.
+ADMIN_HR, SYSTEM_ADMIN, and DIREKTUR can view organization-authorized detail;
+KOORDINATOR detail uses active CoordinatorScope. Other operational roles remain
+self-only. Attendance selfies continue through protected media authorization.
+
+The business has not approved a GPS accuracy rejection threshold. Accuracy is
+therefore retained and displayed for evidence without creating an arbitrary
+new hard gate; server-side configured-radius validation remains authoritative.
+
+OpenStreetMap map tiles are requested directly from the public tile service,
+which receives normal web-request metadata such as the requester IP and tile
+coordinates. A self-hosted tile service or privacy proxy remains an operational
+deployment choice if policy prohibits direct third-party tile requests.

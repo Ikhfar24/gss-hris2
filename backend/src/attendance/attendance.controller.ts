@@ -41,9 +41,12 @@ export class AttendanceController {
     return this.service.myToday(actor);
   }
 
-  // Static paths must come before ':id'-style dynamic routes below it in
-  // other controllers, but this controller has none of those — /open,
-  // /summary, /devices are all safe static segments under /attendance.
+  @Get('me/history')
+  myHistory(@CurrentUser() actor: AuthenticatedUser) {
+    return this.service.myHistory(actor);
+  }
+
+  // Keep static paths before the ':id' detail route below.
   @Roles(...REVIEWER_ROLES)
   @Get('open')
   findOpen(@Query() query: QueryOpenAttendanceDto, @CurrentUser() actor: AuthenticatedUser) {
@@ -114,5 +117,10 @@ export class AttendanceController {
   @Get()
   findAll(@Query() query: QueryAttendanceDto, @CurrentUser() actor: AuthenticatedUser) {
     return this.service.findAll(query, actor);
+  }
+
+  @Get(':id')
+  findDetail(@Param('id') id: string, @CurrentUser() actor: AuthenticatedUser) {
+    return this.service.findDetail(id, actor);
   }
 }

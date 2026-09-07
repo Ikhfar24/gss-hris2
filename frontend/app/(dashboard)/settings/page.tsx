@@ -1,8 +1,9 @@
 'use client';
 
 import { useEffect, useState, FormEvent } from 'react';
+import { useRouter } from 'next/navigation';
 import { apiFetch, ApiError } from '@/lib/api';
-import { getToken } from '@/lib/auth';
+import { getToken, getUser } from '@/lib/auth';
 
 interface CompanySettings {
   companyName: string;
@@ -15,13 +16,21 @@ interface CompanySettings {
 }
 
 export default function SettingsPage() {
+  const router = useRouter();
+  const [authResolved, setAuthResolved] = useState(false);
   const [form, setForm] = useState<CompanySettings | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    apiFetch<CompanySettings>('/company-settings').then(setForm).catch(() => {});
-  }, []);
+    const user = getUser();
+    setAuthResolved(true);
+    if (user?.role !== 'SYSTEM_ADMIN') {
+      router.replace('/dashboard');
+      return;
+    }
+    apiFetch<CompanySettings>('/company-settings').then(setForm).catch((err) => setError(err instanceof ApiError ? err.message : 'Gagal memuat pengaturan'));
+  }, [router]);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -37,7 +46,7 @@ export default function SettingsPage() {
     }
   }
 
-  if (!form) return <p className="text-sm text-slate-500">Memuat...</p>;
+  if (!authResolved || !form) return <p className="text-sm text-slate-500">Memuat...</p>;
 
   return (
     <div className="max-w-xl">

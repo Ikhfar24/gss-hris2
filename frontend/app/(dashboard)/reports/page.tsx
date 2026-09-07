@@ -1,9 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { apiFetch, ApiError } from '@/lib/api';
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1';
+import { apiFetch, ApiError, downloadFile } from '@/lib/api';
 
 interface EmployeeOption {
   id: string;
@@ -49,24 +47,7 @@ export default function ReportsPage() {
       if (filters.locationId) params.set('locationId', filters.locationId);
       if (filters.status) params.set('status', filters.status);
 
-      const res = await fetch(`${API_URL}/reports/${reportKey}?${params.toString()}`, {
-        credentials: 'include',
-      });
-      if (!res.ok) throw new ApiError(res.status, 'Gagal membuat laporan');
-
-      const disposition = res.headers.get('content-disposition') ?? '';
-      const match = /filename="(.+)"/.exec(disposition);
-      const filename = match?.[1] ?? `${reportKey}.${format}`;
-
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
+      await downloadFile(`/reports/${reportKey}?${params.toString()}`, null, `${reportKey}.${format}`);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Gagal mengunduh laporan');
     } finally {

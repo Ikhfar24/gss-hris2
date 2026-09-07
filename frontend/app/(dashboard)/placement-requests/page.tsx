@@ -8,6 +8,10 @@ interface EmployeeOption {
   id: string;
   name: string;
 }
+interface EmployeeListResponse {
+  data: EmployeeOption[];
+  meta: { page: number; pageSize: number; total: number };
+}
 interface LocationOption {
   id: string;
   name: string;
@@ -41,7 +45,9 @@ export default function PlacementRequestsPage() {
   const [showForm, setShowForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [form, setForm] = useState({ employeeId: '', destinationLocationId: '', startDate: '', reason: '' });
-  const role = getUser()?.role;
+  const [user, setUser] = useState<{ role: string } | null>(null);
+  const [authResolved, setAuthResolved] = useState(false);
+  const role = authResolved ? user?.role : undefined;
 
   const canCreate = role === 'KOORDINATOR' || role === 'ADMIN_HR' || role === 'SYSTEM_ADMIN';
   const canHrReview = role === 'ADMIN_HR' || role === 'SYSTEM_ADMIN';
@@ -50,24 +56,35 @@ export default function PlacementRequestsPage() {
   async function load() {
     try {
       const token = getToken();
-      const calls: Promise<any>[] = [apiFetch<PlacementRequestRow[]>('/placement-requests', { token })];
-      if (canCreate) {
-        calls.push(apiFetch<EmployeeOption[]>('/employees', { token }));
-        calls.push(apiFetch<LocationOption[]>('/locations', { token }));
-      }
-      const [reqs, emps, locs] = await Promise.all(calls);
-      setRequests(reqs);
-      if (emps) setEmployees(emps);
-      if (locs) setLocations(locs);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Gagal memuat data pengajuan');
+       const calls: Promise<any>[] = [apiFetch<PlacementRequestRow[]>('/placement-requests', { token })];
+       if (canCreate) {
+         calls.push(apiFetch<EmployeeListResponse>('/employees', { token }));
+         calls.push(apiFetch<LocationOption[]>('/locations', { token }));
+       }
+       const [reqs, emps, locs] = await Promise.all(calls);
+       setRequests(reqs);
+       if (emps) {
+         const employeeList = Array.isArray(emps) ? emps : Array.isArray(emps.data) ? emps.data : null;
+         if (!employeeList) throw new Error('Format daftar karyawan tidak valid');
+         setEmployees(employeeList);
+       }
+       if (locs) setLocations(locs);
+     } catch (err) {
+       setEmployees([]);
+       setError(err instanceof ApiError || err instanceof Error ? err.message : 'Gagal memuat data pengajuan');
     }
   }
 
-  useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+   useEffect(() => {
+     setUser(getUser());
+     setAuthResolved(true);
+   }, []);
+
+   useEffect(() => {
+     if (!authResolved) return;
+     load();
+     // eslint-disable-next-line react-hooks/exhaustive-deps
+   }, [authResolved]);
 
   async function onCreate(e: FormEvent) {
     e.preventDefault();
@@ -110,9 +127,10 @@ export default function PlacementRequestsPage() {
 
       {showForm && (
         <form onSubmit={onCreate} className="mb-6 grid max-w-xl gap-3 rounded-xl border border-slate-200 bg-white p-4">
-          <select required value={form.employeeId} onChange={(e) => setForm({ ...form, employeeId: e.target.value })} className="rounded-lg border border-slate-300 px-3 py-2 text-sm">
-            <option value="">-- Pilih karyawan --</option>
-            {employees.map((e) => (
+           <select required value={form.employeeId} onChange={(e) => setForm({ ...form, employeeId: e.target.value })} className="rounded-lg border border-slate-300 px-3 py-2 text-sm">
+             <option value="">-- Pilih karyawan --</option>
+             {employees.length === 0 && <option disabled>Tidak ada karyawan dalam cakupan Anda</option>}
+             {employees.map((e) => (
               <option key={e.id} value={e.id}>{e.name}</option>
             ))}
           </select>

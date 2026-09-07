@@ -1,5 +1,5 @@
 import * as ExcelJS from 'exceljs';
-import PDFDocument from 'pdfkit';
+import PDFDocument = require('pdfkit');
 
 export interface ExportColumn {
   header: string;
@@ -36,11 +36,12 @@ function formatRupiah(n: number): string {
 
 /** Dedicated payslip layout — separate from the generic tabular report builder above. */
 export function buildPayslipPdf(data: PayslipData): Promise<Buffer> {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ margin: 48, size: 'A4' });
     const chunks: Buffer[] = [];
     doc.on('data', (c) => chunks.push(c));
     doc.on('end', () => resolve(Buffer.concat(chunks)));
+    doc.on('error', reject);
 
     doc.fontSize(16).font('Helvetica-Bold').text(data.companyName);
     doc.fontSize(12).font('Helvetica').fillColor('#334155').text('Slip Gaji');
@@ -95,11 +96,12 @@ export function buildPayslipPdf(data: PayslipData): Promise<Buffer> {
  * a branded/templated PDF layout is a later polish item, not a blocker.
  */
 export function buildPdf(title: string, columns: ExportColumn[], rows: Record<string, unknown>[]): Promise<Buffer> {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ margin: 36, size: 'A4', layout: 'landscape' });
     const chunks: Buffer[] = [];
     doc.on('data', (chunk) => chunks.push(chunk));
     doc.on('end', () => resolve(Buffer.concat(chunks)));
+    doc.on('error', reject);
 
     doc.fontSize(16).text(title, { align: 'left' });
     doc.fontSize(9).fillColor('#64748b').text(`Dicetak: ${new Date().toLocaleString('id-ID')}`);

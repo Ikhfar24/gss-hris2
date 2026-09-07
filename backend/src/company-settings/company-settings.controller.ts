@@ -8,19 +8,16 @@ import { CompanySettingsService } from './company-settings.service';
 import { UpdateCompanySettingsDto } from './dto/update-company-settings.dto';
 
 @Controller('company-settings')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(Role.SYSTEM_ADMIN)
 export class CompanySettingsController {
   constructor(private service: CompanySettingsService) {}
 
-  // No guard: branding must be fetchable before login (login page logo/name).
   @Get()
   get() {
     return this.service.get();
   }
 
-  // Changing company identity is explicitly an Admin/HR/System Admin action
-  // per PRD section 5 ("HR dapat mengubah konfigurasi melalui dashboard").
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.ADMIN_HR, Role.SYSTEM_ADMIN)
   @Patch()
   update(@Body() dto: UpdateCompanySettingsDto, @CurrentUser() actor: AuthenticatedUser) {
     return this.service.update(dto, actor.userId);

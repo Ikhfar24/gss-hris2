@@ -29,6 +29,13 @@ The required face-verification vendor, confidence threshold, fallback evidence,
 and retention policy have not been selected. Attendance exceptions remain
 explicitly unverified/reviewable rather than claiming a biometric match.
 
+## Attendance GPS Accuracy Threshold
+
+The minimum acceptable device-reported GPS accuracy has not been defined.
+Attendance stores and displays `accuracyMeters`, while the backend continues to
+recalculate geofence distance and enforce the configured radius. No attendance
+is silently rejected solely because of an unapproved accuracy threshold.
+
 ## Import Duplicate Resolution
 
 The policy for a valid incoming row that matches an existing employee, client,

@@ -475,7 +475,12 @@ model Attendance {
   checkInAt               DateTime?
   checkInLatitude         Float?
   checkInLongitude        Float?
+  checkInAccuracyMeters   Float?
   checkInDistanceMeters   Float?
+  checkInGeofenceLatitude Float?
+  checkInGeofenceLongitude Float?
+  checkInGeofenceRadiusMeters Int?
+  checkInLocationName     String?
   checkInSelfieUrl        String?
   checkInGpsStatus        GpsStatus?
   checkInFaceStatus       FaceVerificationStatus?
@@ -491,7 +496,12 @@ model Attendance {
   checkOutAt               DateTime?
   checkOutLatitude         Float?
   checkOutLongitude        Float?
+  checkOutAccuracyMeters   Float?
   checkOutDistanceMeters   Float?
+  checkOutGeofenceLatitude Float?
+  checkOutGeofenceLongitude Float?
+  checkOutGeofenceRadiusMeters Int?
+  checkOutLocationName     String?
   checkOutSelfieUrl        String?
   checkOutGpsStatus        GpsStatus?
   checkOutFaceStatus       FaceVerificationStatus?

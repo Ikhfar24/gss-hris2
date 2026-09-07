@@ -1,4 +1,5 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Res, StreamableFile, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Res, StreamableFile, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
@@ -79,6 +80,13 @@ export class EmployeesController {
   @Patch(':id')
   update(@Param('id') id: string, @Body() dto: UpdateEmployeeDto, @CurrentUser() actor: AuthenticatedUser) {
     return this.service.update(id, dto, actor);
+  }
+
+  @Roles(Role.ADMIN_HR)
+  @Post(':id/profile-photo')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024 } }))
+  updateProfilePhoto(@Param('id') id: string, @UploadedFile() file: { buffer: Buffer; mimetype: string } | undefined, @CurrentUser() actor: AuthenticatedUser) {
+    return this.service.updateProfilePhoto(id, file, actor);
   }
 
   @Roles(Role.ADMIN_HR, Role.SYSTEM_ADMIN)

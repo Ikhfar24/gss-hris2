@@ -9,6 +9,7 @@ import { buildPdf, buildXlsx } from '../common/utils/export.util';
 import { plainToInstance } from 'class-transformer';
 import { validateSync } from 'class-validator';
 import { CoordinatorScopeService } from '../coordinator-scopes/coordinator-scope.service';
+import { saveImageBuffer } from '../common/utils/file-storage.util';
 
 const SUMMARY_INCLUDE = {
   user: { select: { id: true, email: true, role: true, isActive: true } },
@@ -118,6 +119,25 @@ export class EmployeesService {
     return this.prisma.$transaction((tx) => this.updateWithClient(tx, id, dto, actor));
   }
 
+  async updateProfilePhoto(id: string, file: { buffer: Buffer; mimetype: string } | undefined, actor: AuthenticatedUser) {
+    if (actor.role !== Role.ADMIN_HR) throw new ForbiddenException('Hanya Admin HR yang dapat mengubah foto profil karyawan');
+    if (!file) throw new BadRequestException('File foto profil wajib diunggah');
+    const employee = await this.prisma.employee.findUnique({ where: { id }, select: { id: true, photoUrl: true } });
+    if (!employee) throw new NotFoundException('Karyawan tidak ditemukan');
+    const photoUrl = saveImageBuffer(file.buffer, file.mimetype, `profile-photos/${id}`);
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.employee.update({ where: { id }, data: { photoUrl }, include: SUMMARY_INCLUDE });
+      await tx.auditLog.create({ data: {
+        actorId: actor.userId, actorRole: Role.ADMIN_HR,
+        action: employee.photoUrl ? 'EMPLOYEE_PROFILE_PHOTO_REPLACE' : 'EMPLOYEE_PROFILE_PHOTO_UPLOAD',
+        entity: 'Employee', entityId: id,
+        oldValue: { hasPhoto: !!employee.photoUrl }, newValue: { hasPhoto: true },
+        source: 'EMPLOYEE_PROFILE_PHOTO', relatedEntityId: id,
+      } });
+      return this.present(updated, actor);
+    });
+  }
+
   async import(dto: ImportEmployeesDto, actor: AuthenticatedUser) {
     const errors: { row: number; errors: string[] }[] = [];
     const seenNik = new Set<string>();
@@ -190,9 +210,12 @@ export class EmployeesService {
     this.validateAttendanceEligibility(dto.attendanceRequired, dto.attendanceExemptionReason, before);
     await this.assertIdentityUnique(dto.nik, dto.employeeNumber, id, tx);
     const { trainingEndDate, dateOfBirth, reason, ...rest } = dto;
+    const changedFields = Object.keys(rest).filter((key) => (rest as any)[key] !== undefined && (rest as any)[key] !== (before as any)[key]);
+    if (trainingEndDate !== undefined && new Date(trainingEndDate).getTime() !== new Date(before.trainingEndDate ?? 0).getTime()) changedFields.push('trainingEndDate');
+    if (dateOfBirth !== undefined && new Date(dateOfBirth).getTime() !== new Date(before.dateOfBirth ?? 0).getTime()) changedFields.push('dateOfBirth');
     const updated = await tx.employee.update({ where: { id }, data: { ...rest, trainingEndDate: trainingEndDate ? new Date(trainingEndDate) : undefined, dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : undefined }, include: SUMMARY_INCLUDE });
     if (dto.status === 'RESIGNED') await tx.user.updateMany({ where: { employeeId: id, isActive: true }, data: { isActive: false } });
-    await tx.auditLog.create({ data: { actorId: actor.userId, actorRole: actor.role as Role, action: changedSensitive ? 'EMPLOYEE_SENSITIVE_UPDATE' : 'EMPLOYEE_UPDATE', entity: 'Employee', entityId: id, oldValue: this.auditProjection(before) as any, newValue: this.auditProjection(updated) as any, reason: reason ?? null, source: 'EMPLOYEE_MANAGEMENT', relatedEntityId: updated.user?.id } });
+    await tx.auditLog.create({ data: { actorId: actor.userId, actorRole: actor.role as Role, action: changedSensitive ? 'EMPLOYEE_SENSITIVE_UPDATE' : 'EMPLOYEE_UPDATE', entity: 'Employee', entityId: id, oldValue: { fields: changedFields, profile: this.auditProjection(before) } as any, newValue: { fields: changedFields, profile: this.auditProjection(updated) } as any, reason: reason ?? null, source: 'EMPLOYEE_MANAGEMENT', relatedEntityId: updated.user?.id } });
     return this.present(updated, actor);
   }
 
@@ -245,12 +268,12 @@ export class EmployeesService {
       const { dailyRate, contracts, ...selfService } = employee;
       return selfService;
     }
-    const { id, name, employmentType, status, joinDate, jobTitle, attendanceRequired, attendanceExemptionReason, coordinatorId, createdAt, updatedAt, placements } = employee;
-    return { id, name, employmentType, status, joinDate, jobTitle, attendanceRequired, attendanceExemptionReason, coordinatorId, createdAt, updatedAt, placements };
+    const { id, name, employmentType, status, joinDate, jobTitle, photoUrl, attendanceRequired, attendanceExemptionReason, coordinatorId, createdAt, updatedAt, placements } = employee;
+    return { id, name, employmentType, status, joinDate, jobTitle, photoUrl, attendanceRequired, attendanceExemptionReason, coordinatorId, createdAt, updatedAt, placements };
   }
 
   private auditProjection(employee: any) {
-    const { nik, employeeNumber, bankAccountNumber, bpjsKesehatanNumber, bpjsKetenagakerjaanNumber, dailyRate, contracts, ...safe } = employee;
+    const { nik, employeeNumber, bankAccountNumber, bpjsKesehatanNumber, bpjsKetenagakerjaanNumber, dailyRate, contracts, address, phone, email, dateOfBirth, photoUrl, ...safe } = employee;
     return safe;
   }
 }

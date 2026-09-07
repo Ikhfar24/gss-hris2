@@ -1,7 +1,6 @@
 'use client';
 
 import { ReactNode } from 'react';
-import { getUser } from '@/lib/auth';
 
 /**
  * Client-side visibility helper only (hide nav items, buttons, etc).
@@ -10,12 +9,13 @@ import { getUser } from '@/lib/auth';
  */
 export default function RoleGate({
   allow,
+  role,
   children,
 }: {
   allow: string[];
+  role?: string | null;
   children: ReactNode;
 }) {
-  const user = getUser();
-  if (!user || !allow.includes(user.role)) return null;
+  if (!role || !allow.includes(role)) return null;
   return <>{children}</>;
 }
