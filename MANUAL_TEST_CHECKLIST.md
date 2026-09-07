@@ -20,6 +20,8 @@ Use separate accounts and representative employee/team/payroll data. Record resu
 - View only assigned-team attendance and requests; attempt a non-team record and confirm denial.
 - Review assigned attendance and leave/permission requests; confirm history and payable status update only for a valid completed checkout.
 - Propose a team placement/mutation and export only team-scoped data.
+- Confirm the Coordinator can check in/out using their own linked Employee
+  placement while team cards exclude employees outside `coordinatorId` scope.
 
 ## Admin/HR
 
@@ -33,11 +35,13 @@ Use separate accounts and representative employee/team/payroll data. Record resu
 - Select a client/location period and generate payroll. Verify Borongan pay equals daily rate times only `PAYABLE` attendance; review-pending and system-auto-closed records are excluded.
 - Add a manual component with a reason, review, submit, and record payment only after finalization.
 - Attempt a line-item change after finalization; confirm denial. Create, submit, Director-approve, and finalize a linked revision; confirm original slip remains unchanged.
+- Confirm Finance can check in/out and view only their own employee self-service data, without organization attendance monitoring.
 
 ## Marketing
 
 - Check personal attendance and view permitted placement/manpower data.
 - Confirm employee salary/rates, bank/BPJS data, contracts, payroll, and payroll actions are unavailable.
+- Confirm Marketing can check in/out when linked to an attendance-required Employee profile.
 
 ## Direktur
 

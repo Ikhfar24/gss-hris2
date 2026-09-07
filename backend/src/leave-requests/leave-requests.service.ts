@@ -26,11 +26,13 @@ export class LeaveRequestsService {
   }
 
   async findAll(actor: AuthenticatedUser) {
-    const where = actor.role === Role.KARYAWAN
-      ? { employeeId: await this.resolveOwnEmployeeId(actor.userId) }
-      : actor.role === Role.KOORDINATOR
-        ? { employee: { coordinatorId: actor.userId } }
-        : undefined;
+    const where = HR_ROLES.includes(actor.role as Role)
+      ? undefined
+      : actor.role === Role.DIREKTUR
+        ? { status: 'PENDING_DIRECTOR' as LeaveStatus }
+        : actor.role === Role.KOORDINATOR
+          ? { employee: { coordinatorId: actor.userId } }
+          : { employeeId: await this.resolveOwnEmployeeId(actor.userId) };
     const requests = await this.prisma.leaveRequest.findMany({ where, include: INCLUDE, orderBy: { requestedAt: 'desc' } });
     return requests.map((request) => this.present(request));
   }

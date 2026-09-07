@@ -36,7 +36,8 @@ function Dashboard({ user }: { user: SessionUser | null }) {
   const [error, setError] = useState<string | null>(null);
   const role = user?.role;
   const isKoordinator = role === 'KOORDINATOR';
-  const isEmployee = role === 'KARYAWAN';
+  const [employee, setEmployee] = useState<{ attendanceRequired: boolean; status: string; placements?: { status: string }[] } | null>(null);
+  const hasSelfAttendance = !!employee && employee.attendanceRequired && employee.status === 'ACTIVE' && employee.placements?.some((placement) => placement.status === 'ACTIVE');
   const showsAttendance = !!role && OPERATIONAL_ROLES.includes(role) && !!summary?.attendance;
   const showsLeaveSummary = !!role && LEAVE_SUMMARY_ROLES.includes(role) && summary?.pendingLeaveRequests !== undefined;
   const showsPlacementSummary = !!role && PLACEMENT_SUMMARY_ROLES.includes(role) && summary?.pendingPlacementRequests !== undefined;
@@ -44,12 +45,17 @@ function Dashboard({ user }: { user: SessionUser | null }) {
 
   async function load() {
     try {
-      const [summaryData, attentionData] = await Promise.all([
+      const [summaryData, attentionData, employeeData] = await Promise.all([
         apiFetch<DashboardSummary>('/dashboard/summary', { token: getToken() }),
         apiFetch<AttentionCard[]>('/dashboard/attention', { token: getToken() }),
+        apiFetch<{ attendanceRequired: boolean; status: string; placements?: { status: string }[] }>('/employees/me', { token: getToken() }).catch((err) => {
+          if (err instanceof ApiError && err.status === 404) return null;
+          throw err;
+        }),
       ]);
       setSummary(summaryData);
       setAttention(attentionData);
+      setEmployee(employeeData);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Gagal memuat ringkasan dashboard');
     }
@@ -62,9 +68,9 @@ function Dashboard({ user }: { user: SessionUser | null }) {
   return (
     <div>
       <h1 className="mb-1 text-2xl font-semibold">
-        {isEmployee ? `Selamat datang${user ? `, ${user.email}` : ''}` : `Dashboard ${isKoordinator ? 'Tim Anda' : 'Operasional'}`}
+        {hasSelfAttendance ? `Selamat datang${user ? `, ${user.email}` : ''}` : `Dashboard ${isKoordinator ? 'Tim Anda' : 'Operasional'}`}
       </h1>
-      {isEmployee && (
+      {hasSelfAttendance && (
         <p className="mb-4 text-sm text-slate-500">
           Gunakan menu <strong>Absensi</strong> untuk check-in/check-out, atau <strong>Cuti, Izin & Resign</strong> untuk mengajukan cuti/izin.
         </p>
@@ -106,7 +112,7 @@ function Dashboard({ user }: { user: SessionUser | null }) {
         </>
       )}
 
-      {isEmployee && (
+      {hasSelfAttendance && (
         <div className="mb-6 flex gap-3">
           <Link href="/attendance" className="rounded-lg bg-slate-900 px-4 py-2 text-sm text-white hover:bg-slate-800">Absensi Hari Ini</Link>
           <Link href="/leave-requests" className="rounded-lg border border-slate-300 px-4 py-2 text-sm hover:bg-slate-50">Ajukan Cuti/Izin</Link>

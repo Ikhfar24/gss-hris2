@@ -30,3 +30,13 @@ Implemented modules include employees/users, attendance/media, leave/absence/ove
 ## Functional Freeze Recommendation
 
 IMPLEMENTED and VERIFIED items are technically ready for human Functional Review/UAT. OPEN BUSINESS QUESTION and DEFERRED items are not silently implemented. This report does not declare Business Logic Frozen; that decision follows human UAT acceptance.
+
+## Human UAT Fix Pack 01
+
+Operational role accounts can now retain both an application role and an
+Employee identity. Seed/demo data links ADMIN_HR, KOORDINATOR, KEUANGAN, and
+MARKETING accounts to attendance-required employees with active placements.
+Self attendance is available to any linked attendance-required employee;
+Coordinator and HR retain their authorized monitoring views, while Finance and
+Marketing remain self-service only. Coordinator team scope continues to use
+`Employee.coordinatorId = Coordinator User.id`.

@@ -1,5 +1,12 @@
 # Open Questions After Functional Revision
 
+## Attendance Policy For Non-Operational Roles
+
+Human UAT confirmed mandatory attendance for Employee-linked KARYAWAN,
+KOORDINATOR, ADMIN_HR, KEUANGAN, and MARKETING accounts through
+`Employee.attendanceRequired = true`. Attendance policy for DIREKTUR,
+KOMISARIS, and SYSTEM_ADMIN remains a separate business decision.
+
 ## Leave Balance Calculation
 
 The specification requires approved annual leave to consume a balance but does

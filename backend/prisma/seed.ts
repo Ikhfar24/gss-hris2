@@ -41,16 +41,18 @@ async function main() {
     { email: 'koordinator@papaiz.corp', name: 'Koordinator Lapangan', role: Role.KOORDINATOR, password: 'Koor12345678!' },
     { email: 'direktur@papaiz.corp', name: 'Direktur Utama', role: Role.DIREKTUR, password: 'Direktur12345678!' },
     { email: 'keuangan@papaiz.corp', name: 'Staf Keuangan', role: Role.KEUANGAN, password: 'Keuangan12345!' },
+    { email: 'marketing@papaiz.corp', name: 'Staf Marketing', role: Role.MARKETING, password: 'Marketing12345!' },
   ];
+  const usersByEmail = new Map<string, { id: string }>();
   for (const acc of testAccounts) {
-    const existing = await prisma.user.findUnique({ where: { email: acc.email } });
-    if (!existing) {
-      const passwordHash = await bcrypt.hash(acc.password, 10);
-      await prisma.user.create({
-        data: { name: acc.name, email: acc.email, passwordHash, role: acc.role },
-      });
-      console.log(`Created test account: ${acc.email} / ${acc.password}`);
-    }
+    const passwordHash = await bcrypt.hash(acc.password, 10);
+    const user = await prisma.user.upsert({
+      where: { email: acc.email },
+      update: { name: acc.name, passwordHash, role: acc.role, isActive: true },
+      create: { name: acc.name, email: acc.email, passwordHash, role: acc.role },
+      select: { id: true },
+    });
+    usersByEmail.set(acc.email, user);
   }
 
   // --- Phase 2 dummy data (PRD §23: development wajib pakai dummy data) ---
@@ -84,6 +86,43 @@ async function main() {
     locations[def.name] = loc.id;
   }
 
+  // UAT users are also active staff. Reconcile by stable employee number so
+  // rerunning the seed repairs both account links and coordinator team scope.
+  const coordinatorId = usersByEmail.get('koordinator@papaiz.corp')!.id;
+  const staffProfiles = [
+    { email: 'hr@papaiz.corp', name: 'Admin HR', employeeNumber: 'DEMO-HR-01', location: 'Purwokerto' },
+    { email: 'koordinator@papaiz.corp', name: 'Koordinator Lapangan', employeeNumber: 'DEMO-KOOR-01', location: 'Muntilan' },
+    { email: 'keuangan@papaiz.corp', name: 'Staf Keuangan', employeeNumber: 'DEMO-KEU-01', location: 'Purwokerto' },
+    { email: 'marketing@papaiz.corp', name: 'Staf Marketing', employeeNumber: 'DEMO-MKT-01', location: 'Muntilan' },
+  ];
+  for (const profile of staffProfiles) {
+    const employeeData = {
+      name: profile.name,
+      employmentType: 'TENAGA_ARSIPARIS' as const,
+      status: 'ACTIVE' as const,
+      joinDate: new Date('2026-09-01'),
+      jobTitle: profile.name,
+      attendanceRequired: true,
+      attendanceExemptionReason: null,
+      coordinatorId,
+    };
+    let employee = await prisma.employee.findUnique({ where: { employeeNumber: profile.employeeNumber } });
+    if (employee) {
+      employee = await prisma.employee.update({ where: { id: employee.id }, data: employeeData });
+    } else {
+      employee = await prisma.employee.create({ data: { ...employeeData, employeeNumber: profile.employeeNumber } });
+      console.log(`Created UAT employee: ${profile.name}`);
+    }
+
+    const activePlacement = await prisma.placement.findFirst({ where: { employeeId: employee.id, status: 'ACTIVE' } });
+    if (!activePlacement) {
+      await prisma.placement.create({
+        data: { employeeId: employee.id, locationId: locations[profile.location], startDate: new Date('2026-09-01'), status: 'ACTIVE' },
+      });
+    }
+    await prisma.user.update({ where: { email: profile.email }, data: { employeeId: employee.id } });
+  }
+
   // Dummy Tenaga Borongan (flexible placement, §8.1 — mirrors the "Arif" example)
   let borongan = await prisma.employee.findFirst({ where: { name: 'Arif (Contoh Borongan)' } });
   if (!borongan) {
@@ -99,6 +138,8 @@ async function main() {
     });
     console.log('Created dummy employee: Arif (Tenaga Borongan)');
   }
+  // Keep the original employee fixture in the coordinator's current scope.
+  await prisma.employee.update({ where: { id: borongan.id }, data: { coordinatorId } });
 
   // Karyawan login linked to Arif, so the self-service check-in/out flow
   // (Phase 3) can actually be tried end-to-end, not just admin-side.
@@ -116,6 +157,8 @@ async function main() {
       },
     });
     console.log(`Created test account: ${karyawanEmail} / Karyawan12345!`);
+  } else if (existingKaryawan.employeeId !== borongan.id) {
+    await prisma.user.update({ where: { id: existingKaryawan.id }, data: { employeeId: borongan.id } });
   }
 
   // Dummy Tenaga Arsiparis (fixed placement + PKWT contract, §8.2)

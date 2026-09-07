@@ -31,8 +31,28 @@ interface TodayResponse {
 
 export default function AttendancePage() {
   const role = getUser()?.role;
-  if (role === 'KARYAWAN') return <SelfCheckIn />;
-  return <MonitoringDashboard />;
+  const [employee, setEmployee] = useState<{ attendanceRequired: boolean; status: string; placements?: { status: string }[] } | null | undefined>(undefined);
+  const [error, setError] = useState<string | null>(null);
+  const canMonitor = ['ADMIN_HR', 'SYSTEM_ADMIN', 'KOORDINATOR', 'DIREKTUR'].includes(role ?? '');
+  const canSelfCheckIn = !!employee && employee.attendanceRequired && employee.status === 'ACTIVE' && employee.placements?.some((placement) => placement.status === 'ACTIVE');
+
+  useEffect(() => {
+    apiFetch<{ attendanceRequired: boolean; status: string; placements?: { status: string }[] }>('/employees/me', { token: getToken() })
+      .then(setEmployee)
+      .catch((err) => {
+        if (err instanceof ApiError && err.status === 404) setEmployee(null);
+        else {
+          setEmployee(null);
+          setError(err instanceof ApiError ? err.message : 'Gagal memeriksa profil karyawan');
+        }
+      });
+  }, []);
+
+  if (employee === undefined) return <p className="text-sm text-slate-500">Memuat...</p>;
+  if (!canSelfCheckIn && !canMonitor) {
+    return <p className="text-sm text-slate-500">Akun ini belum memiliki profil karyawan aktif yang wajib absensi.</p>;
+  }
+  return <div className="space-y-8">{error && <p className="text-sm text-red-600">{error}</p>}{canSelfCheckIn && <SelfCheckIn />}{canMonitor && <MonitoringDashboard />}</div>;
 }
 
 // ---------------------------------------------------------------------

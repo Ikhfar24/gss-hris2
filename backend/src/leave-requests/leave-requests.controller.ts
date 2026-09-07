@@ -8,9 +8,9 @@ import { LeaveRequestsService } from './leave-requests.service';
 import { CreateLeaveRequestDto } from './dto/create-leave-request.dto';
 import { ReviewLeaveRequestDto } from './dto/review-leave-request.dto';
 
-// Every authenticated role can reach this controller — visibility is
-// scoped inside the service itself (Karyawan sees only their own,
-// Koordinator sees their team, HR/Direktur/System Admin see everything).
+// Every authenticated role can reach this controller. The service scopes
+// employee roles to themselves, Coordinators to their teams, HR/System Admin
+// to the organization, and Directors to their pending approval stage.
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('leave-requests')
 export class LeaveRequestsController {
