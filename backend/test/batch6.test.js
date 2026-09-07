@@ -71,7 +71,7 @@ test('payroll cycle functions and period creation honor configurable cross-month
 test('Borongan generation counts only PAYABLE attendance and snapshots its daily-rate result', async () => {
   const slips = [];
   const attendanceQueries = [];
-  const service = new PayrollService({
+  const prisma = {
     payrollRun: { create: async () => ({ id: 'run-1' }) },
     employee: { findMany: async () => [
       { id: 'daily-1', name: 'Borongan', employmentType: 'TENAGA_BORONGAN', dailyRate: 125000, contracts: [] },
@@ -81,7 +81,9 @@ test('Borongan generation counts only PAYABLE attendance and snapshots its daily
     leaveRequest: { findMany: async () => assert.fail('payroll generation must not adjust leave automatically') },
     overtimeRequest: { findMany: async () => assert.fail('payroll generation must not adjust overtime automatically') },
     absenceCase: { findMany: async () => assert.fail('payroll generation must not adjust absence automatically') },
-  }, auditLog);
+  };
+  prisma.$transaction = async (callback) => callback(prisma);
+  const service = new PayrollService(prisma, auditLog);
   service.findOne = async () => ({ id: 'run-1', slips: [] });
 
   const result = await service.createRun({ periodStart: '2026-09-01', periodEnd: '2026-09-30' }, finance);

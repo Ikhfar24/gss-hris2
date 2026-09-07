@@ -56,58 +56,62 @@ export class PayrollService {
     const periodEnd = payrollPeriod?.periodEnd ?? dateOnly(dto.periodEnd!);
     if (periodEnd < periodStart) throw new BadRequestException('Tanggal selesai periode tidak boleh sebelum tanggal mulai');
 
-    const run = await this.prisma.payrollRun.create({ data: { periodStart, periodEnd, payrollPeriodId: payrollPeriod?.id, createdById: actor.userId } });
-    const employees = await this.prisma.employee.findMany({
-      where: {
-        status: { in: ['ACTIVE', 'TRAINING', 'ON_LEAVE'] },
-        ...(payrollPeriod?.cycleSetting.locationId ? { placements: { some: { locationId: payrollPeriod.cycleSetting.locationId, startDate: { lte: periodEnd }, OR: [{ endDate: null }, { endDate: { gte: periodStart } }] } } } : {}),
-        ...(payrollPeriod?.cycleSetting.clientId ? { placements: { some: { location: { clientId: payrollPeriod.cycleSetting.clientId }, startDate: { lte: periodEnd }, OR: [{ endDate: null }, { endDate: { gte: periodStart } }] } } } : {}),
-      },
-      include: {
-        contracts: {
-          where: {
-            status: 'ACTIVE',
-            startDate: { lte: periodEnd },
-            OR: [{ endDate: null }, { endDate: { gte: periodStart } }],
-          },
-          orderBy: { startDate: 'desc' },
-          take: 1,
+    const { run, skipped } = await this.prisma.$transaction(async (tx) => {
+      const run = await tx.payrollRun.create({ data: { periodStart, periodEnd, payrollPeriodId: payrollPeriod?.id, createdById: actor.userId } });
+      const employees = await tx.employee.findMany({
+        where: {
+          status: { in: ['ACTIVE', 'TRAINING', 'ON_LEAVE'] },
+          ...(payrollPeriod?.cycleSetting.locationId ? { placements: { some: { locationId: payrollPeriod.cycleSetting.locationId, startDate: { lte: periodEnd }, OR: [{ endDate: null }, { endDate: { gte: periodStart } }] } } } : {}),
+          ...(payrollPeriod?.cycleSetting.clientId ? { placements: { some: { location: { clientId: payrollPeriod.cycleSetting.clientId }, startDate: { lte: periodEnd }, OR: [{ endDate: null }, { endDate: { gte: periodStart } }] } } } : {}),
         },
-      },
-    });
-    const skipped: string[] = [];
-
-    for (const employee of employees) {
-      const contract = employee.contracts[0];
-      if (contract?.baseSalary) {
-        await this.prisma.payrollSlip.create({
-          data: { payrollRunId: run.id, employeeId: employee.id, basis: 'CONTRACT', baseSalary: contract.baseSalary, netPay: contract.baseSalary },
-        });
-        continue;
-      }
-
-      if (employee.employmentType === 'TENAGA_BORONGAN' && employee.dailyRate) {
-        // Only reviewed and payable attendance can earn a Borongan daily rate.
-        const payableDays = await this.prisma.attendance.count({
-          where: { employeeId: employee.id, date: { gte: periodStart, lte: periodEnd }, payableStatus: 'PAYABLE' },
-        });
-        const baseSalary = employee.dailyRate * payableDays;
-        await this.prisma.payrollSlip.create({
-          data: {
-            payrollRunId: run.id,
-            employeeId: employee.id,
-            basis: 'DAILY_RATE',
-            dailyRate: employee.dailyRate,
-            presentDays: payableDays,
-            baseSalary,
-            netPay: baseSalary,
+        include: {
+          contracts: {
+            where: {
+              status: 'ACTIVE',
+              startDate: { lte: periodEnd },
+              OR: [{ endDate: null }, { endDate: { gte: periodStart } }],
+            },
+            orderBy: { startDate: 'desc' },
+            take: 1,
           },
-        });
-        continue;
+        },
+      });
+      const skipped: string[] = [];
+
+      for (const employee of employees) {
+        const contract = employee.contracts[0];
+        if (contract?.baseSalary) {
+          await tx.payrollSlip.create({
+            data: { payrollRunId: run.id, employeeId: employee.id, basis: 'CONTRACT', baseSalary: contract.baseSalary, netPay: contract.baseSalary },
+          });
+          continue;
+        }
+
+        if (employee.employmentType === 'TENAGA_BORONGAN' && employee.dailyRate) {
+          // Only reviewed and payable attendance can earn a Borongan daily rate.
+          const payableDays = await tx.attendance.count({
+            where: { employeeId: employee.id, date: { gte: periodStart, lte: periodEnd }, payableStatus: 'PAYABLE' },
+          });
+          const baseSalary = employee.dailyRate * payableDays;
+          await tx.payrollSlip.create({
+            data: {
+              payrollRunId: run.id,
+              employeeId: employee.id,
+              basis: 'DAILY_RATE',
+              dailyRate: employee.dailyRate,
+              presentDays: payableDays,
+              baseSalary,
+              netPay: baseSalary,
+            },
+          });
+          continue;
+        }
+
+        skipped.push(employee.name);
       }
 
-      skipped.push(employee.name);
-    }
+      return { run, skipped };
+    });
 
     await this.audit(actor, 'PAYROLL_RUN_GENERATE', 'PayrollRun', run.id, 'Generate payroll', { periodStart, periodEnd, payrollPeriodId: payrollPeriod?.id ?? null, skipped });
     return { ...(await this.findOne(run.id, actor)), skipped };

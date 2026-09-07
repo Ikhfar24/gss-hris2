@@ -223,6 +223,12 @@ test('alpha cases require 24 hours before HR confirmation and payroll daily-rate
     payrollRun: { create: async () => ({ id: 'run-1' }) },
     attendance: { count: async () => 3 },
     payrollSlip: { create: async ({ data }) => { slips.push(data); } },
+    $transaction: async (callback) => callback({
+      payrollRun: { create: async () => ({ id: 'run-1' }) },
+      employee: { findMany: async () => [{ id: 'daily-1', name: 'Daily', employmentType: 'TENAGA_BORONGAN', dailyRate: 100000, contracts: [] }, { id: 'missing-1', name: 'Missing', employmentType: 'TENAGA_BORONGAN', dailyRate: null, contracts: [] }] },
+      attendance: { count: async () => 3 },
+      payrollSlip: { create: async ({ data }) => { slips.push(data); } },
+    }),
   }, { record: async () => {} });
   payroll.findOne = async () => ({ id: 'run-1' });
   const result = await payroll.createRun({ periodStart: '2026-09-01', periodEnd: '2026-09-30' }, { userId: 'finance-1', role: 'KEUANGAN' });
