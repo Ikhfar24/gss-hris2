@@ -1,4 +1,5 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Res, StreamableFile, UseGuards } from '@nestjs/common';
+import type { Response } from 'express';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -8,6 +9,7 @@ import { EmployeesService } from './employees.service';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
 import { LifecycleDto } from '../users/dto/lifecycle.dto';
+import { BulkDeactivateEmployeesDto, ImportEmployeesDto } from './dto/batch7-employees.dto';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('employees')
@@ -33,6 +35,32 @@ export class EmployeesController {
   @Get('me')
   findMe(@CurrentUser() actor: AuthenticatedUser) {
     return this.service.findByUserId(actor.userId);
+  }
+
+  @Roles(Role.ADMIN_HR, Role.SYSTEM_ADMIN, Role.KOORDINATOR, Role.DIREKTUR, Role.KOMISARIS, Role.MARKETING, Role.KARYAWAN)
+  @Get('export')
+  async export(@Query('format') format: 'xlsx' | 'pdf' = 'xlsx', @CurrentUser() actor: AuthenticatedUser, @Res({ passthrough: true }) res: Response) {
+    const result = await this.service.export(format === 'pdf' ? 'pdf' : 'xlsx', actor);
+    res.set({ 'Content-Type': result.mime, 'Content-Disposition': `attachment; filename="${result.filename}"` });
+    return new StreamableFile(result.buffer);
+  }
+
+  @Roles(Role.ADMIN_HR, Role.SYSTEM_ADMIN)
+  @Post('import')
+  import(@Body() dto: ImportEmployeesDto, @CurrentUser() actor: AuthenticatedUser) {
+    return this.service.import(dto, actor);
+  }
+
+  @Roles(Role.ADMIN_HR, Role.SYSTEM_ADMIN)
+  @Patch('bulk-deactivate')
+  bulkDeactivate(@Body() dto: BulkDeactivateEmployeesDto, @CurrentUser() actor: AuthenticatedUser) {
+    return this.service.bulkDeactivate(dto, actor);
+  }
+
+  @Roles(Role.ADMIN_HR, Role.SYSTEM_ADMIN, Role.KOORDINATOR, Role.DIREKTUR, Role.KOMISARIS, Role.KARYAWAN)
+  @Get(':id/360')
+  find360(@Param('id') id: string, @CurrentUser() actor: AuthenticatedUser) {
+    return this.service.find360(id, actor);
   }
 
   @Roles(Role.ADMIN_HR, Role.SYSTEM_ADMIN, Role.KOORDINATOR, Role.DIREKTUR, Role.KOMISARIS)

@@ -1,7 +1,8 @@
 'use client';
 
+import Link from 'next/link';
 import { Fragment, useEffect, useState, FormEvent } from 'react';
-import { apiFetch, ApiError } from '@/lib/api';
+import { apiFetch, ApiError, downloadFile } from '@/lib/api';
 import { getUser } from '@/lib/auth';
 
 interface LocationOption {
@@ -31,7 +32,9 @@ interface EmployeeRow {
   placements: { location: { name: string } }[];
   contracts?: ContractRow[];
 }
-interface EmployeeResponse { data: EmployeeRow[]; meta: { total: number } }
+interface EmployeeResponse { data: EmployeeRow[]; meta: { page: number; pageSize: number; total: number } }
+interface ImportResult { dryRun: boolean; valid: boolean; rowCount?: number; created?: number; errors: { row: number; errors: string[] }[] }
+interface BulkResult { deactivated: number; failed: number; results: { employeeId: string; success: boolean; error?: string }[] }
 
 const TYPE_LABEL: Record<string, string> = {
   TENAGA_BORONGAN: 'Tenaga Borongan',
@@ -54,6 +57,16 @@ function formatRupiah(n: number | null) {
 export default function EmployeesPage() {
   const canManage = ['ADMIN_HR', 'SYSTEM_ADMIN'].includes(getUser()?.role ?? '');
   const [employees, setEmployees] = useState<EmployeeRow[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [typeFilter, setTypeFilter] = useState('');
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [bulkReason, setBulkReason] = useState('');
+  const [importText, setImportText] = useState('');
+  const [importResult, setImportResult] = useState<ImportResult | null>(null);
+  const [bulkResult, setBulkResult] = useState<BulkResult | null>(null);
   const [locations, setLocations] = useState<LocationOption[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -73,13 +86,20 @@ export default function EmployeesPage() {
     dailyRate: '',
   });
 
-  async function load() {
+  async function load(requestedPage = page) {
     try {
+      const params = new URLSearchParams({ page: String(requestedPage), pageSize: '25' });
+      if (search.trim()) params.set('search', search.trim());
+      if (statusFilter) params.set('status', statusFilter);
+      if (typeFilter) params.set('employmentType', typeFilter);
       const [emps, locs] = await Promise.all([
-        apiFetch<EmployeeResponse>('/employees'),
+        apiFetch<EmployeeResponse>(`/employees?${params}`),
         apiFetch<LocationOption[]>('/locations'),
       ]);
       setEmployees(emps.data);
+      setTotal(emps.meta.total);
+      setPage(emps.meta.page);
+      setSelectedIds([]);
       setLocations(locs);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Gagal memuat data karyawan');
@@ -89,6 +109,56 @@ export default function EmployeesPage() {
   useEffect(() => {
     load();
   }, []);
+
+  function applyFilters(e: FormEvent) {
+    e.preventDefault();
+    load(1);
+  }
+
+  function parseImportRows() {
+    const value = importText.trim();
+    if (!value) throw new Error('Masukkan baris impor terlebih dahulu');
+    if (value.startsWith('[')) {
+      const parsed = JSON.parse(value);
+      if (!Array.isArray(parsed)) throw new Error('JSON harus berupa array baris karyawan');
+      return parsed;
+    }
+    const [header, ...lines] = value.split(/\r?\n/).filter(Boolean);
+    const keys = header.split(',').map((item) => item.trim());
+    if (!keys.includes('name') || !keys.includes('employmentType') || !keys.includes('joinDate')) {
+      throw new Error('CSV harus memiliki kolom name, employmentType, dan joinDate');
+    }
+    return lines.map((line) => Object.fromEntries(keys.map((key, index) => {
+      const raw = line.split(',')[index]?.trim() ?? '';
+      if (raw === '') return [key, undefined];
+      if (raw === 'true' || raw === 'false') return [key, raw === 'true'];
+      if (key === 'dailyRate') return [key, Number(raw)];
+      return [key, raw];
+    })));
+  }
+
+  async function submitImport(commit: boolean) {
+    setError(null);
+    try {
+      const rows = parseImportRows();
+      const result = await apiFetch<ImportResult>('/employees/import', { method: 'POST', body: { rows, dryRun: !commit, commit } });
+      setImportResult(result);
+      if (commit && result.valid) await load(1);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : err instanceof Error ? err.message : 'Gagal memproses impor');
+    }
+  }
+
+  async function deactivateSelected() {
+    if (!bulkReason.trim() || selectedIds.length === 0) return;
+    setError(null);
+    try {
+      const result = await apiFetch<BulkResult>('/employees/bulk-deactivate', { method: 'PATCH', body: { employeeIds: selectedIds, reason: bulkReason.trim() } });
+      setBulkResult(result);
+      setBulkReason('');
+      await load();
+    } catch (err) { setError(err instanceof ApiError ? err.message : 'Gagal menonaktifkan karyawan terpilih'); }
+  }
 
   async function onCreate(e: FormEvent) {
     e.preventDefault();
@@ -176,11 +246,12 @@ export default function EmployeesPage() {
 
   return (
     <div>
-      <div className="mb-4 flex items-center justify-between">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-2xl font-semibold">Data Karyawan</h1>
-        {canManage && <button onClick={() => setShowForm((s) => !s)} className="rounded-lg bg-slate-900 px-4 py-2 text-sm text-white hover:bg-slate-800">
-          {showForm ? 'Batal' : '+ Tambah Karyawan'}
-        </button>}
+        <div className="flex flex-wrap gap-2">
+          {canManage && <><button onClick={() => downloadFile('/employees/export?format=xlsx', null, 'daftar-karyawan.xlsx').catch((err) => setError(err instanceof ApiError ? err.message : 'Gagal mengekspor data'))} className="rounded-lg border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50">Ekspor Excel</button><button onClick={() => downloadFile('/employees/export?format=pdf', null, 'daftar-karyawan.pdf').catch((err) => setError(err instanceof ApiError ? err.message : 'Gagal mengekspor data'))} className="rounded-lg border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50">Ekspor PDF</button></>}
+          {canManage && <button onClick={() => setShowForm((s) => !s)} className="rounded-lg bg-slate-900 px-4 py-2 text-sm text-white hover:bg-slate-800">{showForm ? 'Batal' : '+ Tambah Karyawan'}</button>}
+        </div>
       </div>
 
       {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
@@ -216,10 +287,29 @@ export default function EmployeesPage() {
         </form>
       )}
 
+      <form onSubmit={applyFilters} className="mb-4 flex flex-wrap gap-2">
+        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Cari nama, NIP, atau jabatan" className="rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm"><option value="">Semua status</option>{Object.keys(STATUS_STYLE).concat('INACTIVE').map((status) => <option key={status} value={status}>{status}</option>)}</select>
+        <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm"><option value="">Semua jenis</option><option value="TENAGA_BORONGAN">Tenaga Borongan</option><option value="TENAGA_ARSIPARIS">Tenaga Arsiparis</option></select>
+        <button type="submit" className="rounded-lg border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50">Terapkan</button>
+      </form>
+
+      {canManage && <div className="mb-4 rounded-xl border border-slate-200 bg-white p-4">
+        <h2 className="text-sm font-semibold">Impor Karyawan</h2>
+        <p className="mt-1 text-xs text-slate-500">Tempel array JSON atau CSV sederhana dengan header. Gunakan pratinjau sebelum komit.</p>
+        <textarea value={importText} onChange={(e) => setImportText(e.target.value)} placeholder={'[{"name":"Nama", "employmentType":"TENAGA_BORONGAN", "joinDate":"2026-01-01"}]'} className="mt-2 min-h-24 w-full rounded-lg border border-slate-300 px-3 py-2 font-mono text-xs" />
+        <div className="mt-2 flex gap-2"><button type="button" onClick={() => submitImport(false)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50">Pratinjau</button><button type="button" onClick={() => submitImport(true)} className="rounded-lg bg-slate-900 px-3 py-2 text-sm text-white hover:bg-slate-800">Komit Impor</button></div>
+        {importResult && <div className="mt-3 text-sm"><p>{importResult.dryRun ? 'Pratinjau' : 'Impor'}: {importResult.valid ? 'valid' : 'memiliki kesalahan'}{importResult.rowCount !== undefined ? `, ${importResult.rowCount} baris` : ''}{importResult.created !== undefined ? `, ${importResult.created} dibuat` : ''}.</p>{importResult.errors.map((item) => <p key={item.row} className="text-red-600">Baris {item.row}: {item.errors.join(', ')}</p>)}</div>}
+      </div>}
+
+      {canManage && selectedIds.length > 0 && <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm"><span>{selectedIds.length} karyawan dipilih</span><input value={bulkReason} onChange={(e) => setBulkReason(e.target.value)} placeholder="Alasan nonaktifkan (min. 3 karakter)" className="rounded-lg border border-slate-300 px-3 py-2" /><button onClick={deactivateSelected} disabled={bulkReason.trim().length < 3} className="rounded-lg bg-red-700 px-3 py-2 text-white disabled:opacity-50">Nonaktifkan Terpilih</button></div>}
+      {bulkResult && <p className="mb-4 text-sm">Nonaktif massal: {bulkResult.deactivated} berhasil, {bulkResult.failed} gagal.{bulkResult.results.filter((item) => !item.success).map((item) => ` ${item.error}`).join('')}</p>}
+
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
         <table className="w-full text-sm">
           <thead className="bg-slate-50 text-left text-slate-500">
             <tr>
+              {canManage && <th className="px-4 py-2"><input type="checkbox" aria-label="Pilih semua" checked={employees.length > 0 && selectedIds.length === employees.length} onChange={(e) => setSelectedIds(e.target.checked ? employees.map((emp) => emp.id) : [])} /></th>}
               <th className="px-4 py-2">Nama</th>
               <th className="px-4 py-2">Jenis</th>
               <th className="px-4 py-2">Status</th>
@@ -232,6 +322,7 @@ export default function EmployeesPage() {
             {employees.map((emp) => (
               <Fragment key={emp.id}>
                 <tr className="border-t border-slate-100">
+                   {canManage && <td className="px-4 py-2"><input type="checkbox" aria-label={`Pilih ${emp.name}`} checked={selectedIds.includes(emp.id)} onChange={(e) => setSelectedIds((ids) => e.target.checked ? [...ids, emp.id] : ids.filter((id) => id !== emp.id))} /></td>}
                    <td className="px-4 py-2">{emp.name}</td>
                   <td className="px-4 py-2">{TYPE_LABEL[emp.employmentType]}</td>
                   <td className="px-4 py-2">
@@ -241,7 +332,8 @@ export default function EmployeesPage() {
                   </td>
                   <td className="px-4 py-2">{emp.placements[0]?.location?.name ?? '-'}</td>
                   <td className="px-4 py-2">{formatRupiah(emp.dailyRate)}</td>
-                  <td className="px-4 py-2 text-right">
+                   <td className="px-4 py-2 text-right">
+                     <Link href={`/employees/${emp.id}/360`} className="text-xs underline">Employee 360</Link>
                     {canManage && <button onClick={() => toggleContracts(emp.id)} className="text-xs text-slate-500 underline hover:text-slate-900">
                       {expandedId === emp.id ? 'Tutup' : 'Kelola Kontrak'}
                     </button>}
@@ -250,7 +342,7 @@ export default function EmployeesPage() {
                 </tr>
                 {expandedId === emp.id && (
                   <tr className="border-t border-slate-100 bg-slate-50">
-                    <td colSpan={6} className="px-4 py-4">
+                    <td colSpan={canManage ? 7 : 6} className="px-4 py-4">
                       <div className="mb-3">
                         <h4 className="mb-2 text-xs font-semibold text-slate-500">RIWAYAT KONTRAK</h4>
                         {(contracts[emp.id] ?? []).length === 0 && <p className="text-xs text-slate-400">Belum ada kontrak.</p>}
@@ -286,6 +378,7 @@ export default function EmployeesPage() {
           </tbody>
         </table>
       </div>
+      <div className="mt-4 flex items-center justify-between text-sm"><span>Total {total} karyawan</span><div className="flex items-center gap-2"><button onClick={() => load(page - 1)} disabled={page <= 1} className="rounded border border-slate-300 px-3 py-1 disabled:opacity-50">Sebelumnya</button><span>Halaman {page} / {Math.max(1, Math.ceil(total / 25))}</span><button onClick={() => load(page + 1)} disabled={page >= Math.ceil(total / 25)} className="rounded border border-slate-300 px-3 py-1 disabled:opacity-50">Berikutnya</button></div></div>
     </div>
   );
 }
