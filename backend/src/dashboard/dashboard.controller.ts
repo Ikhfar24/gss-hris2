@@ -11,9 +11,15 @@ import { DashboardService } from './dashboard.service';
 export class DashboardController {
   constructor(private service: DashboardService) {}
 
-  @Roles(Role.ADMIN_HR, Role.SYSTEM_ADMIN, Role.KOORDINATOR, Role.DIREKTUR, Role.KOMISARIS)
+  @Roles(Role.KARYAWAN, Role.KOORDINATOR, Role.ADMIN_HR, Role.KEUANGAN, Role.MARKETING, Role.DIREKTUR, Role.KOMISARIS, Role.SYSTEM_ADMIN)
   @Get('summary')
   summary(@CurrentUser() actor: AuthenticatedUser) {
     return this.service.summary(actor);
+  }
+
+  @Roles(Role.KARYAWAN, Role.KOORDINATOR, Role.ADMIN_HR, Role.KEUANGAN, Role.MARKETING, Role.DIREKTUR, Role.KOMISARIS, Role.SYSTEM_ADMIN)
+  @Get('attention')
+  attention(@CurrentUser() actor: AuthenticatedUser) {
+    return this.service.attention(actor);
   }
 }

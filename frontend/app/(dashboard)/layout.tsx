@@ -81,7 +81,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               Hari Libur & Kalender
             </Link>
           </RoleGate>
-          <RoleGate allow={['ADMIN_HR', 'SYSTEM_ADMIN', 'KOORDINATOR', 'DIREKTUR']}>
+          <RoleGate allow={['ADMIN_HR', 'SYSTEM_ADMIN', 'KOORDINATOR', 'DIREKTUR', 'KOMISARIS']}>
             <Link href="/reports" className="rounded-lg px-3 py-2 hover:bg-slate-100">
               Laporan
             </Link>
