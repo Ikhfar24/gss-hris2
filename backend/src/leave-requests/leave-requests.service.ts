@@ -7,9 +7,10 @@ import { saveBase64File, toProtectedMediaPath } from '../common/utils/file-stora
 import { assertDateRange, dateRangesOverlap, startOfCalendarDay } from '../common/domain/date-range';
 import { CreateLeaveRequestDto } from './dto/create-leave-request.dto';
 import { ReviewLeaveRequestDto } from './dto/review-leave-request.dto';
+import { CoordinatorScopeService } from '../coordinator-scopes/coordinator-scope.service';
 
 const INCLUDE = {
-  employee: { select: { id: true, name: true, employmentType: true, coordinatorId: true } },
+  employee: { select: { id: true, name: true, employmentType: true } },
   approvals: { orderBy: { decidedAt: 'asc' as const } },
 };
 const HR_ROLES = [Role.ADMIN_HR, Role.SYSTEM_ADMIN];
@@ -17,7 +18,7 @@ const REVIEWABLE_STATUSES: LeaveStatus[] = ['PENDING', 'PENDING_COORDINATOR', 'P
 
 @Injectable()
 export class LeaveRequestsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService, private scopes: CoordinatorScopeService) {}
 
   private async resolveOwnEmployeeId(userId: string): Promise<string> {
     const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { employeeId: true } });
@@ -31,7 +32,7 @@ export class LeaveRequestsService {
       : actor.role === Role.DIREKTUR
         ? { status: 'PENDING_DIRECTOR' as LeaveStatus }
         : actor.role === Role.KOORDINATOR
-          ? { employee: { coordinatorId: actor.userId } }
+          ? { OR: [await this.scopes.queryWhere(actor.userId), { employee: { user: { is: { id: actor.userId } } } }] }
           : { employeeId: await this.resolveOwnEmployeeId(actor.userId) };
     const requests = await this.prisma.leaveRequest.findMany({ where, include: INCLUDE, orderBy: { requestedAt: 'desc' } });
     return requests.map((request) => this.present(request));
@@ -172,7 +173,7 @@ export class LeaveRequestsService {
 
   private async assertCanDecide(request: any, stage: string, actor: AuthenticatedUser, intervention: boolean) {
     if (intervention) return;
-    if (stage === 'COORDINATOR' && actor.role === Role.KOORDINATOR && request.employee.coordinatorId === actor.userId) return;
+    if (stage === 'COORDINATOR' && actor.role === Role.KOORDINATOR) { await this.scopes.assertEmployee(actor.userId, request.employee); return; }
     if (stage === 'HR' && HR_ROLES.includes(actor.role as Role)) return;
     if (stage === 'DIRECTOR' && (actor.role === Role.DIREKTUR || actor.role === Role.SYSTEM_ADMIN)) return;
     throw new ForbiddenException('Anda tidak berwenang pada tahap approval ini');
@@ -242,10 +243,10 @@ export class LeaveRequestsService {
     return tx.auditLog.create({ data: { actorId: actor.userId, actorRole: actor.role as any, action, entity, entityId, oldValue: oldValue as any, newValue: newValue as any, reason: reason ?? null, source: 'leave-requests' } });
   }
 
-  private async assertCanAccess(request: { employeeId: string; employee: { coordinatorId: string | null } }, actor: AuthenticatedUser) {
+  private async assertCanAccess(request: { employeeId: string; employee: { employmentType: string } }, actor: AuthenticatedUser) {
     if ([Role.ADMIN_HR, Role.SYSTEM_ADMIN, Role.DIREKTUR].includes(actor.role as Role)) return;
-    if (actor.role === Role.KOORDINATOR && request.employee.coordinatorId === actor.userId) return;
     if (await this.resolveOwnEmployeeId(actor.userId).catch(() => null) === request.employeeId) return;
+    if (actor.role === Role.KOORDINATOR) { await this.scopes.assertEmployee(actor.userId, request.employee); return; }
     throw new ForbiddenException('Anda tidak berhak mengakses pengajuan ini');
   }
 

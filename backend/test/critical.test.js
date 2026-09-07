@@ -48,10 +48,10 @@ test('coordinator report queries always include the coordinator team scope', asy
   let receivedWhere;
   const service = new ReportsService({
     attendance: { findMany: async ({ where }) => { receivedWhere = where; return []; } },
-  });
+  }, { queryWhere: async () => ({ employee: { employmentType: { in: ['TENAGA_BORONGAN'] } } }) });
   service.render = async () => ({ buffer: Buffer.alloc(0), filename: 'test.xlsx', mime: 'application/octet-stream' });
   await service.exportAttendance({ format: 'xlsx' }, { userId: 'coord-1', email: 'coord@example.test', role: 'KOORDINATOR' });
-  assert.deepEqual(receivedWhere.employee, { coordinatorId: 'coord-1' });
+  assert.deepEqual(receivedWhere.employee, { employmentType: { in: ['TENAGA_BORONGAN'] } });
 });
 
 test('coordinator cannot retrieve an employee outside their team by direct ID', async () => {

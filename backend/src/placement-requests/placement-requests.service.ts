@@ -11,6 +11,7 @@ import { Role } from '../common/enums/role.enum';
 import { CreatePlacementRequestDto } from './dto/create-placement-request.dto';
 import { ReviewPlacementRequestDto } from './dto/review-placement-request.dto';
 import { assertDateRange, dateRangesOverlap, startOfCalendarDay } from '../common/domain/date-range';
+import { CoordinatorScopeService } from '../coordinator-scopes/coordinator-scope.service';
 
 const INCLUDE = {
   employee: { select: { id: true, name: true, employmentType: true } },
@@ -23,6 +24,7 @@ export class PlacementRequestsService {
   constructor(
     private prisma: PrismaService,
     private auditLog: AuditLogService,
+    private scopes: CoordinatorScopeService,
   ) {}
 
   async findAll(user: AuthenticatedUser) {
@@ -64,9 +66,7 @@ export class PlacementRequestsService {
       include: { placements: { where: { status: 'ACTIVE' } } },
     });
     if (!employee) throw new NotFoundException('Karyawan tidak ditemukan');
-    if (actor.role === Role.KOORDINATOR && employee.coordinatorId !== actor.userId) {
-      throw new ForbiddenException('Anda hanya dapat mengajukan penempatan untuk tim Anda');
-    }
+    if (actor.role === Role.KOORDINATOR) await this.scopes.assertEmployee(actor.userId, employee);
 
     const currentPlacement = employee.placements[0];
     if (currentPlacement && currentPlacement.locationId === dto.destinationLocationId) {

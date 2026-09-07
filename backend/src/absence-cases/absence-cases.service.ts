@@ -9,9 +9,10 @@ import { SubmitAbsenceExplanationDto } from './dto/submit-absence-explanation.dt
 import { FollowUpAbsenceCaseDto } from './dto/follow-up-absence-case.dto';
 import { ResolveAbsenceCaseDto } from './dto/resolve-absence-case.dto';
 import { QueryAbsenceAttentionDto } from './dto/query-absence-attention.dto';
+import { CoordinatorScopeService } from '../coordinator-scopes/coordinator-scope.service';
 
 const INCLUDE = {
-  employee: { select: { id: true, name: true, employeeNumber: true, coordinatorId: true } },
+  employee: { select: { id: true, name: true, employeeNumber: true, employmentType: true } },
 };
 
 const HR_ROLES = [Role.ADMIN_HR, Role.SYSTEM_ADMIN];
@@ -23,6 +24,7 @@ export class AbsenceCasesService {
   constructor(
     private prisma: PrismaService,
     private auditLog: AuditLogService,
+    private scopes: CoordinatorScopeService,
   ) {}
 
   async create(dto: CreateAbsenceCaseDto, actor: AuthenticatedUser) {
@@ -82,7 +84,7 @@ export class AbsenceCasesService {
     return this.prisma.absenceCase.findMany({
       where: {
         status: { in: statuses },
-        ...(actor.role === Role.KOORDINATOR ? { employee: { coordinatorId: actor.userId } } : {}),
+        ...(actor.role === Role.KOORDINATOR ? await this.scopes.queryWhere(actor.userId) : {}),
       },
       include: INCLUDE,
       orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
@@ -119,9 +121,7 @@ export class AbsenceCasesService {
 
   async followUp(id: string, dto: FollowUpAbsenceCaseDto, actor: AuthenticatedUser) {
     const absenceCase = await this.getCase(id);
-    if (actor.role === Role.KOORDINATOR && absenceCase.employee.coordinatorId !== actor.userId) {
-      throw new ForbiddenException('Anda hanya dapat menindaklanjuti kasus tim sendiri');
-    }
+    if (actor.role === Role.KOORDINATOR) await this.scopes.assertEmployee(actor.userId, absenceCase.employee);
     if (![Role.KOORDINATOR, ...HR_ROLES].includes(actor.role as Role)) throw new ForbiddenException('Anda tidak berwenang menindaklanjuti kasus ini');
     if (absenceCase.status !== 'PENDING_EXPLANATION') throw new BadRequestException('Kasus ini sudah diselesaikan');
 
@@ -175,10 +175,10 @@ export class AbsenceCasesService {
     if (leave) throw new BadRequestException('Tanggal tersebut tercakup pengajuan cuti/izin yang telah disetujui');
   }
 
-  private async assertCanAccess(absenceCase: { employeeId: string; employee: { coordinatorId: string | null } }, actor: AuthenticatedUser) {
+  private async assertCanAccess(absenceCase: { employeeId: string; employee: { employmentType: string } }, actor: AuthenticatedUser) {
     if (HR_ROLES.includes(actor.role as Role)) return;
-    if (actor.role === Role.KOORDINATOR && absenceCase.employee.coordinatorId === actor.userId) return;
     if (absenceCase.employeeId === await this.resolveOwnEmployeeId(actor.userId).catch(() => null)) return;
+    if (actor.role === Role.KOORDINATOR) { await this.scopes.assertEmployee(actor.userId, absenceCase.employee); return; }
     throw new ForbiddenException('Anda tidak berwenang mengakses kasus ini');
   }
 

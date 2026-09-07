@@ -5,22 +5,23 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { Role } from '../common/enums/role.enum';
 import { resolveStoredFile } from '../common/utils/file-storage.util';
+import { CoordinatorScopeService } from '../coordinator-scopes/coordinator-scope.service';
 
 const MANAGEMENT = [Role.ADMIN_HR, Role.SYSTEM_ADMIN, Role.DIREKTUR];
 const MIME: Record<string, string> = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp', '.pdf': 'application/pdf' };
 
 @Injectable()
 export class MediaService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService, private scopes: CoordinatorScopeService) {}
 
   async openSelfie(employeeId: string, filename: string, actor: AuthenticatedUser): Promise<StreamableFile> {
     const paths = this.mediaPaths('selfies', employeeId, filename);
     const attendance = await this.prisma.attendance.findFirst({
       where: { employeeId, OR: [{ checkInSelfieUrl: { in: paths } }, { checkOutSelfieUrl: { in: paths } }] },
-      include: { employee: { select: { coordinatorId: true } } },
+      include: { employee: { select: { employmentType: true } } },
     });
     if (!attendance) throw new NotFoundException('File selfie tidak ditemukan');
-    await this.assertAccess(employeeId, attendance.employee.coordinatorId, actor);
+    await this.assertAccess(employeeId, attendance.employee, actor);
     return this.file('selfies', employeeId, filename);
   }
 
@@ -28,10 +29,10 @@ export class MediaService {
     const paths = this.mediaPaths('leave-documents', employeeId, filename);
     const request = await this.prisma.leaveRequest.findFirst({
       where: { employeeId, documentUrl: { in: paths } },
-      include: { employee: { select: { coordinatorId: true } } },
+      include: { employee: { select: { employmentType: true } } },
     });
     if (!request) throw new NotFoundException('Dokumen tidak ditemukan');
-    await this.assertAccess(employeeId, request.employee.coordinatorId, actor);
+    await this.assertAccess(employeeId, request.employee, actor);
     return this.file('leave-documents', employeeId, filename);
   }
 
@@ -44,11 +45,11 @@ export class MediaService {
     return [legacy, protectedPath];
   }
 
-  private async assertAccess(employeeId: string, coordinatorId: string | null, actor: AuthenticatedUser) {
+  private async assertAccess(employeeId: string, employee: { employmentType: string }, actor: AuthenticatedUser) {
     if (MANAGEMENT.includes(actor.role as Role)) return;
-    if (actor.role === Role.KOORDINATOR && coordinatorId === actor.userId) return;
     const user = await this.prisma.user.findUnique({ where: { id: actor.userId }, select: { employeeId: true } });
     if (user?.employeeId === employeeId) return;
+    if (actor.role === Role.KOORDINATOR) { await this.scopes.assertEmployee(actor.userId, employee); return; }
     throw new ForbiddenException('Anda tidak berhak mengakses file ini');
   }
 

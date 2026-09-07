@@ -8,9 +8,10 @@ import { ActionTemporaryAssignmentDto } from './dto/action-temporary-assignment.
 import { CreateTemporaryAssignmentDto } from './dto/create-temporary-assignment.dto';
 import { ReviewTemporaryAssignmentDto } from './dto/review-temporary-assignment.dto';
 import { UpdateTemporaryAssignmentDto } from './dto/update-temporary-assignment.dto';
+import { CoordinatorScopeService } from '../coordinator-scopes/coordinator-scope.service';
 
 const INCLUDE = {
-  employee: { select: { id: true, name: true, employmentType: true, coordinatorId: true } },
+  employee: { select: { id: true, name: true, employmentType: true } },
   originPlacement: { include: { location: { select: { id: true, name: true } } } },
   location: { select: { id: true, name: true, clientId: true, isActive: true } },
   client: { select: { id: true, name: true } },
@@ -20,11 +21,11 @@ const BLOCKING_STATUSES: ('PENDING' | 'APPROVED')[] = ['PENDING', 'APPROVED'];
 
 @Injectable()
 export class TemporaryAssignmentsService {
-  constructor(private prisma: PrismaService, private auditLog: AuditLogService) {}
+  constructor(private prisma: PrismaService, private auditLog: AuditLogService, private scopes: CoordinatorScopeService) {}
 
   async findAll(actor: AuthenticatedUser) {
     return this.prisma.temporaryAssignment.findMany({
-      where: actor.role === Role.KOORDINATOR ? { employee: { coordinatorId: actor.userId } } : undefined,
+      where: actor.role === Role.KOORDINATOR ? { employee: await this.scopes.employeeWhere(actor.userId) } : undefined,
       include: INCLUDE,
       orderBy: { startDate: 'desc' },
     });
@@ -33,9 +34,7 @@ export class TemporaryAssignmentsService {
   async findOne(id: string, actor?: AuthenticatedUser) {
     const assignment = await this.prisma.temporaryAssignment.findUnique({ where: { id }, include: INCLUDE });
     if (!assignment) throw new NotFoundException('Penugasan sementara tidak ditemukan');
-    if (actor?.role === Role.KOORDINATOR && assignment.employee.coordinatorId !== actor.userId) {
-      throw new ForbiddenException('Anda hanya dapat mengakses penugasan tim Anda');
-    }
+    if (actor?.role === Role.KOORDINATOR) await this.scopes.assertEmployee(actor.userId, assignment.employee);
     return assignment;
   }
 
@@ -43,7 +42,7 @@ export class TemporaryAssignmentsService {
     const dates = this.dates(dto.startDate, dto.endDate);
     const employee = await this.prisma.employee.findUnique({ where: { id: dto.employeeId } });
     if (!employee) throw new NotFoundException('Karyawan tidak ditemukan');
-    this.assertTeam(employee.coordinatorId, actor);
+    await this.assertTeam(employee, actor);
     if (employee.status !== 'ACTIVE') throw new BadRequestException('Karyawan tidak memiliki status kerja aktif');
     await this.assertValidDetails(dto.employeeId, dto.originPlacementId, dto.locationId, dto.clientId, dates.startDate, dates.endDate);
 
@@ -124,8 +123,8 @@ export class TemporaryAssignmentsService {
     }
   }
 
-  private assertTeam(coordinatorId: string | null, actor: AuthenticatedUser) {
-    if (actor.role === Role.KOORDINATOR && coordinatorId !== actor.userId) throw new ForbiddenException('Anda hanya dapat mengajukan penugasan untuk tim Anda');
+  private async assertTeam(employee: { employmentType: string }, actor: AuthenticatedUser) {
+    if (actor.role === Role.KOORDINATOR) await this.scopes.assertEmployee(actor.userId, employee);
   }
 
   private assertManageOrOwn(createdById: string, actor: AuthenticatedUser) {

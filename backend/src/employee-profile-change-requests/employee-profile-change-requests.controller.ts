@@ -14,9 +14,11 @@ export class EmployeeProfileChangeRequestsController {
   constructor(private service: EmployeeProfileChangeRequestsService) {}
 
   @Post('employees/me/profile-change-requests')
+  @Roles(Role.KARYAWAN)
   create(@Body() dto: CreateProfileChangeRequestDto, @CurrentUser() actor: AuthenticatedUser) { return this.service.create(dto, actor); }
 
   @Get('employees/me/profile-change-requests')
+  @Roles(Role.KARYAWAN)
   mine(@CurrentUser() actor: AuthenticatedUser) { return this.service.findMine(actor); }
 
   @Roles(Role.ADMIN_HR, Role.SYSTEM_ADMIN)

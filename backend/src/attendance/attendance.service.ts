@@ -13,6 +13,7 @@ import { QueryAttendanceDto, QueryOpenAttendanceDto } from './dto/query-attendan
 import { CorrectAttendanceDto } from './dto/correct-attendance.dto';
 import { ResetDeviceDto } from './dto/reset-device.dto';
 import { ReviewAttendanceDto } from './dto/review-attendance.dto';
+import { CoordinatorScopeService } from '../coordinator-scopes/coordinator-scope.service';
 
 function startOfDay(d: Date): Date {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate());
@@ -38,6 +39,7 @@ export class AttendanceService {
   constructor(
     private prisma: PrismaService,
     private auditLog: AuditLogService,
+    private scopes: CoordinatorScopeService,
   ) {}
 
   /** Resolves the Employee record linked to a logged-in User account. */
@@ -334,7 +336,7 @@ export class AttendanceService {
         employeeId: query.employeeId,
         locationId: query.locationId,
         validationStatus: query.validationStatus,
-        ...(actor.role === Role.KOORDINATOR ? { employee: { coordinatorId: actor.userId } } : {}),
+        ...(actor.role === Role.KOORDINATOR ? await this.scopes.queryWhere(actor.userId) : {}),
       },
       include: INCLUDE,
       orderBy: { checkInAt: 'asc' },
@@ -353,7 +355,7 @@ export class AttendanceService {
         date: { gte: from, lte: to },
         checkInAt: { not: null },
         checkOutAt: null,
-        ...(actor.role === Role.KOORDINATOR ? { employee: { coordinatorId: actor.userId } } : {}),
+        ...(actor.role === Role.KOORDINATOR ? await this.scopes.queryWhere(actor.userId) : {}),
       },
       include: INCLUDE,
       orderBy: { date: 'desc' },
@@ -418,14 +420,14 @@ export class AttendanceService {
   async review(id: string, dto: ReviewAttendanceDto, actor: AuthenticatedUser) {
     const attendance = await this.prisma.attendance.findUnique({
       where: { id },
-      include: { employee: { select: { id: true, coordinatorId: true } }, location: true },
+      include: { employee: { select: { id: true, employmentType: true } }, location: true },
     });
     if (!attendance) throw new NotFoundException('Data absensi tidak ditemukan');
     const reviewer = await this.prisma.user.findUnique({ where: { id: actor.userId }, select: { employeeId: true } });
     if (reviewer?.employeeId === attendance.employee.id) {
       throw new ForbiddenException('Karyawan tidak dapat meninjau absensinya sendiri');
     }
-    this.assertMayReview(attendance.employee.coordinatorId, actor);
+    await this.assertMayReview(attendance.employee, actor);
     if (attendance.validationStatus !== 'NEEDS_REVIEW') {
       throw new BadRequestException('Hanya absensi yang perlu ditinjau yang dapat direview');
     }
@@ -503,7 +505,7 @@ export class AttendanceService {
     const records = await this.prisma.attendance.findMany({
       where: {
         OR: [{ validationStatus: 'NEEDS_REVIEW' }, { forgottenCheckout: true }, { checkInAt: { not: null }, checkOutAt: null }],
-        ...(actor.role === Role.KOORDINATOR ? { employee: { coordinatorId: actor.userId } } : {}),
+        ...(actor.role === Role.KOORDINATOR ? await this.scopes.queryWhere(actor.userId) : {}),
       },
       include: { ...INCLUDE, reviews: { orderBy: { reviewedAt: 'desc' } } },
       orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
@@ -512,14 +514,14 @@ export class AttendanceService {
   }
 
   async reviewHistory(id: string, actor: AuthenticatedUser) {
-    const attendance = await this.prisma.attendance.findUnique({ where: { id }, include: { employee: { select: { coordinatorId: true } } } });
+    const attendance = await this.prisma.attendance.findUnique({ where: { id }, include: { employee: { select: { employmentType: true } } } });
     if (!attendance) throw new NotFoundException('Data absensi tidak ditemukan');
-    this.assertMayReview(attendance.employee.coordinatorId, actor);
+    await this.assertMayReview(attendance.employee, actor);
     return this.prisma.attendanceReview.findMany({ where: { attendanceId: id }, orderBy: { reviewedAt: 'desc' } });
   }
 
-  private assertMayReview(coordinatorId: string | null, actor: AuthenticatedUser) {
-    if (actor.role === Role.KOORDINATOR && coordinatorId === actor.userId) return;
+  private async assertMayReview(employee: { employmentType: string }, actor: AuthenticatedUser) {
+    if (actor.role === Role.KOORDINATOR) { await this.scopes.assertEmployee(actor.userId, employee); return; }
     if (actor.role === Role.ADMIN_HR || actor.role === Role.SYSTEM_ADMIN) return;
     throw new ForbiddenException('Anda tidak berwenang meninjau absensi ini');
   }
@@ -553,17 +555,19 @@ export class AttendanceService {
     const date = dateStr ? startOfDay(new Date(dateStr)) : startOfDay(new Date());
     const weekday = date.getDay();
 
+    const coordinatorEmployeeWhere = actor?.role === Role.KOORDINATOR ? await this.scopes.employeeWhere(actor.userId) : {};
+    const coordinatorQueryWhere = actor?.role === Role.KOORDINATOR ? { employee: coordinatorEmployeeWhere } : {};
     const [scheduledToday, records] = await Promise.all([
       // Employees whose active placement's location works on this weekday.
       this.prisma.employee.count({
         where: {
           status: 'ACTIVE',
-          ...(actor?.role === Role.KOORDINATOR ? { coordinatorId: actor.userId } : {}),
+          ...coordinatorEmployeeWhere,
           placements: { some: { status: 'ACTIVE', location: { workDays: { has: weekday } } } },
         },
       }),
       this.prisma.attendance.findMany({
-        where: { date, ...(actor?.role === Role.KOORDINATOR ? { employee: { coordinatorId: actor.userId } } : {}) },
+        where: { date, ...coordinatorQueryWhere },
         select: { checkInAt: true, latenessStatus: true, validationStatus: true },
       }),
     ]);

@@ -25,7 +25,7 @@ export class OvertimeRequestsController {
     return this.service.findOne(id, actor);
   }
 
-  @Roles(Role.KARYAWAN)
+  @Roles(Role.KARYAWAN, Role.KOORDINATOR)
   @Post()
   create(@Body() dto: CreateOvertimeRequestDto, @CurrentUser() actor: AuthenticatedUser) {
     return this.service.create(dto, actor);

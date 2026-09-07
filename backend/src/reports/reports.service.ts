@@ -4,6 +4,7 @@ import { buildXlsx, buildPdf, ExportColumn } from '../common/utils/export.util';
 import { ExportFormat, ExportQueryDto } from './dto/export-query.dto';
 import { AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { Role } from '../common/enums/role.enum';
+import { CoordinatorScopeService } from '../coordinator-scopes/coordinator-scope.service';
 
 function startOfDay(d: Date): Date {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate());
@@ -23,7 +24,7 @@ export interface ExportResult {
 
 @Injectable()
 export class ReportsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService, private scopes: CoordinatorScopeService) {}
 
   private async render(format: ExportFormat, sheetName: string, title: string, columns: ExportColumn[], rows: Record<string, unknown>[], filenameBase: string): Promise<ExportResult> {
     if (format === ExportFormat.XLSX) {
@@ -44,7 +45,7 @@ export class ReportsService {
         date: { gte: from, lte: to },
         employeeId: query.employeeId,
         locationId: query.locationId,
-        ...(actor.role === Role.KOORDINATOR ? { employee: { coordinatorId: actor.userId } } : {}),
+        ...(actor.role === Role.KOORDINATOR ? await this.scopes.queryWhere(actor.userId) : {}),
       },
       include: { employee: { select: { name: true } }, location: { select: { name: true } } },
       orderBy: [{ date: 'asc' }, { checkInAt: 'asc' }],
@@ -78,7 +79,7 @@ export class ReportsService {
       where: {
         employeeId: query.employeeId,
         locationId: query.locationId,
-        ...(actor.role === Role.KOORDINATOR ? { employee: { coordinatorId: actor.userId } } : {}),
+        ...(actor.role === Role.KOORDINATOR ? await this.scopes.queryWhere(actor.userId) : {}),
       },
       include: { employee: { select: { name: true, employmentType: true } }, location: { select: { name: true } } },
       orderBy: [{ startDate: 'desc' }],
@@ -114,7 +115,7 @@ export class ReportsService {
         employeeId: query.employeeId,
         status: query.status as any,
         ...(from || to ? { startDate: { gte: from, lte: to } } : {}),
-        ...(actor.role === Role.KOORDINATOR ? { employee: { coordinatorId: actor.userId } } : {}),
+        ...(actor.role === Role.KOORDINATOR ? await this.scopes.queryWhere(actor.userId) : {}),
       },
       include: { employee: { select: { name: true } } },
       orderBy: [{ startDate: 'desc' }],

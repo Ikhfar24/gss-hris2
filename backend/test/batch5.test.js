@@ -13,6 +13,9 @@ const employeeActor = { userId: 'user-1', role: 'KARYAWAN' };
 const coordinatorActor = { userId: 'coord-1', role: 'KOORDINATOR' };
 const hrActor = { userId: 'hr-1', role: 'ADMIN_HR' };
 
+const coordinatorDenied = { assertEmployee: async () => { throw new Error('Anda tidak berwenang'); } };
+const coordinatorApproved = { assertEmployee: async () => {} };
+
 function workdayPrisma(overrides = {}) {
   return {
     user: { findUnique: async () => ({ employeeId: 'employee-1' }) },
@@ -33,7 +36,7 @@ test('Batch 5 schema retains immutable leave approvals and leave balance transac
 });
 
 test('leave workflow routes coordinator approvals by leave type and employment type', () => {
-  const service = new LeaveRequestsService({});
+  const service = new LeaveRequestsService({}, coordinatorApproved);
   assert.equal(service.nextStatus('CUTI', 'TENAGA_BORONGAN', 'COORDINATOR'), 'PENDING_HR');
   assert.equal(service.nextStatus('IZIN_LAIN', 'TENAGA_ARSIPARIS', 'COORDINATOR'), 'APPROVED');
   assert.equal(service.nextStatus('RESIGN', 'TENAGA_ARSIPARIS', 'HR'), 'PENDING_DIRECTOR');
@@ -41,7 +44,7 @@ test('leave workflow routes coordinator approvals by leave type and employment t
 });
 
 test('HR intervention requires an explicit reason', async () => {
-  const service = new LeaveRequestsService({});
+  const service = new LeaveRequestsService({}, coordinatorApproved);
   await assert.rejects(
     () => service.intervene('leave-1', { approve: true, note: ' ' }, { userId: 'hr-1', role: 'ADMIN_HR' }),
     /Alasan intervensi wajib/,
@@ -64,7 +67,7 @@ test('employee leave requests are self-scoped and early-leave permission does no
     auditLog: { create: async () => ({}) },
   });
 
-  await new LeaveRequestsService(prisma).create({
+  await new LeaveRequestsService(prisma, coordinatorApproved).create({
     employeeId: 'another-employee', type: 'IZIN_PULANG_AWAL', startDate: '2026-09-07', reason: 'Urusan keluarga',
   }, employeeActor);
 
@@ -80,7 +83,7 @@ test('leave review rejects an actor outside the current approval stage before a 
       employee: { coordinatorId: 'coord-2', employmentType: 'TENAGA_BORONGAN' }, approvals: [],
     }) },
     $transaction: async () => { transactionCalled = true; },
-  });
+  }, coordinatorDenied);
   await assert.rejects(() => service.review('leave-1', { approve: true }, coordinatorActor), /tidak berwenang/);
   assert.equal(transactionCalled, false);
 });
@@ -101,7 +104,7 @@ test('leave approval follows coordinator then HR stages with immutable history',
       auditLog: { create: async () => ({}) },
     }),
   };
-  const service = new LeaveRequestsService(prisma);
+  const service = new LeaveRequestsService(prisma, coordinatorApproved);
   await service.review('leave-1', { approve: true, note: 'Team approved' }, coordinatorActor);
   assert.equal(request.status, 'PENDING_HR');
   await service.review('leave-1', { approve: true, note: 'HR approved' }, hrActor);
@@ -114,7 +117,7 @@ test('leave creation refuses overlapping active periods before persistence', asy
   const service = new LeaveRequestsService(workdayPrisma({
     leaveRequest: { findMany: async () => [{ startDate: new Date('2026-09-07'), endDate: null }] },
     $transaction: async () => { transactionCalled = true; },
-  }));
+  }), coordinatorApproved);
   await assert.rejects(() => service.create({ type: 'IZIN_LAIN', startDate: '2026-09-07', reason: 'Bentrok' }, employeeActor), /bertabrakan/);
   assert.equal(transactionCalled, false);
 });
@@ -124,7 +127,7 @@ test('cuti creation refuses insufficient balance before persistence', async () =
   const service = new LeaveRequestsService(workdayPrisma({
     leaveBalance: { findUnique: async () => ({ id: 'balance-1', remainingDays: 0 }) },
     $transaction: async () => { transactionCalled = true; },
-  }));
+  }), coordinatorApproved);
   await assert.rejects(() => service.create({ type: 'CUTI', startDate: '2026-09-07', reason: 'Cuti' }, employeeActor), /Saldo cuti/);
   assert.equal(transactionCalled, false);
 });
@@ -145,7 +148,7 @@ test('final cuti approval does not debit a leave balance twice', async () => {
       leaveBalance: { updateMany: async () => { balanceUpdated = true; } },
       auditLog: { create: async () => ({}) },
     }),
-  });
+  }, coordinatorApproved);
   await service.review('leave-1', { approve: true }, hrActor);
   assert.equal(balanceUpdated, false);
   assert.equal(ledgerCreated, false);
@@ -157,7 +160,7 @@ test('sickness evidence and leave document access are protected before writes', 
     employee: { findUnique: async () => { employeeLookedUp = true; } },
     leaveRequest: { findUnique: async () => ({ id: 'leave-1', employeeId: 'employee-2', employee: { coordinatorId: 'coord-2' } }) },
     user: { findUnique: async () => ({ employeeId: 'employee-1' }) },
-  });
+  }, coordinatorApproved);
   await assert.rejects(() => service.create({ type: 'SAKIT', startDate: '2026-09-07', reason: 'Sakit' }, employeeActor), /Dokumen medis wajib/);
   await assert.rejects(() => service.findOne('leave-1', employeeActor), /tidak berhak/);
   assert.equal(employeeLookedUp, false);
@@ -168,7 +171,7 @@ test('resignation waits for its effective date, then deactivates access and reco
   const futureService = new LeaveRequestsService({
     leaveRequest: { findUnique: async () => ({ id: 'resign-future', type: 'RESIGN', status: 'APPROVED', startDate: new Date('2099-01-01'), employeeId: 'employee-1', employee: { coordinatorId: 'coord-1' } }) },
     $transaction: async () => assert.fail('future resignation must not be finalized'),
-  });
+  }, coordinatorApproved);
   await assert.rejects(() => futureService.finalizeResignation('resign-future', hrActor), /belum tiba/);
 
   const request = { id: 'resign-now', type: 'RESIGN', status: 'PENDING_HR', startDate: new Date('2020-01-01'), employeeId: 'employee-1', employee: { coordinatorId: 'coord-1', employmentType: 'TENAGA_BORONGAN' }, approvals: [], documentUrl: null };
@@ -182,7 +185,7 @@ test('resignation waits for its effective date, then deactivates access and reco
       placement: { findMany: async () => [{ id: 'placement-1', endDate: null }], updateMany: async () => ({ count: 1 }) },
       auditLog: { create: async ({ data }) => actions.push(data) },
     }),
-  });
+  }, coordinatorApproved);
   await service.review('resign-now', { approve: true }, hrActor);
   assert.deepEqual(actions.map((entry) => entry.action), ['EMPLOYEE_RESIGNED', 'USER_DEACTIVATED_FOR_RESIGN', 'PLACEMENT_ENDED_FOR_RESIGN', 'LEAVE_REQUEST_REVIEW']);
 });
@@ -207,7 +210,7 @@ test('overtime rejects unauthorized review and approval stores no monetary field
       update: async ({ data }) => { updateData = data; return { ...request, ...data }; },
     },
     employee: { findUnique: async () => ({ status: 'ACTIVE' }) },
-  }, { record: async () => {} });
+  }, { record: async () => {} }, coordinatorApproved);
   await assert.rejects(() => service.review('overtime-1', { approve: true }, employeeActor), /tidak berwenang/);
   await service.review('overtime-1', { approve: true, note: 'Approved' }, coordinatorActor);
   assert.deepEqual(Object.keys(updateData).sort(), ['reviewNote', 'reviewedAt', 'reviewedById', 'status']);
@@ -219,6 +222,6 @@ test('leave controller exposes staged reviews and HR-only intervention/finalizat
   assert.deepEqual(Reflect.getMetadata(ROLES_KEY, LeaveRequestsController.prototype.finalizeResignation), ['ADMIN_HR', 'SYSTEM_ADMIN']);
   assert.deepEqual(Reflect.getMetadata(ROLES_KEY, AbsenceCasesController.prototype.create), ['ADMIN_HR', 'SYSTEM_ADMIN']);
   assert.deepEqual(Reflect.getMetadata(ROLES_KEY, AbsenceCasesController.prototype.resolve), ['ADMIN_HR', 'SYSTEM_ADMIN']);
-  assert.deepEqual(Reflect.getMetadata(ROLES_KEY, OvertimeRequestsController.prototype.create), ['KARYAWAN']);
+  assert.deepEqual(Reflect.getMetadata(ROLES_KEY, OvertimeRequestsController.prototype.create), ['KARYAWAN', 'KOORDINATOR']);
   assert.deepEqual(Reflect.getMetadata(ROLES_KEY, OvertimeRequestsController.prototype.review), ['KOORDINATOR', 'ADMIN_HR', 'SYSTEM_ADMIN']);
 });

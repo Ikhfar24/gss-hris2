@@ -40,8 +40,25 @@ model User {
   updatedAt    DateTime  @updatedAt
 
   auditLogs AuditLog[] @relation("AuditLogActor")
+  coordinatorScopes CoordinatorScope[]
 
   @@map("users")
+}
+
+// Coordinator monitoring authority is defined by employment type, not the
+// legacy Employee.coordinatorId assignment.
+model CoordinatorScope {
+  id                String         @id @default(uuid())
+  coordinatorUserId String
+  coordinator       User           @relation(fields: [coordinatorUserId], references: [id])
+  employmentType    EmploymentType
+  active            Boolean        @default(true)
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  @@unique([coordinatorUserId, employmentType])
+  @@index([coordinatorUserId, active])
+  @@map("coordinator_scopes")
 }
 
 // --- Phase 2: Employee & Placement (PRD section 8, 10, 20) -------------

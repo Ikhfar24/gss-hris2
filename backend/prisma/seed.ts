@@ -89,6 +89,11 @@ async function main() {
   // UAT users are also active staff. Reconcile by stable employee number so
   // rerunning the seed repairs both account links and coordinator team scope.
   const coordinatorId = usersByEmail.get('koordinator@papaiz.corp')!.id;
+  await prisma.coordinatorScope.upsert({
+    where: { coordinatorUserId_employmentType: { coordinatorUserId: coordinatorId, employmentType: 'TENAGA_BORONGAN' } },
+    update: { active: true },
+    create: { coordinatorUserId: coordinatorId, employmentType: 'TENAGA_BORONGAN', active: true },
+  });
   const staffProfiles = [
     { email: 'hr@papaiz.corp', name: 'Admin HR', employeeNumber: 'DEMO-HR-01', location: 'Purwokerto' },
     { email: 'koordinator@papaiz.corp', name: 'Koordinator Lapangan', employeeNumber: 'DEMO-KOOR-01', location: 'Muntilan' },

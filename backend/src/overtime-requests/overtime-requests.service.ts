@@ -6,10 +6,11 @@ import { Role } from '../common/enums/role.enum';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateOvertimeRequestDto } from './dto/create-overtime-request.dto';
 import { ReviewOvertimeRequestDto } from './dto/review-overtime-request.dto';
+import { CoordinatorScopeService } from '../coordinator-scopes/coordinator-scope.service';
 
 const HR_ROLES = [Role.ADMIN_HR, Role.SYSTEM_ADMIN];
 const INCLUDE = {
-  employee: { select: { id: true, name: true, employeeNumber: true, coordinatorId: true } },
+  employee: { select: { id: true, name: true, employeeNumber: true, employmentType: true } },
 };
 
 @Injectable()
@@ -17,6 +18,7 @@ export class OvertimeRequestsService {
   constructor(
     private prisma: PrismaService,
     private auditLog: AuditLogService,
+    private scopes: CoordinatorScopeService,
   ) {}
 
   async findAll(actor: AuthenticatedUser) {
@@ -28,8 +30,10 @@ export class OvertimeRequestsService {
       });
     }
     if (actor.role === Role.KOORDINATOR) {
+      const ownEmployeeId = await this.resolveOwnEmployeeId(actor.userId);
+      const teamScope = await this.scopes.queryWhere(actor.userId);
       return this.prisma.overtimeRequest.findMany({
-        where: { employee: { coordinatorId: actor.userId } },
+        where: { OR: [{ employeeId: ownEmployeeId }, teamScope.employee ? { employee: teamScope.employee } : {}] },
         include: INCLUDE,
         orderBy: { requestedAt: 'desc' },
       });
@@ -47,7 +51,7 @@ export class OvertimeRequestsService {
   }
 
   async create(dto: CreateOvertimeRequestDto, actor: AuthenticatedUser) {
-    if (actor.role !== Role.KARYAWAN) throw new ForbiddenException('Hanya karyawan yang dapat mengajukan lembur sendiri');
+    if (![Role.KARYAWAN, Role.KOORDINATOR].includes(actor.role as Role)) throw new ForbiddenException('Hanya karyawan dan koordinator yang dapat mengajukan lembur sendiri');
     const employeeId = await this.resolveOwnEmployeeId(actor.userId);
     const employee = await this.prisma.employee.findUnique({ where: { id: employeeId }, select: { id: true, status: true, joinDate: true } });
     if (!employee) throw new NotFoundException('Data karyawan tidak ditemukan');
@@ -70,9 +74,7 @@ export class OvertimeRequestsService {
     if (![Role.KOORDINATOR, ...HR_ROLES].includes(actor.role as Role)) {
       throw new ForbiddenException('Anda tidak berwenang mereview pengajuan lembur');
     }
-    if (actor.role === Role.KOORDINATOR && request.employee.coordinatorId !== actor.userId) {
-      throw new ForbiddenException('Anda hanya dapat mereview pengajuan tim sendiri');
-    }
+    if (actor.role === Role.KOORDINATOR) await this.scopes.assertEmployee(actor.userId, request.employee);
     if (request.requestedById === actor.userId) throw new ForbiddenException('Anda tidak dapat menyetujui pengajuan sendiri');
     if (request.status !== 'PENDING') throw new BadRequestException(`Pengajuan berstatus ${request.status}, tidak dapat direview`);
 
@@ -138,10 +140,10 @@ export class OvertimeRequestsService {
     if (employee?.status !== 'ACTIVE') throw new BadRequestException('Karyawan tidak memiliki status kerja aktif');
   }
 
-  private async assertCanView(request: { employeeId: string; employee: { coordinatorId: string | null } }, actor: AuthenticatedUser) {
+  private async assertCanView(request: { employeeId: string; employee: { employmentType: string } }, actor: AuthenticatedUser) {
     if (HR_ROLES.includes(actor.role as Role)) return;
-    if (actor.role === Role.KOORDINATOR && request.employee.coordinatorId === actor.userId) return;
-    if (actor.role === Role.KARYAWAN && request.employeeId === await this.resolveOwnEmployeeId(actor.userId)) return;
+    if (request.employeeId === await this.resolveOwnEmployeeId(actor.userId).catch(() => null)) return;
+    if (actor.role === Role.KOORDINATOR) { await this.scopes.assertEmployee(actor.userId, request.employee); return; }
     throw new ForbiddenException('Anda tidak berwenang mengakses pengajuan lembur');
   }
 

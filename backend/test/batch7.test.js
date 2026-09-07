@@ -57,7 +57,10 @@ test('360 view is self-scoped for KARYAWAN and never exposes rates or contracts'
 });
 
 test('360 view denies a Coordinator outside the employee team', async () => {
-  const service = new EmployeesService({ employee: { findUnique: async () => employee({ coordinatorId: 'coordinator-2' }) } });
+  const service = new EmployeesService(
+    { employee: { findUnique: async () => employee({ coordinatorId: 'coordinator-2' }) } },
+    { assertEmployee: async () => { throw new Error('Karyawan tidak dalam tim Coordinator'); } },
+  );
   await assert.rejects(() => service.find360('employee-1', coordinator), /dalam tim/);
 });
 

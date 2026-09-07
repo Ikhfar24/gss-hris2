@@ -13,7 +13,7 @@ function leaveService() {
       },
     },
     user: { findUnique: async () => ({ employeeId: 'employee-1' }) },
-  });
+  }, { queryWhere: async () => ({ employee: { employmentType: { in: ['TENAGA_BORONGAN'] } } }) });
   return { service, where: () => receivedWhere };
 }
 
@@ -46,5 +46,5 @@ test('UAT Fix Pack 01 retains employee and coordinator self-service scopes', asy
 
   const coordinator = leaveService();
   await coordinator.service.findAll({ userId: 'coordinator-1', email: 'coordinator@example.test', role: 'KOORDINATOR' });
-  assert.deepEqual(coordinator.where(), { employee: { coordinatorId: 'coordinator-1' } });
+  assert.deepEqual(coordinator.where(), { OR: [{ employee: { employmentType: { in: ['TENAGA_BORONGAN'] } } }, { employee: { user: { is: { id: 'coordinator-1' } } } }] });
 });

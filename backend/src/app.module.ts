@@ -24,12 +24,14 @@ import { TemporaryAssignmentsModule } from './temporary-assignments/temporary-as
 import { AbsenceCasesModule } from './absence-cases/absence-cases.module';
 import { OvertimeRequestsModule } from './overtime-requests/overtime-requests.module';
 import { PayrollAdminModule } from './payroll-admin/payroll-admin.module';
+import { CoordinatorScopeModule } from './coordinator-scopes/coordinator-scope.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     ThrottlerModule.forRoot([{ ttl: 60000, limit: 100 }]), // global rate limit, tightened per-route on sensitive endpoints
     PrismaModule,
+    CoordinatorScopeModule,
     AuditLogModule,
     AuthModule,
     UsersModule,

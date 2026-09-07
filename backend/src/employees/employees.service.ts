@@ -8,6 +8,7 @@ import { BulkDeactivateEmployeesDto, EmployeeImportRowDto, ImportEmployeesDto } 
 import { buildPdf, buildXlsx } from '../common/utils/export.util';
 import { plainToInstance } from 'class-transformer';
 import { validateSync } from 'class-validator';
+import { CoordinatorScopeService } from '../coordinator-scopes/coordinator-scope.service';
 
 const SUMMARY_INCLUDE = {
   user: { select: { id: true, email: true, role: true, isActive: true } },
@@ -18,13 +19,13 @@ const SENSITIVE_FIELDS = new Set(['nik', 'employeeNumber', 'bankAccountNumber', 
 
 @Injectable()
 export class EmployeesService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService, private scopes: CoordinatorScopeService) {}
 
   async findAll(actor: AuthenticatedUser, query: any = {}) {
     const page = Math.max(Number(query.page) || 1, 1);
     const pageSize = Math.min(Math.max(Number(query.pageSize) || 25, 1), 100);
     const where: any = {
-      ...(actor.role === Role.KOORDINATOR ? { coordinatorId: actor.userId } : {}),
+      ...(actor.role === Role.KOORDINATOR ? await this.scopes.employeeWhere(actor.userId) : {}),
       ...(actor.role === Role.KARYAWAN ? { user: { is: { id: actor.userId } } } : {}),
       ...(query.status ? { status: query.status } : {}),
       ...(query.employmentType ? { employmentType: query.employmentType } : {}),
@@ -42,7 +43,7 @@ export class EmployeesService {
   async findOne(id: string, actor: AuthenticatedUser) {
     const employee = await this.prisma.employee.findUnique({ where: { id }, include: { ...SUMMARY_INCLUDE, contracts: { orderBy: { startDate: 'desc' } }, placements: { include: { location: { select: { id: true, name: true, clientId: true } } }, orderBy: { startDate: 'desc' } } } });
     if (!employee) throw new NotFoundException('Karyawan tidak ditemukan');
-    this.assertEmployeeScope(employee, actor);
+    await this.assertEmployeeScope(employee, actor);
     return this.present(employee, actor);
   }
 
@@ -59,7 +60,7 @@ export class EmployeesService {
       profileChangeRequests: { orderBy: { requestedAt: 'desc' }, take: 20, select: { id: true, status: true, requestedAt: true, reviewedAt: true, reviewNote: true } },
     } });
     if (!employee) throw new NotFoundException('Karyawan tidak ditemukan');
-    this.assertEmployeeScope(employee, actor);
+    await this.assertEmployeeScope(employee, actor);
     const { attendances, leaveRequests, temporaryAssignments, absenceCases, overtimeRequests, profileChangeRequests, ...base } = employee;
     return {
       profile: this.present(base, actor),
@@ -232,8 +233,9 @@ export class EmployeesService {
     if (becomesExempt && !(reason ?? existing?.attendanceExemptionReason)?.trim()) throw new BadRequestException('Alasan exemption absensi wajib diisi');
   }
 
-  private assertEmployeeScope(employee: { coordinatorId: string | null; user?: { id: string } | null }, actor: AuthenticatedUser) {
-    if (actor.role === Role.KOORDINATOR && employee.coordinatorId !== actor.userId) throw new ForbiddenException('Anda hanya dapat mengakses karyawan dalam tim Anda');
+  private async assertEmployeeScope(employee: { employmentType: string; user?: { id: string } | null }, actor: AuthenticatedUser) {
+    if (employee.user?.id === actor.userId) return;
+    if (actor.role === Role.KOORDINATOR) await this.scopes.assertEmployee(actor.userId, employee);
     if (actor.role === Role.KARYAWAN && employee.user?.id !== actor.userId) throw new ForbiddenException('Anda hanya dapat mengakses profil sendiri');
   }
 

@@ -16,6 +16,9 @@ const { PayrollService } = require('../dist/payroll/payroll.service');
 const { AbsenceCasesService } = require('../dist/absence-cases/absence-cases.service');
 const { ROLES_KEY } = require('../dist/common/decorators/roles.decorator');
 
+const coordinatorDenied = { assertEmployee: async () => { throw new Error('Anda tidak berwenang'); } };
+const coordinatorApproved = { assertEmployee: async () => {} };
+
 test('Batch 4 schema keeps immutable attendance review records and forgotten checkout marker', () => {
   const attendance = Prisma.dmmf.datamodel.models.find((entry) => entry.name === 'Attendance');
   const review = Prisma.dmmf.datamodel.models.find((entry) => entry.name === 'AttendanceReview');
@@ -64,7 +67,7 @@ test('historical attendance resolution does not activate scheduled placements pr
       placements: [{ status: 'ACTIVE', startDate: new Date('2026-08-01'), endDate: null, locationId: 'primary', location: { id: 'primary' } }],
       temporaryAssignments: [],
     }) },
-  }, {});
+  }, {}, coordinatorApproved);
   const resolved = await service.getEmployeeForUser('user-1', new Date('2026-08-15T09:00:00'));
   assert.equal(resolved.location.id, 'primary');
   assert.equal(placementLookups, 0);
@@ -127,7 +130,7 @@ test('temporary assignment approval and completion are restricted to HR or syste
 });
 
 test('attendance evidence requires a documented fallback and rejects out-of-radius coordinates', () => {
-  const service = new AttendanceService({}, {});
+  const service = new AttendanceService({}, {}, coordinatorApproved);
   const location = { latitude: -6.2, longitude: 106.8, radiusMeters: 50 };
   assert.throws(() => service.evaluateEvidence(location, {}, 'employee-1'));
   assert.throws(() => service.evaluateEvidence(location, {
@@ -136,7 +139,7 @@ test('attendance evidence requires a documented fallback and rejects out-of-radi
 });
 
 test('holiday attendance is not late and no absence case is created for a holiday', async () => {
-  const attendance = new AttendanceService({ holiday: { findFirst: async () => ({ id: 'holiday-1' }) } }, {});
+  const attendance = new AttendanceService({ holiday: { findFirst: async () => ({ id: 'holiday-1' }) } }, {}, coordinatorApproved);
   assert.equal(await attendance.computeLatenessStatus({ id: 'location-1', workDays: [1], checkInTime: '08:00', toleranceMin: 10 }, new Date('2026-09-07T10:00:00'), new Date('2026-09-07')), 'NOT_APPLICABLE');
   const absence = new AbsenceCasesService({
     employee: { findUnique: async () => ({ id: 'employee-1' }) },
@@ -153,7 +156,7 @@ test('attendance review denies self review and coordinators outside the employee
   const service = new AttendanceService({
     attendance: { findUnique: async () => record },
     user: { findUnique: async () => ({ employeeId: 'employee-1' }) },
-  }, {});
+  }, {}, coordinatorDenied);
   await assert.rejects(() => service.review('attendance-1', { decision: 'APPROVED', note: 'ok' }, { userId: 'reviewer-1', role: 'ADMIN_HR' }), /sendiri/);
   service.prisma.user.findUnique = async () => ({ employeeId: 'reviewer-employee' });
   await assert.rejects(() => service.review('attendance-1', { decision: 'APPROVED', note: 'ok' }, { userId: 'coordinator-2', role: 'KOORDINATOR' }), /tidak berwenang/);
@@ -171,7 +174,7 @@ test('attendance review writes an immutable decision and approves a completed em
       return [{ id: 'review-1' }, { ...record, validationStatus: 'APPROVED_AFTER_REVIEW', payableStatus: 'PAYABLE' }];
     },
   };
-  const result = await new AttendanceService(prisma, { record: async () => {} }).review('attendance-1', { decision: 'APPROVED', note: 'Evidence verified' }, { userId: 'coordinator-1', role: 'KOORDINATOR' });
+  const result = await new AttendanceService(prisma, { record: async () => {} }, coordinatorApproved).review('attendance-1', { decision: 'APPROVED', note: 'Evidence verified' }, { userId: 'coordinator-1', role: 'KOORDINATOR' });
   assert.equal(writes[0].args.data.decision, 'APPROVED');
   assert.equal(writes[0].args.data.reviewedById, 'coordinator-1');
   assert.equal(writes[1].args.data.payableStatus, 'PAYABLE');
@@ -179,7 +182,7 @@ test('attendance review writes an immutable decision and approves a completed em
 });
 
 test('protected media paths are inferred from stored evidence and deny unrelated employees', async () => {
-  const service = new MediaService({ user: { findUnique: async () => ({ employeeId: 'employee-2' }) } });
+  const service = new MediaService({ user: { findUnique: async () => ({ employeeId: 'employee-2' }) } }, coordinatorApproved);
   assert.deepEqual(service.mediaPaths('selfies', 'employee-1', 'check-in.jpg'), [
     '/uploads/selfies/employee-1/check-in.jpg',
     '/api/v1/media/selfies/employee-1/check-in.jpg',
@@ -195,7 +198,7 @@ test('forgotten checkout is distinct from a normal checkout and remains pending 
       findUnique: async () => ({ id: 'attendance-1', date: new Date('2026-09-07'), checkInAt: new Date('2026-09-07T08:00:00'), checkOutAt: null, validationStatus: 'VALID', location: { checkOutTime: '16:00' } }),
       update: async ({ data }) => { updated.push(data); return { id: 'attendance-1', ...data }; },
     },
-  }, { record: async () => {} });
+  }, { record: async () => {} }, coordinatorApproved);
   await service.autoCloseForgottenCheckout('attendance-1', 'Lupa checkout', { userId: 'hr-1', role: 'ADMIN_HR' });
   assert.equal(updated[0].forgottenCheckout, true);
   assert.equal(updated[0].checkOutSource, 'SYSTEM_AUTO_CLOSED');

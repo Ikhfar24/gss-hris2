@@ -81,7 +81,10 @@ test('dashboard attention returns scoped, minimal card metadata', async () => {
 });
 
 test('protected media derives paths from stored evidence and denies unrelated employees', async () => {
-  const media = new MediaService({ user: { findUnique: async () => ({ employeeId: 'employee-2' }) } });
+  const media = new MediaService(
+    { user: { findUnique: async () => ({ employeeId: 'employee-2' }) } },
+    { assertEmployee: async () => undefined },
+  );
   assert.deepEqual(media.mediaPaths('selfies', 'employee-1', 'check-in.jpg'), ['/uploads/selfies/employee-1/check-in.jpg', '/api/v1/media/selfies/employee-1/check-in.jpg']);
   await assert.rejects(() => media.assertAccess('employee-1', 'coordinator-1', { userId: 'user-2', role: 'KARYAWAN' }));
   await media.assertAccess('employee-1', 'coordinator-1', { userId: 'coordinator-1', role: 'KOORDINATOR' });

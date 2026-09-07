@@ -18,10 +18,12 @@ Use separate accounts and representative employee/team/payroll data. Record resu
 ## Koordinator
 
 - View only assigned-team attendance and requests; attempt a non-team record and confirm denial.
+- Submit an overtime request from the linked Employee identity; confirm it targets only the Coordinator's own Employee and retains normal validation.
 - Review assigned attendance and leave/permission requests; confirm history and payable status update only for a valid completed checkout.
 - Propose a team placement/mutation and export only team-scoped data.
 - Confirm the Coordinator can check in/out using their own linked Employee
   placement while team cards exclude employees outside `coordinatorId` scope.
+- Confirm `Perubahan Profil` is not shown for Coordinator; authoritative profile changes are managed by HR.
 
 ## Admin/HR
 
@@ -36,12 +38,14 @@ Use separate accounts and representative employee/team/payroll data. Record resu
 - Add a manual component with a reason, review, submit, and record payment only after finalization.
 - Attempt a line-item change after finalization; confirm denial. Create, submit, Director-approve, and finalize a linked revision; confirm original slip remains unchanged.
 - Confirm Finance can check in/out and view only their own employee self-service data, without organization attendance monitoring.
+- Confirm `Perubahan Profil` self-service is not shown; authoritative profile changes are managed by HR.
 
 ## Marketing
 
 - Check personal attendance and view permitted placement/manpower data.
 - Confirm employee salary/rates, bank/BPJS data, contracts, payroll, and payroll actions are unavailable.
 - Confirm Marketing can check in/out when linked to an attendance-required Employee profile.
+- Confirm `Perubahan Profil` self-service is not shown; authoritative profile changes are managed by HR.
 
 ## Direktur
 

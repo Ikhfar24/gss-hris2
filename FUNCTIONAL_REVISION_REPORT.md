@@ -39,4 +39,15 @@ MARKETING accounts to attendance-required employees with active placements.
 Self attendance is available to any linked attendance-required employee;
 Coordinator and HR retain their authorized monitoring views, while Finance and
 Marketing remain self-service only. Coordinator team scope continues to use
-`Employee.coordinatorId = Coordinator User.id`.
+active `CoordinatorScope` employment-type assignments.
+
+## Human UAT Fix Pack 03
+
+Coordinator self-service overtime is allowed when the account is linked to an
+Employee. The request target is always `User.employeeId`; Coordinator team
+monitoring scope does not expand or replace that identity, and review authority
+remains separate.
+
+Profile Change Request self-service is KARYAWAN-only. Coordinator, Finance, and
+Marketing profile changes are managed directly by ADMIN_HR. This does not alter
+the mandatory attendance policy for linked employees.

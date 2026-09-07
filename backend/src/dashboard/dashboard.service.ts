@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { Role } from '../common/enums/role.enum';
+import { CoordinatorScopeService } from '../coordinator-scopes/coordinator-scope.service';
 
 function startOfDay(d: Date): Date {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate());
@@ -16,11 +17,11 @@ export interface AttentionCard {
 
 @Injectable()
 export class DashboardService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService, private scopes: CoordinatorScopeService) {}
 
-  private employeeScope(actor: AuthenticatedUser) {
+  private async employeeScope(actor: AuthenticatedUser) {
     if (actor.role === Role.KARYAWAN) return { user: { is: { id: actor.userId } } };
-    if (actor.role === Role.KOORDINATOR) return { coordinatorId: actor.userId };
+    if (actor.role === Role.KOORDINATOR) return this.scopes.employeeWhere(actor.userId);
     return undefined;
   }
 
@@ -40,7 +41,7 @@ export class DashboardService {
 
   /** Operational counters are intentionally limited to the actor's own scope. */
   async summary(actor: AuthenticatedUser) {
-    const employeeScope = this.employeeScope(actor);
+    const employeeScope = await this.employeeScope(actor);
     const canSeeOperations = [Role.KARYAWAN, Role.KOORDINATOR, Role.ADMIN_HR, Role.SYSTEM_ADMIN].includes(actor.role as Role);
     const today = startOfDay(new Date());
     const weekday = today.getDay();
@@ -75,7 +76,7 @@ export class DashboardService {
   }
 
   async attention(actor: AuthenticatedUser): Promise<AttentionCard[]> {
-    const teamScope = actor.role === Role.KOORDINATOR ? { employee: { coordinatorId: actor.userId } } : {};
+    const teamScope = actor.role === Role.KOORDINATOR ? await this.scopes.queryWhere(actor.userId) : {};
     const cards: Array<Omit<AttentionCard, 'count'> & { count: Promise<number> }> = [];
     const add = (key: string, label: string, href: string, count: Promise<number>) => cards.push({ key, label, href, count });
 
