@@ -1,0 +1,1 @@
+ALTER TYPE "EmploymentType" ADD VALUE 'STAFF_OFFICE';

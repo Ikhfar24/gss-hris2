@@ -12,7 +12,7 @@ async function main() {
         companyName: 'Papaiz.corp',
         appName: 'Papaiz HR',
         email: 'hr@papaiz.corp',
-        primaryColor: '#0F172A',
+        primaryColor: '#001F3F',
       },
     });
     console.log('Created default company settings');
@@ -70,7 +70,7 @@ async function main() {
   ];
   const locations: Record<string, string> = {};
   for (const def of locationDefs) {
-    let loc = await prisma.location.findFirst({ where: { name: def.name } });
+    let loc = await prisma.location.findFirst({ where: { name: def.name, clientId: client.id } });
     if (!loc) {
       loc = await prisma.location.create({
         data: {
@@ -82,6 +82,13 @@ async function main() {
         },
       });
       console.log(`Created dummy location: ${def.name}`);
+    } else if (loc.latitude === null || loc.longitude === null) {
+      // Reconcile older demo databases created before seed coordinates existed.
+      loc = await prisma.location.update({
+        where: { id: loc.id },
+        data: { address: def.address, latitude: def.latitude, longitude: def.longitude },
+      });
+      console.log(`Reconciled dummy location coordinates: ${def.name}`);
     }
     locations[def.name] = loc.id;
   }
@@ -95,20 +102,21 @@ async function main() {
     create: { coordinatorUserId: coordinatorId, employmentType: 'TENAGA_BORONGAN', active: true },
   });
   const staffProfiles = [
-    { email: 'hr@papaiz.corp', name: 'Admin HR', employeeNumber: 'DEMO-HR-01', location: 'Purwokerto' },
-    { email: 'koordinator@papaiz.corp', name: 'Koordinator Lapangan', employeeNumber: 'DEMO-KOOR-01', location: 'Muntilan' },
-    { email: 'keuangan@papaiz.corp', name: 'Staf Keuangan', employeeNumber: 'DEMO-KEU-01', location: 'Purwokerto' },
-    { email: 'marketing@papaiz.corp', name: 'Staf Marketing', employeeNumber: 'DEMO-MKT-01', location: 'Muntilan' },
+    { email: 'hr@papaiz.corp', name: 'Admin HR', employeeNumber: 'DEMO-HR-01', employmentType: 'STAFF_OFFICE' as const, location: 'Purwokerto', attendanceMode: 'GEOFENCE' as const },
+    { email: 'koordinator@papaiz.corp', name: 'Koordinator Lapangan', employeeNumber: 'DEMO-KOOR-01', employmentType: 'TENAGA_ARSIPARIS' as const, location: 'Muntilan', attendanceMode: 'MOBILE' as const },
+    { email: 'keuangan@papaiz.corp', name: 'Staf Keuangan', employeeNumber: 'DEMO-KEU-01', employmentType: 'STAFF_OFFICE' as const, location: 'Purwokerto', attendanceMode: 'GEOFENCE' as const },
+    { email: 'marketing@papaiz.corp', name: 'Staf Marketing', employeeNumber: 'DEMO-MKT-01', employmentType: 'STAFF_OFFICE' as const, location: 'Muntilan', attendanceMode: 'MOBILE' as const },
   ];
   for (const profile of staffProfiles) {
     const employeeData = {
       name: profile.name,
-      employmentType: 'TENAGA_ARSIPARIS' as const,
+      employmentType: profile.employmentType,
       status: 'ACTIVE' as const,
       joinDate: new Date('2026-09-01'),
       jobTitle: profile.name,
       attendanceRequired: true,
       attendanceExemptionReason: null,
+      attendanceMode: profile.attendanceMode,
       coordinatorId,
     };
     let employee = await prisma.employee.findUnique({ where: { employeeNumber: profile.employeeNumber } });
@@ -167,14 +175,15 @@ async function main() {
   }
 
   // Dummy Tenaga Arsiparis (fixed placement + PKWT contract, §8.2)
-  const arsiparis = await prisma.employee.findFirst({ where: { name: 'Budi (Contoh Arsiparis)' } });
+  let arsiparis = await prisma.employee.findFirst({ where: { name: 'Budi (Contoh Arsiparis)' } });
   if (!arsiparis) {
-    await prisma.employee.create({
+    arsiparis = await prisma.employee.create({
       data: {
         name: 'Budi (Contoh Arsiparis)',
         employmentType: 'TENAGA_ARSIPARIS',
         status: 'ACTIVE',
         joinDate: new Date('2026-01-01'),
+        attendanceMode: 'GEOFENCE',
         placements: { create: { locationId: locations['Purwokerto'], startDate: new Date('2026-01-01'), status: 'ACTIVE' } },
         contracts: {
           create: {

@@ -95,17 +95,7 @@ tapi tetap **bukan keputusan final**, harus dikonfirmasi ke HR/manajemen:
 | Internet mati (absensi offline) | Data absensi disimpan di browser (localStorage) saat submit gagal karena tidak ada koneksi, lalu otomatis (atau manual lewat tombol "Sinkronkan sekarang") dikirim ulang saat online. Waktu asli tetap dipakai (`clientRecordedAt`), bukan waktu saat berhasil sync, dan selalu ditandai Perlu Ditinjau |
 | Lupa check-out | HR punya halaman "Belum Check-out" (30 hari terakhir) di Monitoring Absensi untuk menemukan dan mengoreksi manual — tidak ada auto-checkout otomatis |
 | Koreksi absensi oleh HR | Ada tombol "Koreksi" di setiap baris absensi — HR bisa ubah jam check-in/out, wajib isi alasan, semua perubahan tercatat di audit log (nilai lama → baru) |
-| Device binding | 1 karyawan = 1 perangkat (browser/HP) yang terikat otomatis saat check-in pertama kali. Percobaan absen dari perangkat lain **ditolak**. HR bisa reset ikatan lewat halaman "Perangkat Terikat" kalau karyawan ganti HP |
 | Face verification | Masih belum ada vendor terintegrasi (tidak berubah) — status selalu `NOT_VERIFIED`, tidak memblokir |
-
-**Catatan jujur soal device binding**: karena antarmuka absensi ini web app
-(bukan aplikasi native), "perangkat" yang diikat sebenarnya adalah data yang
-tersimpan di `localStorage` browser tersebut — bukan ID hardware HP yang
-sesungguhnya. Kalau karyawan menghapus data browser atau pakai mode
-penyamaran (incognito), sistem akan menganggapnya perangkat baru dan
-menolak. Untuk device-ID yang benar-benar terikat ke hardware, perlu
-aplikasi native (Android/iOS), bukan web app biasa — ini limitasi teknis
-yang perlu diketahui manajemen.
 
 ## Phase 4 — Cuti, Izin & Resign (§13)
 
@@ -287,8 +277,6 @@ npm run dev                # http://localhost:3000
 | GET    | `/api/v1/attendance` \| `/attendance/summary` | HR, Koordinator, Direktur |
 | GET    | `/api/v1/attendance/open` | HR, Koordinator, Direktur (lupa check-out) |
 | PATCH  | `/api/v1/attendance/:id/correct` | Admin/HR, System Admin |
-| GET    | `/api/v1/attendance/devices` | Admin/HR, System Admin |
-| DELETE | `/api/v1/attendance/devices/:employeeId` | Admin/HR, System Admin (reset device) |
 | GET/POST/DELETE | `/api/v1/holidays` | Read: semua role; Write: Admin/HR |
 | GET/POST | `/api/v1/leave-requests` | Read: sesuai scope (lihat catatan); Create: Karyawan (diri sendiri), Admin/HR (atas nama siapa pun) |
 | PATCH  | `/api/v1/leave-requests/:id/review` | Admin/HR, System Admin |

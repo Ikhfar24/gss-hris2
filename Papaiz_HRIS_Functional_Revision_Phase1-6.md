@@ -402,7 +402,6 @@ Use available measures such as:
 
 -   Geofence.
 -   GPS accuracy checks.
--   Device binding.
 -   Mock-location signals when available.
 -   Selfie/face verification status.
 -   Anomaly flags.

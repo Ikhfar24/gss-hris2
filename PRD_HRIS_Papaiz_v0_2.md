@@ -576,7 +576,6 @@ Masih perlu dibahas:
 - Karyawan terlambat.
 - Absensi offline.
 - Koreksi absensi.
-- Device binding atau pembatasan perangkat.
 
 ---
 
@@ -1034,7 +1033,6 @@ Bagian berikut masih membutuhkan keputusan bisnis:
 - Aturan ketika GPS/internet/kamera gagal.
 - Aturan lupa check-out.
 - Aturan koreksi absensi.
-- Kebijakan device binding.
 
 ---
 

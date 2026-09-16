@@ -26,7 +26,17 @@
     "test:uat-fix-03": "nest build && node --test test/uat-fix-03.test.js",
     "test:uat-fix-04": "nest build && node --test test/uat-fix-04.test.js",
     "test:uat-fix-05": "nest build && node --test test/uat-fix-05.test.js",
-    "test:uat-fix-06": "nest build && node --test test/uat-fix-06.test.js"
+    "test:uat-fix-06": "nest build && node --test test/uat-fix-06.test.js",
+    "test:phase1-bootstrap": "nest build && node --test test/phase1-bootstrap.test.js",
+    "test:phase1-attendance-mode": "nest build && node --test test/phase1-attendance-mode.test.js",
+    "test:ui-phase1": "nest build && node --test test/ui-phase1.test.js",
+    "test:ui-phase2": "nest build && node --test test/ui-phase2.test.js",
+    "test:ui-phase3": "nest build && node --test test/ui-phase3.test.js",
+    "test:ui-phase4": "nest build && node --test test/ui-phase4.test.js",
+    "test:ui-phase5": "nest build && node --test test/ui-phase5.test.js",
+    "test:consolidated-mobile-uat": "nest build && node --test test/consolidated-mobile-uat.test.js",
+    "test:full-human-uat": "nest build && node --test test/full-human-uat.test.js",
+    "test:temporary-credentials": "nest build && node --test test/temporary-credentials.test.js"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.0",

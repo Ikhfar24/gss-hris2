@@ -36,13 +36,34 @@ model User {
   role         Role      @default(KARYAWAN)
   isActive     Boolean   @default(true)
   lastLoginAt  DateTime?
+  mustChangePassword Boolean @default(false)
+  passwordChangedAt  DateTime?
+  sessionVersion     Int     @default(0)
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
   auditLogs AuditLog[] @relation("AuditLogActor")
   coordinatorScopes CoordinatorScope[]
+  temporaryCredential UserTemporaryCredential?
 
   @@map("users")
+}
+
+model UserTemporaryCredential {
+  id             String   @id @default(uuid())
+  userId         String   @unique
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ciphertext     Bytes
+  iv             Bytes
+  authTag        Bytes
+  keyVersion     String
+  purpose        String
+  createdById    String?
+  createdAt      DateTime @default(now())
+  lastRevealedAt DateTime?
+  revealCount    Int      @default(0)
+
+  @@map("user_temporary_credentials")
 }
 
 // Coordinator monitoring authority is defined by employment type, not the
@@ -66,6 +87,7 @@ model CoordinatorScope {
 enum EmploymentType {
   TENAGA_BORONGAN // §8.1 — fleksibel, penempatan dapat berubah cepat
   TENAGA_ARSIPARIS // §8.2 — penempatan lebih tetap, perubahan lewat mutasi
+  STAFF_OFFICE
 }
 
 enum EmployeeStatus {
@@ -75,6 +97,11 @@ enum EmployeeStatus {
   ON_LEAVE
   RESIGNED
   TERMINATED
+}
+
+enum AttendanceMode {
+  GEOFENCE
+  MOBILE
 }
 
 enum Gender {
@@ -126,6 +153,7 @@ enum PlacementRequestStatus {
 
 model Client {
   id            String   @id @default(uuid())
+  referenceCode String   @unique
   name          String
   address       String?
   contactPerson String?
@@ -146,6 +174,7 @@ model Client {
 // toleransi) so HR can change them without code, per BR-008.
 model Location {
   id           String   @id @default(uuid())
+  referenceCode String   @unique
   name         String
   address      String?
   latitude     Float?
@@ -201,6 +230,11 @@ model Employee {
   // Attendance eligibility belongs to the employee/staff profile, never role.
   attendanceRequired        Boolean        @default(true)
   attendanceExemptionReason String?
+  // Controls how an eligible employee attends; never derive this from User.role.
+  attendanceMode            AttendanceMode @default(GEOFENCE)
+  deletedAt                 DateTime?
+  deletedById               String?
+  deletionReason            String?
   createdAt                 DateTime       @default(now())
   updatedAt                 DateTime       @updatedAt
 
@@ -209,7 +243,6 @@ model Employee {
   placements            Placement[]
   placementRequests     PlacementRequest[]
   attendances           Attendance[]
-  device                EmployeeDevice?
   leaveRequests         LeaveRequest[]
   payrollSlips          PayrollSlip[]
   profileChangeRequests EmployeeProfileChangeRequest[]
@@ -218,6 +251,7 @@ model Employee {
   absenceCases          AbsenceCase[]
   overtimeRequests      OvertimeRequest[]
 
+  @@index([deletedAt])
   @@map("employees")
 }
 
@@ -439,25 +473,6 @@ model Holiday {
   @@map("holidays")
 }
 
-// Device binding (§11.5): one bound device per employee, self-registered on
-// first successful check-in. HR can reset it (e.g. employee got a new
-// phone) — see AttendanceService.enforceDeviceBinding. This binds a
-// browser/app install, not real hardware, since the check-in surface is a
-// web app; see README for that caveat.
-model EmployeeDevice {
-  id         String    @id @default(uuid())
-  employeeId String    @unique
-  employee   Employee  @relation(fields: [employeeId], references: [id])
-  deviceId   String // opaque client-generated identifier, persisted client-side
-  label      String? // e.g. browser/user-agent snippet, for HR to recognize it
-  boundAt    DateTime  @default(now())
-  lastUsedAt DateTime  @updatedAt
-  resetById  String? // last HR/System Admin who reset this binding, if any
-  resetAt    DateTime?
-
-  @@map("employee_devices")
-}
-
 // One row per employee per calendar day (§11.2). Check-in and check-out
 // each carry their own GPS/selfie/face/device evidence since they can
 // happen from different places in principle (BR left for HR to review).
@@ -485,10 +500,9 @@ model Attendance {
   checkInGpsStatus        GpsStatus?
   checkInFaceStatus       FaceVerificationStatus?
   checkInMockLocationFlag Boolean                 @default(false)
-  checkInDeviceInfo       String?
-  checkInDeviceId         String?
   checkInFailureReason    EvidenceFailureReason?
   checkInFailureNote      String?
+  checkInAttendanceMode   AttendanceMode?
   checkInSyncedOffline    Boolean                 @default(false)
   checkInClientRecordedAt DateTime? // device-reported time, kept alongside server-trusted checkInAt
   latenessStatus          LatenessStatus          @default(NOT_APPLICABLE)
@@ -506,10 +520,9 @@ model Attendance {
   checkOutGpsStatus        GpsStatus?
   checkOutFaceStatus       FaceVerificationStatus?
   checkOutMockLocationFlag Boolean                 @default(false)
-  checkOutDeviceInfo       String?
-  checkOutDeviceId         String?
   checkOutFailureReason    EvidenceFailureReason?
   checkOutFailureNote      String?
+  checkOutAttendanceMode   AttendanceMode?
   checkOutSyncedOffline    Boolean                 @default(false)
   checkOutClientRecordedAt DateTime?
 
