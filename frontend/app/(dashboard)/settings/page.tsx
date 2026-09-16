@@ -3,7 +3,12 @@
 import { useEffect, useState, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiFetch, ApiError } from '@/lib/api';
-import { getToken, getUser } from '@/lib/auth';
+import { getToken } from '@/lib/auth';
+import { useSession } from '@/components/providers/SessionProvider';
+import { Alert, LoadingState } from '@/components/ui/feedback';
+import { Button } from '@/components/ui/button';
+import { ContextBand, DossierPage, WorkSheet } from '@/components/ui/dossier';
+import { PageHeader } from '@/components/ui/page-header';
 
 interface CompanySettings {
   companyName: string;
@@ -17,60 +22,65 @@ interface CompanySettings {
 
 export default function SettingsPage() {
   const router = useRouter();
-  const [authResolved, setAuthResolved] = useState(false);
+  const { session } = useSession();
   const [form, setForm] = useState<CompanySettings | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    const user = getUser();
-    setAuthResolved(true);
-    if (user?.role !== 'SYSTEM_ADMIN') {
+    if (session.role !== 'SYSTEM_ADMIN') {
       router.replace('/dashboard');
       return;
     }
     apiFetch<CompanySettings>('/company-settings').then(setForm).catch((err) => setError(err instanceof ApiError ? err.message : 'Gagal memuat pengaturan'));
-  }, [router]);
+  }, [router, session.role]);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     if (!form) return;
     setError(null);
     setSaved(false);
+    setSaving(true);
     try {
       const token = getToken();
-      await apiFetch('/company-settings', { method: 'PATCH', token, body: form });
+      await apiFetch('/company-settings', { method: 'PATCH', token, body: {
+        ...form,
+        logoUrl: form.logoUrl?.trim() || null,
+        faviconUrl: form.faviconUrl?.trim() || null,
+      } });
       setSaved(true);
+      window.dispatchEvent(new Event('branding-updated'));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Gagal menyimpan pengaturan');
+    } finally {
+      setSaving(false);
     }
   }
 
-  if (!authResolved || !form) return <p className="text-sm text-slate-500">Memuat...</p>;
+  if (session.role !== 'SYSTEM_ADMIN') return <LoadingState label="Memverifikasi akses pengaturan"><div className="h-32 animate-pulse rounded-2xl bg-surface-subtle" /></LoadingState>;
+  if (error && !form) return <div><PageHeader title="Company Settings" /><Alert variant="danger" title="Pengaturan tidak dapat dimuat">{error}</Alert><Button onClick={() => window.location.reload()} variant="secondary" className="mt-4">Coba lagi</Button></div>;
+  if (!form) return <LoadingState label="Memuat pengaturan perusahaan"><div className="h-96 animate-pulse rounded-2xl bg-surface-subtle" /></LoadingState>;
 
   return (
-    <div className="max-w-xl">
-      <h1 className="mb-4 text-2xl font-semibold">Company Settings</h1>
-      <p className="mb-4 text-sm text-slate-500">
-        Identitas perusahaan dapat diganti di sini tanpa mengubah source code (PRD §18).
-      </p>
+    <DossierPage className="max-w-xl">
+      <ContextBand title="Company Settings" description="Identitas perusahaan dapat diganti tanpa mengubah source code (PRD §18)." meta={<span>IDENTITAS & BRANDING</span>} />
 
-      <form onSubmit={onSubmit} className="grid gap-3 rounded-xl border border-slate-200 bg-white p-4">
+      <WorkSheet title="Konfigurasi Branding"><form onSubmit={onSubmit} aria-busy={saving} className="grid gap-4">
         <Field label="Nama Perusahaan" value={form.companyName} onChange={(v) => setForm({ ...form, companyName: v })} />
         <Field label="Nama Aplikasi" value={form.appName} onChange={(v) => setForm({ ...form, appName: v })} />
         <Field label="Email" value={form.email ?? ''} onChange={(v) => setForm({ ...form, email: v })} />
         <Field label="Alamat" value={form.address ?? ''} onChange={(v) => setForm({ ...form, address: v })} />
-        <Field label="Logo URL" value={form.logoUrl ?? ''} onChange={(v) => setForm({ ...form, logoUrl: v })} />
+        <Field label="Path Logo (contoh: /branding/logo.svg)" value={form.logoUrl ?? ''} onChange={(v) => setForm({ ...form, logoUrl: v })} />
+        <Field label="Path Favicon (contoh: /branding/favicon.ico)" value={form.faviconUrl ?? ''} onChange={(v) => setForm({ ...form, faviconUrl: v })} />
         <Field label="Warna Utama" value={form.primaryColor ?? ''} onChange={(v) => setForm({ ...form, primaryColor: v })} />
 
-        {error && <p className="text-sm text-red-600">{error}</p>}
-        {saved && <p className="text-sm text-green-600">Pengaturan disimpan.</p>}
+        {error && <Alert variant="danger" title="Perubahan tidak tersimpan">{error}</Alert>}
+        {saved && <Alert variant="success" title="Pengaturan disimpan">Branding terbaru telah diterapkan.</Alert>}
 
-        <button type="submit" className="rounded-lg bg-slate-900 py-2 text-sm text-white hover:bg-slate-800">
-          Simpan
-        </button>
-      </form>
-    </div>
+        <Button type="submit" disabled={saving}>{saving ? 'Menyimpan...' : 'Simpan Pengaturan'}</Button>
+      </form></WorkSheet>
+    </DossierPage>
   );
 }
 
@@ -84,12 +94,12 @@ function Field({
   onChange: (v: string) => void;
 }) {
   return (
-    <label className="block">
-      <span className="mb-1 block text-sm font-medium">{label}</span>
+    <label className="block text-sm font-semibold text-foreground">
+      <span className="mb-1 block">{label}</span>
       <input
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+        className="input w-full"
       />
     </label>
   );

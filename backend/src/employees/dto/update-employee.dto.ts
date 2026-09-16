@@ -1,5 +1,5 @@
 import { IsBoolean, IsDateString, IsEnum, IsInt, IsOptional, IsString, Min } from 'class-validator';
-import { EmploymentTypeDto, GenderDto } from './create-employee.dto';
+import { AttendanceModeDto, EmploymentTypeDto, GenderDto } from './create-employee.dto';
 
 export enum EmployeeStatusDto {
   TRAINING = 'TRAINING',
@@ -61,6 +61,7 @@ export class UpdateEmployeeDto {
 
   @IsOptional() @IsBoolean() attendanceRequired?: boolean;
   @IsOptional() @IsString() attendanceExemptionReason?: string;
+  @IsOptional() @IsEnum(AttendanceModeDto) attendanceMode?: AttendanceModeDto;
 
   @IsOptional()
   @IsString()

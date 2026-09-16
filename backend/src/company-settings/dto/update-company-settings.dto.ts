@@ -1,4 +1,4 @@
-import { IsHexColor, IsOptional, IsString, IsUrl } from 'class-validator';
+import { IsOptional, IsString, Matches, ValidateIf } from 'class-validator';
 
 export class UpdateCompanySettingsDto {
   @IsOptional()
@@ -9,12 +9,14 @@ export class UpdateCompanySettingsDto {
   @IsString()
   appName?: string;
 
-  @IsOptional()
-  @IsUrl()
+  @ValidateIf((_object, value) => value !== undefined && value !== null && value !== '')
+  @IsString()
+  @Matches(/^\/(?!\/)[A-Za-z0-9._~/-]*$/, { message: 'logoUrl harus berupa path aplikasi, contoh /branding/logo.svg' })
   logoUrl?: string;
 
-  @IsOptional()
-  @IsUrl()
+  @ValidateIf((_object, value) => value !== undefined && value !== null && value !== '')
+  @IsString()
+  @Matches(/^\/(?!\/)[A-Za-z0-9._~/-]*$/, { message: 'faviconUrl harus berupa path aplikasi, contoh /branding/favicon.ico' })
   faviconUrl?: string;
 
   @IsOptional()
@@ -26,6 +28,6 @@ export class UpdateCompanySettingsDto {
   address?: string;
 
   @IsOptional()
-  @IsHexColor()
+  @Matches(/^#[0-9a-fA-F]{6}$/, { message: 'primaryColor harus berupa warna hex 6 digit' })
   primaryColor?: string;
 }

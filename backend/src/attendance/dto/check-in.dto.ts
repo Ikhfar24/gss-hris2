@@ -1,4 +1,4 @@
-import { IsBoolean, IsDateString, IsEnum, IsNumber, IsOptional, IsString, Max, MaxLength, Min, MinLength, ValidateIf } from 'class-validator';
+import { IsBoolean, IsDateString, IsEnum, IsNumber, IsOptional, IsString, Max, Min, MinLength, ValidateIf } from 'class-validator';
 
 export enum EvidenceFailureReasonDto {
   GPS_FAILED = 'GPS_FAILED',
@@ -7,10 +7,8 @@ export enum EvidenceFailureReasonDto {
 }
 
 export class CheckInDto {
-  // GPS is normally required, but §11.5 explicitly leaves "GPS gagal" open.
-  // MVP policy: allow proceeding WITHOUT coordinates only if failureReason +
-  // failureNote are given — enforced in the service, not here, since it's a
-  // cross-field rule (see AttendanceService.resolveEvidence).
+  // GEOFENCE permits the documented GPS-failure fallback. MOBILE requires a
+  // complete fix in AttendanceService because this is an employee policy.
   @IsOptional()
   @IsNumber()
   @Min(-90)
@@ -40,17 +38,6 @@ export class CheckInDto {
   @IsOptional()
   @IsString()
   selfieBase64?: string;
-
-  @IsOptional()
-  @IsString()
-  deviceInfo?: string;
-
-  // Opaque client-generated identifier persisted in browser storage, used
-  // for device binding (§11.5 "device binding atau pembatasan perangkat").
-  @IsString()
-  @MinLength(8)
-  @MaxLength(128)
-  deviceId: string;
 
   // Required together whenever latitude/longitude or selfieBase64 is
   // missing — see AttendanceService.resolveEvidence for the actual check.

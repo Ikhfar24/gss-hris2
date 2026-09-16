@@ -37,7 +37,7 @@ export class OvertimeRequestsController {
     return this.service.review(id, dto, actor);
   }
 
-  @Roles(Role.KARYAWAN, Role.ADMIN_HR, Role.SYSTEM_ADMIN)
+  @Roles(Role.KARYAWAN, Role.KOORDINATOR, Role.ADMIN_HR, Role.SYSTEM_ADMIN)
   @Patch(':id/cancel')
   cancel(@Param('id') id: string, @CurrentUser() actor: AuthenticatedUser) {
     return this.service.cancel(id, actor);

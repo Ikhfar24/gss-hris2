@@ -147,7 +147,8 @@ export class LeaveRequestsService {
   async cancel(id: string, actor: AuthenticatedUser) {
     const request = await this.findOne(id, actor);
     const isHr = HR_ROLES.includes(actor.role as Role);
-    const isOwner = actor.role === Role.KARYAWAN && request.employeeId === await this.resolveOwnEmployeeId(actor.userId);
+    const isEmployeeSelfService = [Role.KARYAWAN, Role.KOORDINATOR, Role.KEUANGAN, Role.MARKETING].includes(actor.role as Role);
+    const isOwner = isEmployeeSelfService && request.employeeId === await this.resolveOwnEmployeeId(actor.userId);
     if (!isOwner && !isHr) throw new ForbiddenException('Hanya pemohon atau HR yang dapat membatalkan pengajuan ini');
     if (!REVIEWABLE_STATUSES.includes(request.status)) throw new BadRequestException(`Pengajuan berstatus ${request.status}, tidak dapat dibatalkan`);
     const updated = await this.prisma.$transaction(async (tx) => {
@@ -167,13 +168,19 @@ export class LeaveRequestsService {
 
   private nextStatus(type: string, employmentType: string, stage: string) {
     if (stage === 'COORDINATOR') return type.startsWith('IZIN_') ? 'APPROVED' : 'PENDING_HR';
-    if (stage === 'HR' && type === 'RESIGN' && employmentType === 'TENAGA_ARSIPARIS') return 'PENDING_DIRECTOR';
+    if (stage === 'HR' && type === 'RESIGN' && ['TENAGA_ARSIPARIS', 'STAFF_OFFICE'].includes(employmentType)) return 'PENDING_DIRECTOR';
     return 'APPROVED';
   }
 
   private async assertCanDecide(request: any, stage: string, actor: AuthenticatedUser, intervention: boolean) {
     if (intervention) return;
-    if (stage === 'COORDINATOR' && actor.role === Role.KOORDINATOR) { await this.scopes.assertEmployee(actor.userId, request.employee); return; }
+    if (stage === 'COORDINATOR' && actor.role === Role.KOORDINATOR) {
+      if (await this.resolveOwnEmployeeId(actor.userId) === request.employeeId) {
+        throw new ForbiddenException('Koordinator tidak dapat menyetujui pengajuan cuti/izin sendiri');
+      }
+      await this.scopes.assertEmployee(actor.userId, request.employee);
+      return;
+    }
     if (stage === 'HR' && HR_ROLES.includes(actor.role as Role)) return;
     if (stage === 'DIRECTOR' && (actor.role === Role.DIREKTUR || actor.role === Role.SYSTEM_ADMIN)) return;
     throw new ForbiddenException('Anda tidak berwenang pada tahap approval ini');
@@ -243,8 +250,12 @@ export class LeaveRequestsService {
     return tx.auditLog.create({ data: { actorId: actor.userId, actorRole: actor.role as any, action, entity, entityId, oldValue: oldValue as any, newValue: newValue as any, reason: reason ?? null, source: 'leave-requests' } });
   }
 
-  private async assertCanAccess(request: { employeeId: string; employee: { employmentType: string } }, actor: AuthenticatedUser) {
-    if ([Role.ADMIN_HR, Role.SYSTEM_ADMIN, Role.DIREKTUR].includes(actor.role as Role)) return;
+  private async assertCanAccess(request: { employeeId: string; status: LeaveStatus; employee: { employmentType: string } }, actor: AuthenticatedUser) {
+    if ([Role.ADMIN_HR, Role.SYSTEM_ADMIN].includes(actor.role as Role)) return;
+    if (actor.role === Role.DIREKTUR) {
+      if (request.status === 'PENDING_DIRECTOR') return;
+      throw new ForbiddenException('Direktur hanya dapat mengakses pengajuan pada tahap persetujuan Direktur');
+    }
     if (await this.resolveOwnEmployeeId(actor.userId).catch(() => null) === request.employeeId) return;
     if (actor.role === Role.KOORDINATOR) { await this.scopes.assertEmployee(actor.userId, request.employee); return; }
     throw new ForbiddenException('Anda tidak berhak mengakses pengajuan ini');

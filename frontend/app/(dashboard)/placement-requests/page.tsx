@@ -1,209 +1,102 @@
 'use client';
 
-import { useEffect, useState, FormEvent } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
+import { ArrowRight, MapPin } from 'lucide-react';
 import { apiFetch, ApiError } from '@/lib/api';
-import { getToken, getUser } from '@/lib/auth';
+import { getToken } from '@/lib/auth';
+import { useSession } from '@/components/providers/SessionProvider';
+import { formatDate, formatDateTime } from '@/lib/format';
+import { ActionDialog } from '@/components/ui/action-dialog';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Alert, EmptyState } from '@/components/ui/feedback';
+import { MetricCard } from '@/components/ui/metrics';
+import { ContextBand, DataRegion, DossierPage, MetricStrip } from '@/components/ui/dossier';
+import { Skeleton } from '@/components/ui/skeleton';
 
-interface EmployeeOption {
-  id: string;
-  name: string;
-}
-interface EmployeeListResponse {
-  data: EmployeeOption[];
-  meta: { page: number; pageSize: number; total: number };
-}
-interface LocationOption {
-  id: string;
-  name: string;
-}
-
+interface Option { id: string; name: string }
+interface EmployeeListResponse { data: Option[]; meta: { page: number; pageSize: number; total: number } }
 interface PlacementRequestRow {
-  id: string;
-  type: 'REASSIGNMENT' | 'MUTATION';
-  status: string;
-  reason: string;
-  startDate: string;
-  requestedAt: string;
-  employee: { id: string; name: string };
-  originLocation: { name: string } | null;
-  destinationLocation: { name: string };
+  id: string; requestedById: string; type: 'REASSIGNMENT' | 'MUTATION'; status: string; reason: string; startDate: string; requestedAt: string;
+  hrNote?: string | null; hrReviewedAt?: string | null; directorNote?: string | null; directorReviewedAt?: string | null;
+  employee: Option; originLocation: { name: string } | null; destinationLocation: { name: string };
 }
+type PendingAction = { row: PlacementRequestRow; kind: 'hr' | 'director' | 'cancel'; approve?: boolean };
 
-const STATUS_LABEL: Record<string, { label: string; style: string }> = {
-  PENDING_HR: { label: 'Menunggu HR', style: 'bg-yellow-100 text-yellow-700' },
-  PENDING_DIRECTOR: { label: 'Menunggu Direktur', style: 'bg-blue-100 text-blue-700' },
-  APPROVED: { label: 'Disetujui', style: 'bg-green-100 text-green-700' },
-  REJECTED: { label: 'Ditolak', style: 'bg-red-100 text-red-700' },
-  CANCELLED: { label: 'Dibatalkan', style: 'bg-slate-200 text-slate-600' },
+const STATUS: Record<string, { label: string; variant: 'warning' | 'info' | 'success' | 'danger' | 'neutral' }> = {
+  PENDING_HR: { label: 'Menunggu HR', variant: 'warning' }, PENDING_DIRECTOR: { label: 'Menunggu Direktur', variant: 'info' }, APPROVED: { label: 'Disetujui', variant: 'success' }, REJECTED: { label: 'Ditolak', variant: 'danger' }, CANCELLED: { label: 'Dibatalkan', variant: 'neutral' },
 };
+const TYPE_LABEL = { MUTATION: 'Mutasi', REASSIGNMENT: 'Reassignment' };
 
 export default function PlacementRequestsPage() {
-  const [requests, setRequests] = useState<PlacementRequestRow[]>([]);
-  const [employees, setEmployees] = useState<EmployeeOption[]>([]);
-  const [locations, setLocations] = useState<LocationOption[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [showForm, setShowForm] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [form, setForm] = useState({ employeeId: '', destinationLocationId: '', startDate: '', reason: '' });
-  const [user, setUser] = useState<{ role: string } | null>(null);
-  const [authResolved, setAuthResolved] = useState(false);
-  const role = authResolved ? user?.role : undefined;
-
+  const { session } = useSession();
+  const role = session.role;
   const canCreate = role === 'KOORDINATOR' || role === 'ADMIN_HR' || role === 'SYSTEM_ADMIN';
   const canHrReview = role === 'ADMIN_HR' || role === 'SYSTEM_ADMIN';
   const canDirectorApprove = role === 'DIREKTUR' || role === 'SYSTEM_ADMIN';
+  const [requests, setRequests] = useState<PlacementRequestRow[]>([]);
+  const [employees, setEmployees] = useState<Option[]>([]);
+  const [locations, setLocations] = useState<Option[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [pending, setPending] = useState<PendingAction | null>(null);
+  const [form, setForm] = useState({ employeeId: '', destinationLocationId: '', startDate: '', reason: '' });
 
   async function load() {
+    setLoading(true); setError(null);
     try {
       const token = getToken();
-       const calls: Promise<any>[] = [apiFetch<PlacementRequestRow[]>('/placement-requests', { token })];
-       if (canCreate) {
-         calls.push(apiFetch<EmployeeListResponse>('/employees', { token }));
-         calls.push(apiFetch<LocationOption[]>('/locations', { token }));
-       }
-       const [reqs, emps, locs] = await Promise.all(calls);
-       setRequests(reqs);
-       if (emps) {
-         const employeeList = Array.isArray(emps) ? emps : Array.isArray(emps.data) ? emps.data : null;
-         if (!employeeList) throw new Error('Format daftar karyawan tidak valid');
-         setEmployees(employeeList);
-       }
-       if (locs) setLocations(locs);
-     } catch (err) {
-       setEmployees([]);
-       setError(err instanceof ApiError || err instanceof Error ? err.message : 'Gagal memuat data pengajuan');
-    }
+      const calls: Promise<unknown>[] = [apiFetch<PlacementRequestRow[]>('/placement-requests', { token })];
+      if (canCreate) calls.push(apiFetch<EmployeeListResponse>('/employees', { token }), apiFetch<Option[]>('/locations', { token }));
+      const [requestResult, employeeResult, locationResult] = await Promise.all(calls);
+      setRequests(requestResult as PlacementRequestRow[]);
+      if (employeeResult) setEmployees((employeeResult as EmployeeListResponse).data);
+      if (locationResult) setLocations(locationResult as Option[]);
+    } catch (reason) { setError(reason instanceof ApiError || reason instanceof Error ? reason.message : 'Gagal memuat data pengajuan'); }
+    finally { setLoading(false); }
+  }
+  useEffect(() => { void load(); }, []);
+
+  async function onCreate(event: FormEvent) {
+    event.preventDefault(); setSubmitting(true); setError(null);
+    try { await apiFetch('/placement-requests', { method: 'POST', token: getToken(), body: form }); setForm({ employeeId: '', destinationLocationId: '', startDate: '', reason: '' }); setShowForm(false); await load(); }
+    catch (reason) { setError(reason instanceof ApiError ? reason.message : 'Gagal membuat pengajuan'); }
+    finally { setSubmitting(false); }
   }
 
-   useEffect(() => {
-     setUser(getUser());
-     setAuthResolved(true);
-   }, []);
-
-   useEffect(() => {
-     if (!authResolved) return;
-     load();
-     // eslint-disable-next-line react-hooks/exhaustive-deps
-   }, [authResolved]);
-
-  async function onCreate(e: FormEvent) {
-    e.preventDefault();
-    setSubmitting(true);
-    setError(null);
-    try {
-      await apiFetch('/placement-requests', { method: 'POST', token: getToken(), body: form });
-      setForm({ employeeId: '', destinationLocationId: '', startDate: '', reason: '' });
-      setShowForm(false);
-      await load();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Gagal membuat pengajuan');
-    } finally {
-      setSubmitting(false);
-    }
+  async function act(note: string) {
+    if (!pending) return;
+    setSubmitting(true); setError(null);
+    const path = pending.kind === 'hr' ? 'hr-review' : pending.kind === 'director' ? 'director-approve' : 'cancel';
+    const body = pending.kind === 'cancel' ? undefined : { approve: pending.approve, note: note || undefined };
+    try { await apiFetch(`/placement-requests/${pending.row.id}/${path}`, { method: 'PATCH', token: getToken(), body }); setPending(null); await load(); }
+    catch (reason) { setError(reason instanceof ApiError ? reason.message : 'Gagal memproses pengajuan'); }
+    finally { setSubmitting(false); }
   }
 
-  async function act(path: string, body?: unknown) {
-    setError(null);
-    try {
-      await apiFetch(path, { method: 'PATCH', token: getToken(), body });
-      await load();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Gagal memproses pengajuan');
-    }
-  }
+  const pendingHr = requests.filter((row) => row.status === 'PENDING_HR').length;
+  const pendingDirector = requests.filter((row) => row.status === 'PENDING_DIRECTOR').length;
+  const mutations = requests.filter((row) => row.type === 'MUTATION').length;
 
-  return (
-    <div>
-      <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Pengajuan Penempatan / Mutasi</h1>
-        {canCreate && (
-          <button onClick={() => setShowForm((s) => !s)} className="rounded-lg bg-slate-900 px-4 py-2 text-sm text-white hover:bg-slate-800">
-            {showForm ? 'Batal' : '+ Ajukan Perubahan'}
-          </button>
-        )}
-      </div>
-
-      {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
-
-      {showForm && (
-        <form onSubmit={onCreate} className="mb-6 grid max-w-xl gap-3 rounded-xl border border-slate-200 bg-white p-4">
-           <select required value={form.employeeId} onChange={(e) => setForm({ ...form, employeeId: e.target.value })} className="rounded-lg border border-slate-300 px-3 py-2 text-sm">
-             <option value="">-- Pilih karyawan --</option>
-             {employees.length === 0 && <option disabled>Tidak ada karyawan dalam cakupan Anda</option>}
-             {employees.map((e) => (
-              <option key={e.id} value={e.id}>{e.name}</option>
-            ))}
-          </select>
-          <select required value={form.destinationLocationId} onChange={(e) => setForm({ ...form, destinationLocationId: e.target.value })} className="rounded-lg border border-slate-300 px-3 py-2 text-sm">
-            <option value="">-- Lokasi tujuan --</option>
-            {locations.map((l) => (
-              <option key={l.id} value={l.id}>{l.name}</option>
-            ))}
-          </select>
-          <label className="text-sm">
-            Tanggal mulai
-            <input required type="date" value={form.startDate} onChange={(e) => setForm({ ...form, startDate: e.target.value })} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
-          </label>
-          <textarea required placeholder="Alasan perpindahan" value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })} className="rounded-lg border border-slate-300 px-3 py-2 text-sm" rows={3} />
-          <p className="text-xs text-slate-500">
-            Tipe pengajuan (Reassignment / Mutasi) ditentukan otomatis dari jenis tenaga kerja karyawan.
-          </p>
-          <button type="submit" disabled={submitting} className="rounded-lg bg-slate-900 py-2 text-sm text-white hover:bg-slate-800 disabled:opacity-60">
-            {submitting ? 'Mengirim...' : 'Kirim Pengajuan'}
-          </button>
-        </form>
-      )}
-
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-        <table className="w-full text-sm">
-          <thead className="bg-slate-50 text-left text-slate-500">
-            <tr>
-              <th className="px-4 py-2">Karyawan</th>
-              <th className="px-4 py-2">Dari → Ke</th>
-              <th className="px-4 py-2">Mulai</th>
-              <th className="px-4 py-2">Status</th>
-              <th className="px-4 py-2"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {requests.map((r) => {
-              const st = STATUS_LABEL[r.status] ?? { label: r.status, style: 'bg-slate-100' };
-              return (
-                <tr key={r.id} className="border-t border-slate-100 align-top">
-                  <td className="px-4 py-2">
-                    {r.employee.name}
-                    <div className="text-xs text-slate-400">{r.type === 'MUTATION' ? 'Mutasi (Arsiparis)' : 'Reassignment (Borongan)'}</div>
-                  </td>
-                  <td className="px-4 py-2">{r.originLocation?.name ?? '-'} → {r.destinationLocation.name}</td>
-                  <td className="px-4 py-2">{new Date(r.startDate).toLocaleDateString('id-ID')}</td>
-                  <td className="px-4 py-2">
-                    <span className={`rounded-full px-2 py-0.5 text-xs ${st.style}`}>{st.label}</span>
-                  </td>
-                  <td className="px-4 py-2">
-                    <div className="flex flex-wrap gap-2">
-                      {canHrReview && r.status === 'PENDING_HR' && (
-                        <>
-                          <button onClick={() => act(`/placement-requests/${r.id}/hr-review`, { approve: true })} className="rounded-lg bg-green-600 px-2 py-1 text-xs text-white hover:bg-green-700">Setujui (HR)</button>
-                          <button onClick={() => act(`/placement-requests/${r.id}/hr-review`, { approve: false })} className="rounded-lg bg-red-600 px-2 py-1 text-xs text-white hover:bg-red-700">Tolak</button>
-                        </>
-                      )}
-                      {canDirectorApprove && r.status === 'PENDING_DIRECTOR' && (
-                        <>
-                          <button onClick={() => act(`/placement-requests/${r.id}/director-approve`, { approve: true })} className="rounded-lg bg-green-600 px-2 py-1 text-xs text-white hover:bg-green-700">Setujui (Direktur)</button>
-                          <button onClick={() => act(`/placement-requests/${r.id}/director-approve`, { approve: false })} className="rounded-lg bg-red-600 px-2 py-1 text-xs text-white hover:bg-red-700">Tolak</button>
-                        </>
-                      )}
-                      {['PENDING_HR', 'PENDING_DIRECTOR'].includes(r.status) && (
-                        <button onClick={() => act(`/placement-requests/${r.id}/cancel`)} className="rounded-lg border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50">Batalkan</button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
+  return <DossierPage className="space-y-6">
+    <ContextBand title="Pengajuan Penempatan & Mutasi" description="Alur persetujuan dan perpindahan lokasi sesuai jenis tenaga kerja." meta={<span>WORKFLOW PENEMPATAN</span>} actions={canCreate && <Button onClick={() => setShowForm((value) => !value)}>{showForm ? 'Tutup Form' : 'Ajukan Perubahan'}</Button>} />
+    {error && <Alert variant="danger" title="Data tidak dapat diproses"><div className="flex flex-wrap items-center gap-3"><span>{error}</span><button type="button" onClick={() => void load()} className="font-semibold underline">Coba lagi</button></div></Alert>}
+    {loading ? <SummarySkeleton /> : <MetricStrip><MetricCard label="Total Pengajuan" value={requests.length} detail="Dalam cakupan akses Anda" /><MetricCard label="Menunggu HR" value={pendingHr} tone="warning" /><MetricCard label="Menunggu Direktur" value={pendingDirector} tone="info" /><MetricCard label="Mutasi" value={mutations} detail={`${requests.length - mutations} reassignment`} /></MetricStrip>}
+    {showForm && <Card><CardHeader><CardTitle>Ajukan Perubahan Penempatan</CardTitle><p className="mt-1 text-body text-muted">Tipe dan jalur persetujuan ditentukan otomatis dari jenis tenaga kerja karyawan.</p></CardHeader><CardContent><form onSubmit={onCreate} aria-busy={submitting} className="grid gap-4 md:grid-cols-2"><Select label="Karyawan" value={form.employeeId} onChange={(value) => setForm({ ...form, employeeId: value })} options={employees} /><Select label="Lokasi tujuan" value={form.destinationLocationId} onChange={(value) => setForm({ ...form, destinationLocationId: value })} options={locations} /><label className="text-sm font-semibold text-foreground">Tanggal mulai<input required type="date" value={form.startDate} onChange={(event) => setForm({ ...form, startDate: event.target.value })} className="input mt-1 w-full" /></label><label className="text-sm font-semibold text-foreground md:col-span-2">Alasan<textarea required rows={3} value={form.reason} onChange={(event) => setForm({ ...form, reason: event.target.value })} className="input mt-1 w-full" /></label><div className="md:col-span-2"><Button disabled={submitting}>{submitting ? 'Mengirim...' : 'Kirim Pengajuan'}</Button></div></form></CardContent></Card>}
+    {loading ? <ListSkeleton /> : requests.length === 0 ? <EmptyState title="Belum ada pengajuan penempatan" description="Pengajuan yang berada dalam cakupan akses Anda akan tampil di sini." /> : <><div className="space-y-3 md:hidden">{requests.map((row) => <RequestCard key={row.id} row={row} actions={<Actions row={row} role={role} sessionId={session.id} canHrReview={canHrReview} canDirectorApprove={canDirectorApprove} onAction={setPending} />} />)}</div><DataRegion className="hidden md:block"><table className="min-w-[920px] text-sm"><thead><tr><th scope="col">Karyawan</th><th scope="col">Perpindahan</th><th scope="col">Efektif</th><th scope="col">Tahap persetujuan</th><th scope="col">Tindakan</th></tr></thead><tbody>{requests.map((row) => <RequestRow key={row.id} row={row} actions={<Actions row={row} role={role} sessionId={session.id} canHrReview={canHrReview} canDirectorApprove={canDirectorApprove} onAction={setPending} />} />)}</tbody></table></DataRegion></>}
+    <ActionDialog open={!!pending} title={dialogTitle(pending)} description={pending ? `${pending.row.employee.name}: ${pending.row.originLocation?.name ?? 'Tanpa penempatan asal'} ke ${pending.row.destinationLocation.name}.` : ''} reasonLabel="Catatan keputusan" reasonRequired={pending?.approve === false} confirmLabel={pending?.kind === 'cancel' ? 'Batalkan Pengajuan' : pending?.approve ? 'Setujui' : 'Tolak'} danger={pending?.approve === false || pending?.kind === 'cancel'} busy={submitting} onClose={() => setPending(null)} onConfirm={act} />
+  </DossierPage>;
 }
+
+function ApprovalContext({ row }: { row: PlacementRequestRow }) { const text = row.status === 'PENDING_HR' ? (row.type === 'MUTATION' ? 'Tahap 1 dari 2: review HR, lalu Direktur' : 'Keputusan akhir oleh HR') : row.status === 'PENDING_DIRECTOR' ? 'Review HR selesai, menunggu keputusan Direktur' : row.status === 'APPROVED' ? 'Seluruh persetujuan selesai' : row.status === 'REJECTED' ? 'Alur persetujuan dihentikan' : 'Pengajuan dibatalkan'; const note = row.directorNote || row.hrNote; const reviewedAt = row.directorReviewedAt || row.hrReviewedAt; return <div className="min-w-0"><Badge variant={(STATUS[row.status] ?? STATUS.CANCELLED).variant}>{(STATUS[row.status] ?? { label: row.status }).label}</Badge><p className="mt-1.5 break-words text-xs text-slate-500 [overflow-wrap:anywhere]">{text}</p>{note && <p className="mt-1 break-words text-xs text-slate-600 [overflow-wrap:anywhere]">Catatan: {note}</p>}{reviewedAt && <p className="mt-1 text-xs text-slate-400">Review terakhir {formatDateTime(reviewedAt)}</p>}</div>; }
+function Route({ row }: { row: PlacementRequestRow }) { return <div className="flex min-w-0 items-center gap-2"><span className="min-w-0 break-words [overflow-wrap:anywhere]">{row.originLocation?.name ?? 'Belum ditempatkan'}</span><ArrowRight className="size-4 shrink-0 text-muted" /><span className="min-w-0 break-words font-semibold text-brand [overflow-wrap:anywhere]">{row.destinationLocation.name}</span></div>; }
+function RequestRow({ row, actions }: { row: PlacementRequestRow; actions: React.ReactNode }) { return <tr className="border-t border-slate-100 align-top"><td className="px-5 py-4"><p className="font-semibold text-navy">{row.employee.name}</p><p className="mt-1 text-xs text-slate-500">{TYPE_LABEL[row.type]} · Diajukan {formatDate(row.requestedAt)}</p><p className="mt-2 max-w-xs text-xs text-slate-500">{row.reason}</p></td><td className="px-5 py-4"><Route row={row} /></td><td className="whitespace-nowrap px-5 py-4">{formatDate(row.startDate)}</td><td className="max-w-xs px-5 py-4"><ApprovalContext row={row} /></td><td className="px-5 py-4">{actions}</td></tr>; }
+function RequestCard({ row, actions }: { row: PlacementRequestRow; actions: React.ReactNode }) { return <Card><CardContent className="min-w-0 p-4"><div className="min-w-0"><div className="min-w-0"><p className="break-words font-semibold text-navy [overflow-wrap:anywhere]">{row.employee.name}</p><p className="mt-1 text-xs text-slate-500">{TYPE_LABEL[row.type]} · efektif {formatDate(row.startDate)}</p></div><div className="mt-2"><ApprovalContext row={row} /></div></div><div className="mt-4 min-w-0 rounded-xl bg-slate-50 p-3 text-sm"><MapPin className="mr-1 inline size-4 text-brand" /><Route row={row} /></div><p className="mt-3 break-words text-sm text-slate-600 [overflow-wrap:anywhere]">{row.reason}</p><div className="mt-4">{actions}</div></CardContent></Card>; }
+function Actions({ row, role, sessionId, canHrReview, canDirectorApprove, onAction }: { row: PlacementRequestRow; role: string; sessionId: string; canHrReview: boolean; canDirectorApprove: boolean; onAction: (action: PendingAction) => void }) { const canCancel = ['PENDING_HR', 'PENDING_DIRECTOR'].includes(row.status) && ((role === 'KOORDINATOR' && row.requestedById === sessionId) || canHrReview); return <div className="flex flex-wrap gap-2">{canHrReview && row.status === 'PENDING_HR' && <><Button size="sm" onClick={() => onAction({ row, kind: 'hr', approve: true })}>Setujui HR</Button><Button size="sm" variant="danger" onClick={() => onAction({ row, kind: 'hr', approve: false })}>Tolak</Button></>}{canDirectorApprove && row.status === 'PENDING_DIRECTOR' && <><Button size="sm" onClick={() => onAction({ row, kind: 'director', approve: true })}>Setujui Direktur</Button><Button size="sm" variant="danger" onClick={() => onAction({ row, kind: 'director', approve: false })}>Tolak</Button></>}{canCancel && <Button size="sm" variant="secondary" onClick={() => onAction({ row, kind: 'cancel' })}>Batalkan</Button>}</div>; }
+function Select({ label, value, onChange, options }: { label: string; value: string; onChange: (value: string) => void; options: Option[] }) { return <label className="text-sm font-semibold text-foreground">{label}<select required value={value} onChange={(event) => onChange(event.target.value)} className="input mt-1 w-full"><option value="">Pilih {label.toLowerCase()}</option>{options.map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}</select></label>; }
+function dialogTitle(action: PendingAction | null) { if (!action) return ''; if (action.kind === 'cancel') return 'Batalkan pengajuan penempatan?'; return action.approve ? `Setujui sebagai ${action.kind === 'hr' ? 'HR' : 'Direktur'}?` : 'Tolak pengajuan penempatan?'; }
+function SummarySkeleton() { return <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">{[0, 1, 2, 3].map((item) => <Skeleton key={item} className="h-28 rounded-2xl" />)}</div>; }
+function ListSkeleton() { return <div className="space-y-3">{[0, 1, 2].map((item) => <Skeleton key={item} className="h-28 rounded-2xl" />)}</div>; }

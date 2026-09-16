@@ -25,7 +25,8 @@ async function invalidProperty(Type, value, property) {
 
 test('Batch 6 payroll controllers separate Finance, HR monitoring, Director decisions, and employee self-service', () => {
   assert.deepEqual(Reflect.getMetadata(ROLES_KEY, PayrollController.prototype.createRun), ['KEUANGAN']);
-  assert.deepEqual(Reflect.getMetadata(ROLES_KEY, PayrollController.prototype.findAll), ['KEUANGAN', 'ADMIN_HR']);
+  assert.deepEqual(Reflect.getMetadata(ROLES_KEY, PayrollController.prototype.findAll), ['KEUANGAN', 'ADMIN_HR', 'DIREKTUR']);
+  assert.deepEqual(Reflect.getMetadata(ROLES_KEY, PayrollController.prototype.findOne), ['KEUANGAN', 'ADMIN_HR', 'DIREKTUR']);
   assert.deepEqual(Reflect.getMetadata(ROLES_KEY, PayrollController.prototype.review), ['KEUANGAN']);
   assert.deepEqual(Reflect.getMetadata(ROLES_KEY, PayrollController.prototype.submit), ['KEUANGAN']);
   assert.deepEqual(Reflect.getMetadata(ROLES_KEY, PayrollController.prototype.approve), ['DIREKTUR']);

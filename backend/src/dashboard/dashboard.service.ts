@@ -3,6 +3,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { Role } from '../common/enums/role.enum';
 import { CoordinatorScopeService } from '../coordinator-scopes/coordinator-scope.service';
+import { EmploymentType, Prisma } from '@prisma/client';
+import { approvedFullDayAbsenceWhere } from '../common/domain/approved-full-day-absence';
 
 function startOfDay(d: Date): Date {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate());
@@ -40,10 +42,20 @@ export class DashboardService {
   }
 
   /** Operational counters are intentionally limited to the actor's own scope. */
-  async summary(actor: AuthenticatedUser) {
+  async summary(actor: AuthenticatedUser, requestedEmploymentType?: string) {
     const employeeScope = await this.employeeScope(actor);
-    const canSeeOperations = [Role.KARYAWAN, Role.KOORDINATOR, Role.ADMIN_HR, Role.SYSTEM_ADMIN].includes(actor.role as Role);
+    const employmentType = Object.values(EmploymentType).includes(requestedEmploymentType as EmploymentType) ? requestedEmploymentType as EmploymentType : undefined;
+    const scopedEmployees: Prisma.EmployeeWhereInput | undefined = employmentType ? { AND: [employeeScope ?? {}, { employmentType }] } : employeeScope;
     const today = startOfDay(new Date());
+    const withoutApprovedAbsence: Prisma.EmployeeWhereInput = {
+      leaveRequests: { none: approvedFullDayAbsenceWhere(today) },
+    };
+    const attendanceEmployees: Prisma.EmployeeWhereInput = {
+      ...(scopedEmployees ?? {}),
+      attendanceRequired: true,
+      ...withoutApprovedAbsence,
+    };
+    const canSeeOperations = [Role.KARYAWAN, Role.KOORDINATOR, Role.ADMIN_HR, Role.DIREKTUR, Role.KOMISARIS, Role.SYSTEM_ADMIN].includes(actor.role as Role);
     const weekday = today.getDay();
     const leaveStatus = this.leaveStatus(actor);
     const placementStatus = this.placementStatus(actor);
@@ -52,18 +64,20 @@ export class DashboardService {
       canSeeOperations ? this.prisma.employee.count({
         where: {
           status: 'ACTIVE',
-          ...(employeeScope ?? {}),
+          attendanceRequired: true,
+          ...(scopedEmployees ?? {}),
+          ...withoutApprovedAbsence,
           placements: { some: { status: 'ACTIVE', location: { workDays: { has: weekday } } } },
         },
       }) : Promise.resolve(0),
-      canSeeOperations ? this.prisma.attendance.count({ where: { date: today, checkInAt: { not: null }, ...(employeeScope ? { employee: employeeScope } : {}) } }) : Promise.resolve(0),
-      canSeeOperations ? this.prisma.attendance.count({ where: { date: today, latenessStatus: 'LATE', ...(employeeScope ? { employee: employeeScope } : {}) } }) : Promise.resolve(0),
-      canSeeOperations ? this.prisma.attendance.count({ where: { date: today, validationStatus: 'NEEDS_REVIEW', ...(employeeScope ? { employee: employeeScope } : {}) } }) : Promise.resolve(0),
+      canSeeOperations ? this.prisma.attendance.count({ where: { date: today, checkInAt: { not: null }, employee: attendanceEmployees } }) : Promise.resolve(0),
+      canSeeOperations ? this.prisma.attendance.count({ where: { date: today, latenessStatus: 'LATE', employee: attendanceEmployees } }) : Promise.resolve(0),
+      canSeeOperations ? this.prisma.attendance.count({ where: { date: today, validationStatus: 'NEEDS_REVIEW', employee: attendanceEmployees } }) : Promise.resolve(0),
       leaveStatus.length ? this.prisma.leaveRequest.count({
-        where: { status: { in: leaveStatus as any }, ...(employeeScope ? { employee: employeeScope } : {}) },
+        where: { status: { in: leaveStatus as any }, ...(scopedEmployees ? { employee: scopedEmployees } : {}) },
       }) : Promise.resolve(0),
       placementStatus.length ? this.prisma.placementRequest.count({ where: { status: { in: placementStatus as any } } }) : Promise.resolve(0),
-      canSeeOperations ? this.prisma.placement.count({ where: { status: 'ACTIVE', ...(employeeScope ? { employee: employeeScope } : {}) } }) : Promise.resolve(0),
+      canSeeOperations ? this.prisma.placement.count({ where: { status: 'ACTIVE', ...(scopedEmployees ? { employee: scopedEmployees } : {}) } }) : Promise.resolve(0),
     ]);
 
     return {
@@ -83,7 +97,7 @@ export class DashboardService {
     if (actor.role === Role.KOORDINATOR) {
       add('attendance-review', 'Absensi perlu ditinjau', '/attendance?validationStatus=NEEDS_REVIEW', this.prisma.attendance.count({ where: { validationStatus: 'NEEDS_REVIEW', ...teamScope } }));
       add('leave-coordinator', 'Cuti/izin menunggu koordinator', '/leave-requests', this.prisma.leaveRequest.count({ where: { status: 'PENDING_COORDINATOR', ...teamScope } }));
-      add('absence-follow-up', 'Ketidakhadiran perlu tindak lanjut', '/absence-cases/attention', this.prisma.absenceCase.count({ where: { status: { in: ['PENDING_EXPLANATION', 'CONFIRMED_ALPHA'] }, ...teamScope } }));
+      add('absence-follow-up', 'Ketidakhadiran perlu tindak lanjut', '/absence-cases', this.prisma.absenceCase.count({ where: { status: { in: ['PENDING_EXPLANATION', 'CONFIRMED_ALPHA'] }, ...teamScope } }));
       add('overtime-review', 'Lembur menunggu review', '/overtime-requests', this.prisma.overtimeRequest.count({ where: { status: 'PENDING', ...teamScope } }));
     }
 
@@ -92,8 +106,8 @@ export class DashboardService {
       add('leave-hr', 'Cuti/izin menunggu HR', '/leave-requests', this.prisma.leaveRequest.count({ where: { status: { in: ['PENDING', 'PENDING_HR'] } } }));
       add('placement-hr', 'Penempatan menunggu HR', '/placement-requests', this.prisma.placementRequest.count({ where: { status: 'PENDING_HR' } }));
       add('temporary-assignment', 'Penugasan sementara menunggu review', '/temporary-assignments', this.prisma.temporaryAssignment.count({ where: { status: 'PENDING' } }));
-      add('profile-change', 'Perubahan profil menunggu review', '/employee-profile-change-requests', this.prisma.employeeProfileChangeRequest.count({ where: { status: 'PENDING' } }));
-      add('absence-resolve', 'Ketidakhadiran perlu diselesaikan', '/absence-cases/attention', this.prisma.absenceCase.count({ where: { status: { in: ['PENDING_EXPLANATION', 'CONFIRMED_ALPHA'] } } }));
+      add('profile-change', 'Perubahan profil menunggu review', '/profile-change-requests', this.prisma.employeeProfileChangeRequest.count({ where: { status: 'PENDING' } }));
+      add('absence-resolve', 'Ketidakhadiran perlu diselesaikan', '/absence-cases', this.prisma.absenceCase.count({ where: { status: { in: ['PENDING_EXPLANATION', 'CONFIRMED_ALPHA'] } } }));
       add('overtime-review', 'Lembur menunggu review', '/overtime-requests', this.prisma.overtimeRequest.count({ where: { status: 'PENDING' } }));
     }
 

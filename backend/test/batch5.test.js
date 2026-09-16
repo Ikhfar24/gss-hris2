@@ -78,6 +78,7 @@ test('employee leave requests are self-scoped and early-leave permission does no
 test('leave review rejects an actor outside the current approval stage before a transaction', async () => {
   let transactionCalled = false;
   const service = new LeaveRequestsService({
+    user: { findUnique: async () => ({ employeeId: 'coordinator-employee' }) },
     leaveRequest: { findUnique: async () => ({
       id: 'leave-1', status: 'PENDING_COORDINATOR', type: 'SAKIT', employeeId: 'employee-1',
       employee: { coordinatorId: 'coord-2', employmentType: 'TENAGA_BORONGAN' }, approvals: [],
@@ -95,6 +96,7 @@ test('leave approval follows coordinator then HR stages with immutable history',
     employee: { coordinatorId: 'coord-1', employmentType: 'TENAGA_BORONGAN' }, approvals, documentUrl: null,
   };
   const prisma = {
+    user: { findUnique: async ({ where }) => ({ employeeId: where.id === 'coord-1' ? 'coordinator-employee' : null }) },
     leaveRequest: {
       findUnique: async () => request,
     },

@@ -124,6 +124,12 @@ export class PayrollService {
         select: { id: true, periodStart: true, periodEnd: true, status: true, _count: { select: { slips: true } } },
       });
     }
+    if (actor.role === DIRECTOR) {
+      return this.prisma.payrollRun.findMany({
+        orderBy: { periodStart: 'desc' },
+        select: { id: true, periodStart: true, periodEnd: true, status: true, financeReviewedAt: true, _count: { select: { slips: true } } },
+      });
+    }
     this.finance(actor);
     return this.prisma.payrollRun.findMany({ orderBy: { periodStart: 'desc' }, include: { _count: { select: { slips: true } } } });
   }
@@ -138,6 +144,10 @@ export class PayrollService {
     });
     if (!run) throw new NotFoundException('Payroll run tidak ditemukan');
     if (actor.role === HR) return { id: run.id, periodStart: run.periodStart, periodEnd: run.periodEnd, status: run.status, sourceMonitorOnly: true };
+    if (actor.role === DIRECTOR) return {
+      id: run.id, periodStart: run.periodStart, periodEnd: run.periodEnd, status: run.status, financeReviewedAt: run.financeReviewedAt,
+      slips: run.slips.map((slip) => ({ id: slip.id, employee: slip.employee, basis: slip.basis, baseSalary: slip.baseSalary, dailyRate: slip.dailyRate, presentDays: slip.presentDays, totalEarnings: slip.totalEarnings, totalDeductions: slip.totalDeductions, netPay: slip.netPay, items: slip.items })),
+    };
     this.finance(actor);
     return run;
   }

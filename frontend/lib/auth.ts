@@ -6,6 +6,7 @@ export interface SessionUser {
   id: string;
   email: string;
   role: string;
+  mustChangePassword?: boolean;
 }
 
 // Cookies (not localStorage) so the Next.js middleware can read auth state
@@ -38,7 +39,14 @@ export function getToken(): string | null {
 
 export function getUser(): SessionUser | null {
   const raw = getCookie(USER_COOKIE);
-  return raw ? (JSON.parse(raw) as SessionUser) : null;
+  if (!raw) return null;
+  try {
+    const value = JSON.parse(raw) as Partial<SessionUser>;
+    if (typeof value.id !== 'string' || typeof value.email !== 'string' || typeof value.role !== 'string') return null;
+    return value as SessionUser;
+  } catch {
+    return null;
+  }
 }
 
 export function clearSession() {

@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post, Patch, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Patch, Query, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -9,9 +9,9 @@ import { CheckInDto } from './dto/check-in.dto';
 import { CheckOutDto } from './dto/check-out.dto';
 import { QueryAttendanceDto, QueryOpenAttendanceDto } from './dto/query-attendance.dto';
 import { CorrectAttendanceDto } from './dto/correct-attendance.dto';
-import { ResetDeviceDto } from './dto/reset-device.dto';
 import { ReviewAttendanceDto } from './dto/review-attendance.dto';
 import { AutoCloseAttendanceDto } from './dto/auto-close-attendance.dto';
+import { QueryAttendanceMonitoringDto } from './dto/query-attendance-monitoring.dto';
 
 const REVIEWER_ROLES = [Role.ADMIN_HR, Role.SYSTEM_ADMIN, Role.KOORDINATOR, Role.DIREKTUR];
 const ATTENDANCE_REVIEWER_ROLES = [Role.ADMIN_HR, Role.SYSTEM_ADMIN, Role.KOORDINATOR];
@@ -65,20 +65,16 @@ export class AttendanceController {
     return this.service.summary(date, actor);
   }
 
-  @Roles(...HR_ROLES)
-  @Get('devices')
-  listDevices() {
-    return this.service.listDevices();
+  @Roles(Role.ADMIN_HR, Role.SYSTEM_ADMIN, Role.KOORDINATOR, Role.DIREKTUR)
+  @Get('monitoring')
+  monitoring(@Query() query: QueryAttendanceMonitoringDto, @CurrentUser() actor: AuthenticatedUser) {
+    return this.service.monitoring(query, actor);
   }
 
-  @Roles(...HR_ROLES)
-  @Delete('devices/:employeeId')
-  resetDevice(
-    @Param('employeeId') employeeId: string,
-    @Body() dto: ResetDeviceDto,
-    @CurrentUser() actor: AuthenticatedUser,
-  ) {
-    return this.service.resetDevice(employeeId, dto, actor);
+  @Roles(Role.DIREKTUR, Role.KOMISARIS, Role.SYSTEM_ADMIN)
+  @Get('review-audit')
+  reviewAudit() {
+    return this.service.reviewAudit();
   }
 
   @Roles(...HR_ROLES)

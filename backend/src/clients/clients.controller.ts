@@ -1,4 +1,6 @@
-import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Res, StreamableFile, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import type { Response } from 'express';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -17,6 +19,27 @@ export class ClientsController {
   @Get()
   findAll() {
     return this.service.findAll();
+  }
+
+  @Roles(Role.ADMIN_HR, Role.SYSTEM_ADMIN)
+  @Get('import/template')
+  async importTemplate(@Res({ passthrough: true }) res: Response) {
+    res.set({ 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition': 'attachment; filename="clients-import-template.xlsx"' });
+    return new StreamableFile(await this.service.importTemplate());
+  }
+
+  @Roles(Role.ADMIN_HR, Role.SYSTEM_ADMIN)
+  @Post('import/preview')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024 } }))
+  importPreview(@UploadedFile() file: any) {
+    return this.service.previewImport(file);
+  }
+
+  @Roles(Role.ADMIN_HR, Role.SYSTEM_ADMIN)
+  @Post('import/commit')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024 } }))
+  importCommit(@UploadedFile() file: any, @CurrentUser() actor: AuthenticatedUser) {
+    return this.service.commitImport(file, actor);
   }
 
   @Roles(Role.ADMIN_HR, Role.SYSTEM_ADMIN, Role.KOORDINATOR, Role.DIREKTUR)

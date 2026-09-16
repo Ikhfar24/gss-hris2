@@ -10,12 +10,26 @@ export class CompanySettingsService {
     private auditLog: AuditLogService,
   ) {}
 
-  /** Public — branding must be readable pre-login (e.g. logo on the login page). */
   async get() {
     const settings = await this.prisma.companySettings.findFirst();
     if (settings) return settings;
     // Self-heals if seed hasn't run yet, so the app never has a "no settings" state.
     return this.prisma.companySettings.create({ data: {} });
+  }
+
+  async getBranding() {
+    const settings = await this.prisma.companySettings.findFirst({
+      select: { companyName: true, appName: true, logoUrl: true, faviconUrl: true, primaryColor: true },
+    });
+    if (!settings) return { companyName: 'Papaiz.corp', appName: 'Papaiz HR', logoUrl: null, faviconUrl: null, primaryColor: '#001F3F' };
+    const safeAsset = (value: string | null) => value && /^\/(?!\/)[A-Za-z0-9._~/-]*$/.test(value) ? value : null;
+    return {
+      companyName: settings.companyName,
+      appName: settings.appName,
+      logoUrl: safeAsset(settings.logoUrl),
+      faviconUrl: safeAsset(settings.faviconUrl),
+      primaryColor: settings.primaryColor && /^#[0-9a-fA-F]{6}$/.test(settings.primaryColor) ? settings.primaryColor : '#001F3F',
+    };
   }
 
   async update(dto: UpdateCompanySettingsDto, actorId: string) {

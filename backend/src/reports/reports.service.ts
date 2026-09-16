@@ -15,6 +15,9 @@ const LEAVE_TYPE_LABEL: Record<string, string> = {
   CUTI: 'Cuti', SAKIT: 'Sakit', IZIN_PULANG_AWAL: 'Izin Pulang Awal',
   IZIN_MENDADAK: 'Izin Mendadak', IZIN_LAIN: 'Izin Lain', RESIGN: 'Resign',
 };
+const EMPLOYMENT_TYPE_LABEL: Record<string, string> = {
+  TENAGA_BORONGAN: 'Borongan', TENAGA_ARSIPARIS: 'Arsiparis', STAFF_OFFICE: 'Staff Kantor',
+};
 
 export interface ExportResult {
   buffer: Buffer;
@@ -95,7 +98,7 @@ export class ReportsService {
     ];
     const rows = records.map((p) => ({
       karyawan: p.employee.name,
-      jenis: p.employee.employmentType === 'TENAGA_BORONGAN' ? 'Borongan' : 'Arsiparis',
+      jenis: EMPLOYMENT_TYPE_LABEL[p.employee.employmentType] ?? p.employee.employmentType,
       lokasi: p.location.name,
       mulai: p.startDate.toLocaleDateString('id-ID'),
       selesai: p.endDate ? p.endDate.toLocaleDateString('id-ID') : '-',

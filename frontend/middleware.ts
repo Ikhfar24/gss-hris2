@@ -15,12 +15,17 @@ const PROTECTED_PREFIXES = [
   '/leave-requests',
   '/overtime-requests',
   '/holidays',
-  '/devices',
   '/reports',
   '/payroll',
   '/profile-change-requests',
   '/temporary-assignments',
   '/absence-cases',
+  '/profile',
+  '/activity',
+  '/approvals',
+  '/system',
+  '/requests',
+  '/account',
 ];
 
 export function middleware(req: NextRequest) {
@@ -30,7 +35,7 @@ export function middleware(req: NextRequest) {
   const token = req.cookies.get('papaiz_access_token')?.value;
   if (!token) {
     const loginUrl = new URL('/login', req.url);
-    loginUrl.searchParams.set('next', req.nextUrl.pathname);
+    loginUrl.searchParams.set('next', `${req.nextUrl.pathname}${req.nextUrl.search}`);
     return NextResponse.redirect(loginUrl);
   }
   return NextResponse.next();
@@ -49,11 +54,16 @@ export const config = {
     '/leave-requests/:path*',
     '/overtime-requests/:path*',
     '/holidays/:path*',
-    '/devices/:path*',
     '/reports/:path*',
     '/payroll/:path*',
     '/profile-change-requests/:path*',
     '/temporary-assignments/:path*',
     '/absence-cases/:path*',
+    '/profile/:path*',
+    '/activity/:path*',
+    '/approvals/:path*',
+    '/system/:path*',
+    '/requests/:path*',
+    '/account/:path*',
   ],
 };

@@ -91,7 +91,7 @@ export class OvertimeRequestsService {
 
   async cancel(id: string, actor: AuthenticatedUser) {
     const request = await this.getRequest(id);
-    const isOwner = actor.role === Role.KARYAWAN && request.employeeId === await this.resolveOwnEmployeeId(actor.userId);
+    const isOwner = [Role.KARYAWAN, Role.KOORDINATOR].includes(actor.role as Role) && request.employeeId === await this.resolveOwnEmployeeId(actor.userId);
     if (!isOwner && !HR_ROLES.includes(actor.role as Role)) {
       throw new ForbiddenException('Hanya pemohon atau HR yang dapat membatalkan pengajuan lembur');
     }

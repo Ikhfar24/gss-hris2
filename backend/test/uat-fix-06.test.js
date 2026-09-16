@@ -13,7 +13,7 @@ test('UAT Fix Pack 06 recalculates distance and snapshots accuracy/geofence evid
   const service = new AttendanceService({}, {}, {});
   const evidence = service.evaluateEvidence(location, {
     latitude: -6.200100, longitude: 106.816666, accuracyMeters: 18,
-    deviceId: 'device-123', failureReason: 'CAMERA_FAILED', failureNote: 'Kamera rusak',
+    failureReason: 'CAMERA_FAILED', failureNote: 'Kamera rusak',
   }, 'employee-1');
   assert.ok(evidence.distance > 10 && evidence.distance < 13);
   assert.equal(evidence.accuracy, 18);
@@ -27,7 +27,7 @@ test('UAT Fix Pack 06 recalculates distance and snapshots accuracy/geofence evid
 test('UAT Fix Pack 06 rejects incomplete coordinate pairs before attendance persistence', () => {
   const service = new AttendanceService({}, {}, {});
   assert.throws(() => service.evaluateEvidence(location, {
-    latitude: -6.2, deviceId: 'device-123', failureReason: 'GPS_FAILED', failureNote: 'GPS gagal',
+    latitude: -6.2, failureReason: 'GPS_FAILED', failureNote: 'GPS gagal',
   }, 'employee-1'), /Latitude dan longitude harus dikirim bersama/);
 });
 
@@ -48,13 +48,13 @@ test('UAT Fix Pack 06 permits a linked employee to open only their own attendanc
 test('UAT Fix Pack 06 applies active CoordinatorScope to attendance detail', async () => {
   let scopedEmployee;
   const attendance = { id: 'attendance-1', employeeId: 'employee-1', employee: { id: 'employee-1', employmentType: 'TENAGA_BORONGAN' }, reviews: [], checkInSelfieUrl: null, checkOutSelfieUrl: null };
-  const service = new AttendanceService({ attendance: { findUnique: async () => attendance }, user: { findMany: async () => [] } }, {}, {
+  const service = new AttendanceService({ attendance: { findUnique: async () => attendance }, user: { findUnique: async () => ({ employeeId: null }) } }, {}, {
     assertEmployee: async (_userId, employee) => { scopedEmployee = employee; },
   });
   await service.findDetail('attendance-1', { userId: 'coordinator-1', role: 'KOORDINATOR' });
   assert.equal(scopedEmployee.employmentType, 'TENAGA_BORONGAN');
 
-  const denied = new AttendanceService({ attendance: { findUnique: async () => attendance }, user: { findMany: async () => [] } }, {}, {
+  const denied = new AttendanceService({ attendance: { findUnique: async () => attendance }, user: { findUnique: async () => ({ employeeId: null }) } }, {}, {
     assertEmployee: async () => { throw new Error('di luar CoordinatorScope aktif'); },
   });
   await assert.rejects(() => denied.findDetail('attendance-1', { userId: 'coordinator-2', role: 'KOORDINATOR' }), /CoordinatorScope aktif/);
@@ -79,5 +79,6 @@ test('UAT Fix Pack 06 tracks GPS only while Attendance is mounted and clears the
   assert.match(page, /Lokasi historis tidak tersedia/);
   assert.match(page, /\/attendance\/\$\{id\}/);
   assert.match(map, /tile\.openstreetmap\.org/);
-  assert.match(map, /L\.circle/);
+  assert.match(map, /loaded\.circle/);
+  assert.doesNotMatch(map, /\.getBounds\s*\(/);
 });

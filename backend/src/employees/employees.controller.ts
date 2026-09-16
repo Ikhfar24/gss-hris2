@@ -11,6 +11,7 @@ import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
 import { LifecycleDto } from '../users/dto/lifecycle.dto';
 import { BulkDeactivateEmployeesDto, ImportEmployeesDto } from './dto/batch7-employees.dto';
+import { ForceDeleteEmployeeDto } from './dto/force-delete-employee.dto';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('employees')
@@ -38,6 +39,11 @@ export class EmployeesController {
     return this.service.findByUserId(actor.userId);
   }
 
+  @Get('me/360')
+  findMy360(@CurrentUser() actor: AuthenticatedUser) {
+    return this.service.find360ByUserId(actor.userId);
+  }
+
   @Roles(Role.ADMIN_HR, Role.SYSTEM_ADMIN, Role.KOORDINATOR, Role.DIREKTUR, Role.KOMISARIS, Role.MARKETING, Role.KARYAWAN)
   @Get('export')
   async export(@Query('format') format: 'xlsx' | 'pdf' = 'xlsx', @CurrentUser() actor: AuthenticatedUser, @Res({ passthrough: true }) res: Response) {
@@ -50,6 +56,27 @@ export class EmployeesController {
   @Post('import')
   import(@Body() dto: ImportEmployeesDto, @CurrentUser() actor: AuthenticatedUser) {
     return this.service.import(dto, actor);
+  }
+
+  @Roles(Role.ADMIN_HR, Role.SYSTEM_ADMIN)
+  @Get('import/template')
+  async importTemplate(@Res({ passthrough: true }) res: Response) {
+    res.set({ 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition': 'attachment; filename="employees-import-template.xlsx"' });
+    return new StreamableFile(await this.service.importTemplate());
+  }
+
+  @Roles(Role.ADMIN_HR, Role.SYSTEM_ADMIN)
+  @Post('import/preview')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024 } }))
+  importPreview(@UploadedFile() file: any) {
+    return this.service.previewXlsxImport(file);
+  }
+
+  @Roles(Role.ADMIN_HR, Role.SYSTEM_ADMIN)
+  @Post('import/commit')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024 } }))
+  importCommit(@UploadedFile() file: any, @CurrentUser() actor: AuthenticatedUser) {
+    return this.service.commitXlsxImport(file, actor);
   }
 
   @Roles(Role.ADMIN_HR, Role.SYSTEM_ADMIN)
@@ -96,6 +123,12 @@ export class EmployeesController {
   @Roles(Role.ADMIN_HR, Role.SYSTEM_ADMIN)
   @Patch(':id/reactivate')
   reactivate(@Param('id') id: string, @Body() dto: LifecycleDto, @CurrentUser() actor: AuthenticatedUser) { return this.service.reactivate(id, dto.reason, actor); }
+
+  @Roles(Role.ADMIN_HR, Role.SYSTEM_ADMIN)
+  @Post(':id/force-delete')
+  forceDelete(@Param('id') id: string, @Body() dto: ForceDeleteEmployeeDto, @CurrentUser() actor: AuthenticatedUser) {
+    return this.service.forceDelete(id, dto.reason, dto.confirmation, actor);
+  }
 
   @Roles(Role.ADMIN_HR, Role.SYSTEM_ADMIN)
   @Delete(':id')

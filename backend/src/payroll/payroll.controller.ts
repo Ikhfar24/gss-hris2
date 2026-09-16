@@ -21,13 +21,13 @@ export class PayrollController {
     return this.service.createRun(dto, actor);
   }
 
-  @Roles(Role.KEUANGAN, Role.ADMIN_HR)
+  @Roles(Role.KEUANGAN, Role.ADMIN_HR, Role.DIREKTUR)
   @Get('runs')
   findAll(@CurrentUser() actor: AuthenticatedUser) {
     return this.service.findAll(actor);
   }
 
-  @Roles(Role.KEUANGAN, Role.ADMIN_HR)
+  @Roles(Role.KEUANGAN, Role.ADMIN_HR, Role.DIREKTUR)
   @Get('runs/:id')
   findOne(@Param('id') id: string, @CurrentUser() actor: AuthenticatedUser) {
     return this.service.findOne(id, actor);

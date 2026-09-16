@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Header, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -7,7 +7,8 @@ import { Role } from '../common/enums/role.enum';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
-import { AdminResetPasswordDto, LifecycleDto } from './dto/lifecycle.dto';
+import { AdminResetPasswordDto, LifecycleDto, RevealTemporaryCredentialDto } from './dto/lifecycle.dto';
+import { Throttle } from '@nestjs/throttler';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('users')
@@ -17,14 +18,14 @@ export class UsersController {
   // Director may monitor, but normal HR account mutation remains HR/System Admin.
   @Roles(Role.ADMIN_HR, Role.SYSTEM_ADMIN, Role.DIREKTUR)
   @Get()
-  findAll(@Query() query: any) {
-    return this.usersService.findAll(query);
+  findAll(@Query() query: any, @CurrentUser() actor: AuthenticatedUser) {
+    return this.usersService.findAll(query, actor);
   }
 
   @Roles(Role.ADMIN_HR, Role.SYSTEM_ADMIN, Role.DIREKTUR)
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.usersService.findOne(id);
+  findOne(@Param('id') id: string, @CurrentUser() actor: AuthenticatedUser) {
+    return this.usersService.findOne(id, actor);
   }
 
   @Roles(Role.ADMIN_HR, Role.SYSTEM_ADMIN)
@@ -56,9 +57,18 @@ export class UsersController {
   }
 
   @Roles(Role.ADMIN_HR, Role.SYSTEM_ADMIN)
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @Post(':id/reset-password')
   resetPassword(@Param('id') id: string, @Body() dto: AdminResetPasswordDto, @CurrentUser() actor: AuthenticatedUser) {
-    return this.usersService.resetPassword(id, dto.password, dto.reason, actor);
+    return this.usersService.resetPassword(id, dto.currentPassword, dto.reason, actor);
+  }
+
+  @Roles(Role.ADMIN_HR, Role.SYSTEM_ADMIN)
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  @Header('Cache-Control', 'no-store')
+  @Post(':id/temporary-credential/reveal')
+  revealTemporaryCredential(@Param('id') id: string, @Body() dto: RevealTemporaryCredentialDto, @CurrentUser() actor: AuthenticatedUser) {
+    return this.usersService.revealTemporaryCredential(id, dto.currentPassword, dto.reason, actor);
   }
 
   @Roles(Role.ADMIN_HR, Role.SYSTEM_ADMIN)

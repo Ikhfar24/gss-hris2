@@ -1,6 +1,15 @@
-import { IsArray, IsBoolean, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import { IsArray, IsBoolean, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, Matches, Max, Min } from 'class-validator';
+import { Transform } from 'class-transformer';
+import { normalizeReferenceCode, REFERENCE_CODE_PATTERN } from '../../common/utils/reference-code.util';
 
 export class UpdateLocationDto {
+  @IsOptional()
+  @Transform(({ value }) => typeof value === 'string' ? normalizeReferenceCode(value) : value)
+  @IsString()
+  @IsNotEmpty()
+  @Matches(REFERENCE_CODE_PATTERN, { message: 'referenceCode hanya boleh berisi huruf, angka, titik, garis bawah, atau tanda hubung' })
+  referenceCode?: string;
+
   @IsOptional()
   @IsString()
   name?: string;
@@ -10,9 +19,15 @@ export class UpdateLocationDto {
   address?: string;
 
   @IsOptional()
+  @IsNumber({ allowInfinity: false, allowNaN: false })
+  @Min(-90)
+  @Max(90)
   latitude?: number;
 
   @IsOptional()
+  @IsNumber({ allowInfinity: false, allowNaN: false })
+  @Min(-180)
+  @Max(180)
   longitude?: number;
 
   @IsOptional()

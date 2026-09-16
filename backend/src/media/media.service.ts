@@ -32,6 +32,9 @@ export class MediaService {
       include: { employee: { select: { employmentType: true } } },
     });
     if (!request) throw new NotFoundException('Dokumen tidak ditemukan');
+    if (actor.role === Role.DIREKTUR && request.status !== 'PENDING_DIRECTOR') {
+      throw new ForbiddenException('Direktur hanya dapat membuka dokumen pada tahap persetujuan Direktur');
+    }
     await this.assertAccess(employeeId, request.employee, actor);
     return this.file('leave-documents', employeeId, filename);
   }

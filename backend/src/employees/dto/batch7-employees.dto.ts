@@ -1,4 +1,4 @@
-import { ArrayMinSize, IsArray, IsBoolean, IsObject, IsOptional, IsString, IsUUID, MinLength } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsObject, IsOptional, IsString, IsUUID, MinLength } from 'class-validator';
 import { CreateEmployeeDto } from './create-employee.dto';
 
 export class EmployeeImportRowDto extends CreateEmployeeDto {}
@@ -6,6 +6,7 @@ export class EmployeeImportRowDto extends CreateEmployeeDto {}
 export class ImportEmployeesDto {
   @IsArray()
   @ArrayMinSize(1)
+  @ArrayMaxSize(2000)
   // Row validation is performed as a batch by the service so callers receive
   // every invalid row rather than the first validation-pipe rejection.
   @IsObject({ each: true })

@@ -43,15 +43,21 @@ export function protectedMediaUrl(path: string): string {
   return `${API_URL}${path.slice('/api/v1'.length)}`;
 }
 
-export async function uploadFile<T>(path: string, file: File): Promise<T> {
+export async function uploadFile<T>(path: string, file: File, token?: string | null): Promise<T> {
   const body = new FormData();
   body.append('file', file);
-  const res = await fetch(`${API_URL}${path}`, { method: 'POST', credentials: 'include', body });
+  const res = await fetch(`${API_URL}${path}`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    body,
+  });
   if (!res.ok) {
     const payload = await res.json().catch(() => ({ message: res.statusText }));
     throw new ApiError(res.status, payload.message ?? 'Gagal mengunggah file');
   }
-  return res.json() as Promise<T>;
+  const text = await res.text();
+  return (text ? JSON.parse(text) : undefined) as T;
 }
 
 export async function apiFetch<T>(path: string, opts: RequestOptions = {}): Promise<T> {

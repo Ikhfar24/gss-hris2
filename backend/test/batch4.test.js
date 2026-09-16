@@ -151,13 +151,17 @@ test('holiday attendance is not late and no absence case is created for a holida
   await assert.rejects(() => absence.create({ employeeId: 'employee-1', date: '2026-09-07' }, { userId: 'hr-1', role: 'ADMIN_HR' }), /hari libur/);
 });
 
-test('attendance review denies self review and coordinators outside the employee team', async () => {
+test('attendance review allows ADMIN_HR self review but denies unauthorized coordinators', async () => {
   const record = { id: 'attendance-1', employee: { id: 'employee-1', coordinatorId: 'coordinator-1' }, location: {}, validationStatus: 'NEEDS_REVIEW', payableStatus: 'PENDING_REVIEW', checkInAt: new Date(), checkOutAt: new Date(), checkOutSource: 'EMPLOYEE' };
-  const service = new AttendanceService({
-    attendance: { findUnique: async () => record },
+  const prisma = {
+    attendance: { findUnique: async () => record, update: (args) => ({ kind: 'update', args }) },
+    attendanceReview: { create: (args) => ({ kind: 'review', args }) },
     user: { findUnique: async () => ({ employeeId: 'employee-1' }) },
-  }, {}, coordinatorDenied);
-  await assert.rejects(() => service.review('attendance-1', { decision: 'APPROVED', note: 'ok' }, { userId: 'reviewer-1', role: 'ADMIN_HR' }), /sendiri/);
+    $transaction: async () => [{ id: 'review-1' }, { ...record, validationStatus: 'APPROVED_AFTER_REVIEW' }],
+  };
+  const service = new AttendanceService(prisma, { record: async () => {} }, coordinatorDenied);
+  const result = await service.review('attendance-1', { decision: 'APPROVED', note: 'Bukti valid' }, { userId: 'reviewer-1', role: 'ADMIN_HR' });
+  assert.equal(result.validationStatus, 'APPROVED_AFTER_REVIEW');
   service.prisma.user.findUnique = async () => ({ employeeId: 'reviewer-employee' });
   await assert.rejects(() => service.review('attendance-1', { decision: 'APPROVED', note: 'ok' }, { userId: 'coordinator-2', role: 'KOORDINATOR' }), /tidak berwenang/);
 });

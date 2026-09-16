@@ -1,10 +1,25 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { apiFetch, ApiError, protectedMediaUrl } from '@/lib/api';
-import { getToken, getUser } from '@/lib/auth';
-import { getDeviceId } from '@/lib/device';
+import { getToken } from '@/lib/auth';
 import AttendanceMap from '@/components/AttendanceMap';
+import { useSession } from '@/components/providers/SessionProvider';
+import { formatFullDate, formatTime } from '@/lib/format';
+import { Alert, ErrorState } from '@/components/ui/feedback';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
+import { AttendanceDetailView } from '@/components/attendance/AttendanceDetailView';
+import { Button } from '@/components/ui/button';
+import { StatusBadge } from '@/components/ui/badge';
+import { useAttendancePresentation } from '@/components/attendance/AttendancePresentationContext';
+import { PeopleAttendanceMonitoring } from '@/components/attendance/PeopleAttendanceMonitoring';
+import { ContextBand, DataRegion, DossierPage, IndexTabs, MobileRecord, RecordActions, RecordBody, RecordHeader, WorkSheet } from '@/components/ui/dossier';
+import { approvedAbsenceLabel, type ApprovedFullDayAbsence } from '@/lib/attendance';
+
+type AttendanceMode = 'GEOFENCE' | 'MOBILE';
 
 interface AttendanceRecord {
   id: string;
@@ -21,6 +36,7 @@ interface AttendanceRecord {
   checkInGeofenceRadiusMeters?: number | null;
   checkInLocationName?: string | null;
   checkInSelfieUrl?: string | null;
+  checkInAttendanceMode?: AttendanceMode | null;
   checkOutLatitude?: number | null;
   checkOutLongitude?: number | null;
   checkOutAccuracyMeters?: number | null;
@@ -31,6 +47,7 @@ interface AttendanceRecord {
   checkOutLocationName?: string | null;
   checkOutGpsStatus?: string | null;
   checkOutSelfieUrl?: string | null;
+  checkOutAttendanceMode?: AttendanceMode | null;
   checkOutSource?: string | null;
   reviewedAt?: string | null;
   reviewNote?: string | null;
@@ -51,7 +68,10 @@ const VALIDATION_LABEL: Record<string, { label: string; style: string }> = {
 
 interface TodayResponse {
   attendance: AttendanceRecord | null;
+  attendanceMode: AttendanceMode;
   expectedLocation: { id: string; name: string; latitude: number | null; longitude: number | null; radiusMeters: number };
+  nonWorkingDay: { reason: 'HOLIDAY' | 'WEEKDAY'; label: string; weekday: number; holiday: { id: string; name: string; type: string } | null } | null;
+  approvedAbsence: ApprovedFullDayAbsence | null;
 }
 
 function distanceMeters(a: { latitude: number; longitude: number }, b: { latitude: number; longitude: number }) {
@@ -63,30 +83,28 @@ function distanceMeters(a: { latitude: number; longitude: number }, b: { latitud
 }
 
 export default function AttendancePage() {
-  const [role, setRole] = useState<string | null>(null);
-  const [employee, setEmployee] = useState<{ attendanceRequired: boolean; status: string; placements?: { status: string }[] } | null | undefined>(undefined);
-  const [error, setError] = useState<string | null>(null);
+  const { session } = useSession();
+  const searchParams = useSearchParams();
+  const presentation = useAttendancePresentation();
+  const role = session.role;
   const canMonitor = ['ADMIN_HR', 'SYSTEM_ADMIN', 'KOORDINATOR', 'DIREKTUR'].includes(role ?? '');
-  const canSelfCheckIn = !!employee && employee.attendanceRequired && employee.status === 'ACTIVE' && employee.placements?.some((placement) => placement.status === 'ACTIVE');
+  const canSelfCheckIn = !!session.employee
+    && session.employee.attendanceRequired
+    && session.employee.status === 'ACTIVE'
+    && !!session.employee.activePlacementName;
+  const authorityView = role === 'KOORDINATOR' ? 'team' : 'organization';
+  const requestedView = searchParams.get('view');
+  const view = requestedView === authorityView || requestedView === 'team' || requestedView === 'organization' ? authorityView : canSelfCheckIn ? 'mine' : authorityView;
 
-  useEffect(() => {
-    setRole(getUser()?.role ?? null);
-    apiFetch<{ attendanceRequired: boolean; status: string; placements?: { status: string }[] }>('/employees/me', { token: getToken() })
-      .then(setEmployee)
-      .catch((err) => {
-        if (err instanceof ApiError && err.status === 404) setEmployee(null);
-        else {
-          setEmployee(null);
-          setError(err instanceof ApiError ? err.message : 'Gagal memeriksa profil karyawan');
-        }
-      });
-  }, []);
-
-  if (employee === undefined) return <p className="text-sm text-slate-500">Memuat...</p>;
   if (!canSelfCheckIn && !canMonitor) {
     return <p className="text-sm text-slate-500">Akun ini belum memiliki profil karyawan aktif yang wajib absensi.</p>;
   }
-  return <div className="space-y-8">{error && <p className="text-sm text-red-600">{error}</p>}{canSelfCheckIn && <SelfCheckIn />}{canMonitor && role && <MonitoringDashboard role={role} />}</div>;
+  if (presentation.captureOnly) return canSelfCheckIn ? <SelfCheckIn showHistory={false} autoStart onCompleted={presentation.onCompleted} overlay /> : null;
+  if (!canMonitor) return <SelfCheckIn />;
+  return <DossierPage className="min-w-0 space-y-6">
+    {canSelfCheckIn && <IndexTabs><nav aria-label="Konteks presensi" className="flex min-w-max"><Link href="/attendance?view=mine" className={`relative min-h-11 px-4 py-3 text-sm font-semibold after:absolute after:inset-x-3 after:bottom-0 after:h-0.5 ${view === 'mine' ? 'text-brand after:bg-accent' : 'text-muted after:bg-transparent hover:text-brand'}`}>Pribadi</Link><Link href={`/attendance?view=${authorityView}`} className={`relative min-h-11 px-4 py-3 text-sm font-semibold after:absolute after:inset-x-3 after:bottom-0 after:h-0.5 ${view === authorityView ? 'text-brand after:bg-accent' : 'text-muted after:bg-transparent hover:text-brand'}`}>{authorityView === 'team' ? 'Tim' : 'Organisasi'}</Link></nav></IndexTabs>}
+    {view === 'mine' && canSelfCheckIn ? <SelfCheckIn showHistory /> : <PeopleAttendanceMonitoring role={role} context={authorityView} />}
+  </DossierPage>;
 }
 
 // ---------------------------------------------------------------------
@@ -103,31 +121,31 @@ interface QueuedItem {
   queuedAt: string;
 }
 
-function readQueue(): QueuedItem[] {
+function readQueue(key: string): QueuedItem[] {
   try {
-    const raw = localStorage.getItem(QUEUE_KEY);
+    const raw = localStorage.getItem(key);
     return raw ? JSON.parse(raw) : [];
   } catch {
     return [];
   }
 }
 
-function writeQueue(items: QueuedItem[]) {
-  localStorage.setItem(QUEUE_KEY, JSON.stringify(items));
+function writeQueue(key: string, items: QueuedItem[]) {
+  localStorage.setItem(key, JSON.stringify(items));
 }
 
 function isLikelyNetworkError(err: unknown): boolean {
-  // apiFetch throws ApiError for real server rejections (e.g. "sudah
-  // check-in", "di luar radius") — those must NOT be queued, they're
-  // genuine outcomes. Anything else (fetch() itself failing) is treated
-  // as connectivity trouble and gets queued instead.
-  return !(err instanceof ApiError);
+  // Validation/conflict responses are final outcomes. Authentication,
+  // throttling, server, and transport failures retain evidence for retry.
+  return !(err instanceof ApiError) || err.status === 403 || err.status === 408 || err.status === 429 || err.status >= 500;
 }
 
 // ---------------------------------------------------------------------
 // Self-service check-in/out (Karyawan) — §11.1
 // ---------------------------------------------------------------------
-function SelfCheckIn() {
+function SelfCheckIn({ showHistory = true, autoStart = false, overlay = false, onCompleted }: { showHistory?: boolean; autoStart?: boolean; overlay?: boolean; onCompleted?: (action: 'check-in' | 'check-out') => void }) {
+  const { session } = useSession();
+  const queueKey = `${QUEUE_KEY}:${session.employee?.id ?? session.id}`;
   const [today, setToday] = useState<TodayResponse | null>(null);
   const [history, setHistory] = useState<AttendanceRecord[]>([]);
   const [detail, setDetail] = useState<AttendanceRecord | null>(null);
@@ -145,30 +163,42 @@ function SelfCheckIn() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const mountedRef = useRef(true);
+  const autoStartedRef = useRef(false);
 
   async function load() {
     try {
       const [data, historyData] = await Promise.all([
         apiFetch<TodayResponse>('/attendance/me/today', { token: getToken() }),
-        apiFetch<AttendanceRecord[]>('/attendance/me/history', { token: getToken() }),
+        showHistory ? apiFetch<AttendanceRecord[]>('/attendance/me/history', { token: getToken() }) : Promise.resolve([]),
       ]);
       setToday(data);
       setHistory(historyData);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Gagal memuat status absensi');
     }
-    setQueueCount(readQueue().length);
+    setQueueCount(readQueue(queueKey).length);
   }
 
   useEffect(() => {
+    mountedRef.current = true;
     load();
     window.addEventListener('online', flushQueue);
+    window.addEventListener('attendance-updated', load);
     return () => {
+      mountedRef.current = false;
       stopCamera();
       window.removeEventListener('online', flushQueue);
+      window.removeEventListener('attendance-updated', load);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!autoStart || !today || today.approvedAbsence || autoStartedRef.current || today.attendance?.checkOutAt) return;
+    autoStartedRef.current = true;
+    void startCamera(today.attendance?.checkInAt ? 'check-out' : 'check-in');
+  }, [autoStart, today]);
 
   useEffect(() => {
     if (!navigator.geolocation) {
@@ -199,24 +229,28 @@ function SelfCheckIn() {
   }, [cameraOn, cameraFailed]);
 
   async function flushQueue() {
-    const queue = readQueue();
+    const queue = readQueue(queueKey);
     if (queue.length === 0) return;
     setInfo('Menyinkronkan data absensi offline...');
     const remaining: QueuedItem[] = [];
+    const rejected: string[] = [];
     for (const item of queue) {
       try {
         await apiFetch(item.path, { method: item.method, token: getToken(), body: item.body });
       } catch (err) {
         if (isLikelyNetworkError(err)) {
           remaining.push(item); // still offline, try again later
+        } else {
+          rejected.push(err instanceof ApiError ? err.message : 'Ditolak server');
         }
         // else: server rejected it for real (e.g. already checked in from
         // another session) — drop it, nothing more we can do with it.
       }
     }
-    writeQueue(remaining);
+    writeQueue(queueKey, remaining);
     setQueueCount(remaining.length);
-    setInfo(remaining.length === 0 ? 'Semua data absensi offline berhasil disinkronkan.' : null);
+    setInfo(remaining.length === 0 && rejected.length === 0 ? 'Semua data absensi offline berhasil disinkronkan.' : null);
+    if (rejected.length > 0) setError(`${rejected.length} data absensi offline ditolak server: ${rejected[0]}`);
     await load();
   }
 
@@ -229,6 +263,10 @@ function SelfCheckIn() {
     setMode(nextMode);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+      if (!mountedRef.current) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
       streamRef.current = stream;
       setCameraOn(true);
     } catch {
@@ -262,12 +300,25 @@ function SelfCheckIn() {
         reject(new Error('Browser tidak mendukung GPS'));
         return;
       }
-      navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 10000 });
+      navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
     });
   }
 
   async function submit() {
-    if (!mode) return;
+    if (!mode || !today) return;
+    if (today.approvedAbsence) {
+      setError('Presensi tidak tersedia selama ketidakhadiran penuh yang telah disetujui.');
+      return;
+    }
+    if (today.attendanceMode === 'GEOFENCE' && (today.expectedLocation.latitude === null || today.expectedLocation.longitude === null)) {
+      setError('Koordinat lokasi kerja belum dikonfigurasi. Hubungi Admin HR sebelum melakukan presensi Geofence.');
+      return;
+    }
+    if (!cameraFailed && (!videoRef.current?.videoWidth || !videoRef.current?.videoHeight)) {
+      setError('Kamera masih menyiapkan gambar. Tunggu sebentar lalu coba lagi.');
+      return;
+    }
+    const attendanceMode = today.attendanceMode;
     setBusy(true);
     setError(null);
     setInfo(null);
@@ -285,11 +336,17 @@ function SelfCheckIn() {
         latitude = pos.coords.latitude;
         longitude = pos.coords.longitude;
         accuracyMeters = pos.coords.accuracy;
+        gpsFailedNow = false;
+        setGpsFailed(false);
         setPosition({ latitude, longitude, accuracy: accuracyMeters });
         setLocationState('available');
       } catch {
         gpsFailedNow = true;
         setGpsFailed(true);
+        if (attendanceMode === 'MOBILE') {
+          setError('Mode MOBILE mewajibkan GPS aktif. Koordinat baru tidak berhasil diambil, jadi absensi tidak dikirim atau disimpan offline.');
+          return;
+        }
       }
 
       const needsFailureNote = cameraFailed || gpsFailedNow;
@@ -304,8 +361,6 @@ function SelfCheckIn() {
         longitude,
         accuracyMeters,
         selfieBase64,
-        deviceInfo: navigator.userAgent,
-        deviceId: getDeviceId(),
       };
       if (needsFailureNote) {
         capturedBody.failureReason = cameraFailed && gpsFailedNow ? 'OTHER' : cameraFailed ? 'CAMERA_FAILED' : 'GPS_FAILED';
@@ -326,14 +381,22 @@ function SelfCheckIn() {
         throw err;
       }
 
+      const completedMode = mode;
       stopCamera();
       setMode(null);
       await load();
+      setInfo(`${completedMode === 'check-in' ? 'Check-in' : 'Check-out'} berhasil`);
+      onCompleted?.(completedMode);
     } catch (err) {
       if (err instanceof Error && err.message === 'OFFLINE') {
+        const hasCapturedCoordinates = typeof capturedBody.latitude === 'number' && typeof capturedBody.longitude === 'number';
+        if (attendanceMode === 'MOBILE' && !hasCapturedCoordinates) {
+          setError('Absensi MOBILE tidak dapat disimpan offline tanpa koordinat GPS yang sudah diambil.');
+          return;
+        }
         // §11.5 "absensi offline" — queue it locally; clientRecordedAt marks
         // this as the real moment the employee attempted to record it.
-        const queue = readQueue();
+        const queue = readQueue(queueKey);
         const queuedAt = new Date().toISOString();
         const selfieBase64 = capturePhoto() ?? undefined;
         queue.push({
@@ -349,7 +412,7 @@ function SelfCheckIn() {
           },
           queuedAt,
         });
-        writeQueue(queue);
+        writeQueue(queueKey, queue);
         setQueueCount(queue.length);
         setInfo('Tidak ada koneksi internet. Absensi disimpan di HP Anda dan akan otomatis dikirim saat online kembali.');
         stopCamera();
@@ -364,25 +427,25 @@ function SelfCheckIn() {
 
   if (!today) {
     if (error) {
-      return (
-        <div className="max-w-md rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
-          {error}
-        </div>
-      );
-    }
-    return <p className="text-sm text-slate-500">Memuat...</p>;
+        return <ErrorState retry={load} />;
+      }
+    return <div className="space-y-4"><Skeleton className="h-16 w-72 max-w-full" /><Skeleton className="h-80 rounded-2xl" /><Skeleton className="h-32 rounded-2xl" /></div>;
   }
 
   const att = today.attendance;
+  const isMobile = today.attendanceMode === 'MOBILE';
   const workPoint = today.expectedLocation.latitude !== null && today.expectedLocation.longitude !== null
     ? { latitude: today.expectedLocation.latitude, longitude: today.expectedLocation.longitude }
     : null;
   const liveDistance = workPoint && position ? distanceMeters(workPoint, position) : null;
-  const rangeStatus = locationState === 'denied' ? 'Izin lokasi ditolak'
-    : locationState === 'unavailable' ? 'GPS tidak tersedia'
-      : locationState === 'searching' ? 'Mencari lokasi...'
-        : liveDistance === null ? 'Lokasi Belum Tersedia'
-          : liveDistance <= today.expectedLocation.radiusMeters ? 'Dalam Jangkauan' : 'Di Luar Jangkauan';
+  const poorAccuracy = !!position && position.accuracy > Math.max(50, isMobile ? 100 : today.expectedLocation.radiusMeters);
+  const locationStatus = locationState === 'denied' ? 'Izin lokasi ditolak'
+    : locationState === 'unavailable' ? 'Layanan lokasi tidak tersedia'
+      : locationState === 'searching' ? 'Mengambil GPS baru...'
+        : !isMobile && !workPoint ? 'Koordinat lokasi kerja belum dikonfigurasi'
+          : poorAccuracy ? 'GPS diperoleh, tetapi akurasi masih rendah'
+            : isMobile ? 'GPS diperoleh'
+              : liveDistance! <= today.expectedLocation.radiusMeters ? 'Di dalam radius' : 'Di luar radius';
 
   async function openDetail(id: string) {
     try {
@@ -392,22 +455,45 @@ function SelfCheckIn() {
     }
   }
 
-  return (
-    <div className="max-w-3xl">
-      <h1 className="mb-1 text-2xl font-semibold">Absensi Hari Ini</h1>
-      <p className="mb-4 text-sm text-slate-500">Lokasi penempatan: {today.expectedLocation.name}</p>
-
-      <div className="mb-4 rounded-xl border border-slate-200 bg-white p-4">
-        <AttendanceMap work={workPoint} current={position} radiusMeters={today.expectedLocation.radiusMeters} />
-        <div className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
-          <p><span className="text-slate-500">Lokasi kerja:</span> {today.expectedLocation.name}</p>
-          <p><span className="text-slate-500">Radius:</span> {today.expectedLocation.radiusMeters} m</p>
-          <p><span className="text-slate-500">Jarak saat ini:</span> {liveDistance === null ? '-' : `${Math.round(liveDistance)} m`}</p>
-          <p><span className="text-slate-500">Akurasi GPS:</span> {position ? `${Math.round(position.accuracy)} m` : '-'}</p>
-          <p className={`font-medium ${locationState !== 'available' || (liveDistance !== null && liveDistance > today.expectedLocation.radiusMeters) ? 'text-red-700' : 'text-green-700'}`}>{rangeStatus}</p>
-        </div>
-        <p className="mt-2 text-xs text-slate-500">Lokasi diperbarui hanya selama halaman Absensi ini terbuka. Keputusan check-in/check-out tetap divalidasi ulang oleh server.</p>
+  if (today.approvedAbsence) {
+    const label = approvedAbsenceLabel(today.approvedAbsence.type);
+    return (
+      <div className={`mx-auto w-full min-w-0 max-w-5xl ${overlay ? 'flex min-h-full flex-col' : ''}`}>
+        <ContextBand title="Presensi Hari Ini" description={formatFullDate(new Date())} meta={<span>DISETUJUI</span>} className={overlay ? 'mb-4' : undefined} />
+        <Alert variant="info" title={`${label} disetujui`}>
+          Hari ini tercakup {label.toLowerCase()} penuh yang telah disetujui. Check-in dan check-out tidak tersedia, dan Anda tidak dihitung sebagai Alpha atau Belum Hadir.
+        </Alert>
+        <WorkSheet className="mt-4" title="Status Hari Ini">
+          <div className="flex min-w-0 items-center justify-between gap-4">
+            <span className="text-sm text-muted">Status ketidakhadiran</span>
+            <StatusBadge status="APPROVED" label={label} />
+          </div>
+          {showHistory && <Button asChild variant="secondary" className="mt-5 w-full sm:w-auto"><Link href="/attendance/history?view=mine">Lihat riwayat presensi</Link></Button>}
+        </WorkSheet>
       </div>
+    );
+  }
+
+  return (
+    <div className={`mx-auto w-full min-w-0 max-w-5xl ${overlay ? 'flex min-h-full flex-col' : ''}`}>
+      <ContextBand title="Presensi Hari Ini" description={`${formatFullDate(att?.date ?? new Date())} · ${today.expectedLocation.name}`} meta={<span>{isMobile ? 'MODE MOBILE' : 'MODE GEOFENCE'}</span>} className={overlay ? 'mb-4' : undefined} />
+
+      {today.nonWorkingDay && <Alert className="mb-4" variant="info"><strong className="block text-navy">Hari ini tidak ada jadwal kerja</strong><span className="mt-1 block">{today.nonWorkingDay.label}. Presensi khusus tetap tersedia dan otomatis ditandai untuk ditinjau.</span></Alert>}
+
+      <WorkSheet className="mb-4">
+        <AttendanceMap work={isMobile ? null : workPoint} current={position} radiusMeters={today.expectedLocation.radiusMeters} showGeofence={!isMobile} className="h-52 sm:h-64" />
+        <div className="mt-3 grid min-w-0 gap-2 text-sm sm:grid-cols-2">
+          <p className="min-w-0 break-words [overflow-wrap:anywhere]"><span className="text-slate-500">Mode absensi:</span> {isMobile ? 'Mobile' : 'Geofence'}</p>
+          <p className="min-w-0 break-words [overflow-wrap:anywhere]"><span className="text-slate-500">Lokasi kerja:</span> {today.expectedLocation.name}</p>
+          {isMobile ? <p className="min-w-0 break-words tabular-nums [overflow-wrap:anywhere]"><span className="text-slate-500">Koordinat saat ini:</span> {position ? `${position.latitude.toFixed(6)}, ${position.longitude.toFixed(6)}` : '-'}</p> : <>
+            <p><span className="text-slate-500">Radius:</span> {today.expectedLocation.radiusMeters} m</p>
+            <p><span className="text-slate-500">Jarak saat ini:</span> {liveDistance === null ? '-' : `${Math.round(liveDistance)} m`}</p>
+          </>}
+          <p><span className="text-slate-500">Akurasi GPS:</span> {position ? `${Math.round(position.accuracy)} m` : '-'}</p>
+          <p className={`font-medium ${locationState !== 'available' || poorAccuracy || (!isMobile && (!workPoint || (liveDistance !== null && liveDistance > today.expectedLocation.radiusMeters))) ? 'text-red-700' : 'text-green-700'}`}>{locationStatus}</p>
+        </div>
+        <p className="mt-2 text-xs text-slate-500">{isMobile ? 'Mode MOBILE tidak menerapkan radius tetap. Setiap check-in/check-out wajib mengambil koordinat GPS baru; tanpa GPS, absensi tidak dapat dikirim atau disimpan offline.' : 'Lokasi diperbarui hanya selama halaman Absensi ini terbuka. Keputusan check-in/check-out tetap divalidasi ulang oleh server.'}</p>
+      </WorkSheet>
 
       {queueCount > 0 && (
         <div className="mb-4 flex items-center justify-between rounded-lg bg-yellow-50 px-3 py-2 text-xs text-yellow-800">
@@ -415,17 +501,17 @@ function SelfCheckIn() {
           <button onClick={flushQueue} className="font-medium underline">Sinkronkan sekarang</button>
         </div>
       )}
-      {info && <p className="mb-4 text-sm text-blue-600">{info}</p>}
-      {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
+      {info && <Alert className="mb-4" variant={info.includes('berhasil') ? 'success' : 'info'}>{info}</Alert>}
+      {error && <Alert className="mb-4" variant="danger">{error}</Alert>}
 
-      <div className="mb-4 rounded-xl border border-slate-200 bg-white p-4 text-sm">
-        <div className="flex justify-between py-1">
+      <WorkSheet className="mb-4 text-sm">
+        <div className="flex min-w-0 justify-between gap-4 py-1">
           <span className="text-slate-500">Masuk</span>
-          <span>{att?.checkInAt ? new Date(att.checkInAt).toLocaleTimeString('id-ID') : '-'}</span>
+          <span className="shrink-0 tabular-nums">{formatTime(att?.checkInAt)}</span>
         </div>
-        <div className="flex justify-between py-1">
+        <div className="flex min-w-0 justify-between gap-4 py-1">
           <span className="text-slate-500">Pulang</span>
-          <span className={att?.checkInAt && !att?.checkOutAt ? 'font-medium text-red-600' : ''}>{att?.checkOutAt ? new Date(att.checkOutAt).toLocaleTimeString('id-ID') : att?.checkInAt ? 'Belum check-out' : '-'}</span>
+          <span className={`min-w-0 break-words text-right tabular-nums [overflow-wrap:anywhere] ${att?.checkInAt && !att?.checkOutAt ? 'font-medium text-red-600' : ''}`}>{att?.checkOutAt ? formatTime(att.checkOutAt) : att?.checkInAt ? 'Belum check-out' : '-'}</span>
         </div>
         {att?.checkInAt && !att?.checkOutAt && (
           <p className="mt-2 rounded-lg bg-yellow-50 px-3 py-2 text-xs text-yellow-800">Anda belum check-out. Lakukan check-out sebelum meninggalkan lokasi kerja.</p>
@@ -438,15 +524,15 @@ function SelfCheckIn() {
             </span>
           </div>
         )}
-      </div>
+      </WorkSheet>
 
       {!cameraOn && !att?.checkInAt && (
-        <button onClick={() => startCamera('check-in')} className="w-full rounded-lg bg-slate-900 py-2 text-sm text-white hover:bg-slate-800">
+        <button onClick={() => startCamera('check-in')} className="min-h-11 w-full rounded-xl bg-brand py-2 text-sm font-semibold text-white hover:brightness-110">
           Check-in
         </button>
       )}
       {!cameraOn && att?.checkInAt && !att?.checkOutAt && (
-        <button onClick={() => startCamera('check-out')} className="w-full rounded-lg bg-slate-900 py-2 text-sm text-white hover:bg-slate-800">
+        <button onClick={() => startCamera('check-out')} className="min-h-11 w-full rounded-xl bg-brand py-2 text-sm font-semibold text-white hover:brightness-110">
           Check-out
         </button>
       )}
@@ -455,9 +541,9 @@ function SelfCheckIn() {
       )}
 
       {cameraOn && (
-        <div className="rounded-xl border border-slate-200 bg-white p-4">
+        <WorkSheet className={overlay ? 'order-first mb-4' : ''}>
           {!cameraFailed && (
-            <video ref={videoRef} autoPlay playsInline muted className="mb-3 w-full rounded-lg bg-black" />
+            <video ref={videoRef} autoPlay playsInline muted className="mb-3 aspect-[4/3] max-w-full rounded-lg bg-black object-cover" />
           )}
           <canvas ref={canvasRef} className="hidden" />
 
@@ -467,75 +553,85 @@ function SelfCheckIn() {
             </p>
           )}
 
-          {(cameraFailed || gpsFailed) && (
+          {isMobile && gpsFailed && (
+            <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">GPS belum berhasil mengambil koordinat baru. Aktifkan izin lokasi lalu coba kembali.</p>
+          )}
+
+          {(cameraFailed || (!isMobile && gpsFailed)) && (
             <textarea
               placeholder="Alasan GPS/kamera gagal (wajib diisi)"
               value={failureNote}
               onChange={(e) => setFailureNote(e.target.value)}
-              className="mb-3 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              aria-label="Alasan GPS atau kamera gagal"
+              className="mb-3 min-h-20 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
               rows={2}
             />
           )}
 
           {!cameraFailed && (
             <p className="mb-3 text-xs text-slate-500">
-              Pastikan wajah terlihat jelas dan Anda mengizinkan akses lokasi saat diminta.
+              Kamera siap. Pastikan wajah terlihat jelas dan Anda mengizinkan akses lokasi saat diminta.
             </p>
           )}
 
-          <div className="flex gap-2">
+          <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
             <button
               onClick={submit}
               disabled={busy}
-              className="flex-1 rounded-lg bg-slate-900 py-2 text-sm text-white hover:bg-slate-800 disabled:opacity-60"
+              className="min-h-11 flex-1 rounded-xl bg-brand py-2 text-sm font-semibold text-white hover:brightness-110 disabled:opacity-60"
             >
-              {busy ? 'Memproses...' : `${cameraFailed ? 'Kirim' : 'Ambil Foto &'} ${mode === 'check-in' ? 'Check-in' : 'Check-out'}`}
+              {busy ? 'Mengirim presensi...' : `${cameraFailed ? 'Kirim' : 'Ambil Foto &'} ${mode === 'check-in' ? 'Check-in' : 'Check-out'}`}
             </button>
             <button
               onClick={() => {
                 stopCamera();
                 setMode(null);
               }}
-              className="rounded-lg border border-slate-300 px-4 py-2 text-sm hover:bg-slate-50"
+              className="min-h-11 rounded-xl border border-slate-300 px-4 py-2 text-sm hover:bg-slate-50"
             >
               Batal
             </button>
           </div>
-        </div>
+        </WorkSheet>
       )}
 
-      <div className="mt-8">
+      {showHistory && <div className="mt-8 min-w-0">
         <h2 className="mb-2 text-lg font-semibold">Riwayat Absensi</h2>
-        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white"><table className="w-full min-w-[640px] text-sm"><thead className="bg-slate-50 text-left text-slate-500"><tr><th className="px-4 py-2">Tanggal</th><th className="px-4 py-2">Masuk</th><th className="px-4 py-2">Pulang</th><th className="px-4 py-2">Validasi</th><th /></tr></thead><tbody>{history.map((record) => <tr key={record.id} className="border-t border-slate-100"><td className="px-4 py-2">{record.date ? new Date(record.date).toLocaleDateString('id-ID') : '-'}</td><td className="px-4 py-2">{record.checkInAt ? new Date(record.checkInAt).toLocaleTimeString('id-ID') : '-'}</td><td className="px-4 py-2">{record.checkOutAt ? new Date(record.checkOutAt).toLocaleTimeString('id-ID') : '-'}</td><td className="px-4 py-2">{record.validationStatus}</td><td className="px-4 py-2 text-right"><button onClick={() => openDetail(record.id)} className="text-xs underline">Detail</button></td></tr>)}{history.length === 0 && <tr><td colSpan={5} className="px-4 py-5 text-center text-slate-500">Belum ada riwayat absensi.</td></tr>}</tbody></table></div>
-      </div>
-      {detail && <AttendanceDetail attendance={detail} onClose={() => setDetail(null)} />}
+        {history.length === 0 ? <p className="rounded-xl bg-paper px-4 py-6 text-center text-body text-muted shadow-sheet">Belum ada riwayat absensi.</p> : <><div className="space-y-3 md:hidden">{history.map((record) => <SelfAttendanceHistoryRecord key={record.id} record={record} onOpen={openDetail} />)}</div><DataRegion className="hidden md:block"><table className="min-w-[640px] text-sm"><thead><tr><th scope="col">Tanggal</th><th scope="col">Masuk</th><th scope="col">Pulang</th><th scope="col">Validasi</th><th scope="col"><span className="sr-only">Tindakan</span></th></tr></thead><tbody>{history.map((record) => <tr key={record.id}><td className="whitespace-nowrap tabular-nums">{record.date ? new Date(record.date).toLocaleDateString('id-ID') : '-'}</td><td className="whitespace-nowrap tabular-nums">{record.checkInAt ? new Date(record.checkInAt).toLocaleTimeString('id-ID') : '-'}</td><td className="whitespace-nowrap tabular-nums">{record.checkOutAt ? new Date(record.checkOutAt).toLocaleTimeString('id-ID') : '-'}</td><td><StatusBadge status={record.validationStatus} label={VALIDATION_LABEL[record.validationStatus]?.label} /></td><td className="text-right"><button onClick={() => openDetail(record.id)} className="text-xs font-semibold text-brand underline">Detail</button></td></tr>)}</tbody></table></DataRegion></>}
+      </div>}
+      {showHistory && detail && <AttendanceDetail attendance={detail} onClose={() => setDetail(null)} />}
     </div>
   );
 }
 
-function AttendanceDetail({ attendance, onClose }: { attendance: AttendanceRecord; onClose: () => void }) {
-  return <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/50 p-4"><div className="mx-auto max-w-4xl rounded-xl bg-white p-5 shadow-xl">
-    <div className="mb-4 flex items-start justify-between"><div><h2 className="text-xl font-semibold">Detail Riwayat Absensi</h2><p className="text-sm text-slate-500">{attendance.employee?.name ?? 'Absensi saya'} · {attendance.date ? new Date(attendance.date).toLocaleDateString('id-ID') : '-'}</p></div><button onClick={onClose} className="text-sm underline">Tutup</button></div>
-    <div className="mb-4 grid gap-2 text-sm sm:grid-cols-3"><p><span className="text-slate-500">Status:</span> {attendance.latenessStatus}</p><p><span className="text-slate-500">Validasi:</span> {attendance.validationStatus}</p><p><span className="text-slate-500">Sumber checkout:</span> {attendance.checkOutSource ?? '-'}</p></div>
-    <div className="grid gap-4 lg:grid-cols-2">
-      <EvidenceDetail title="Check-in" at={attendance.checkInAt} latitude={attendance.checkInLatitude} longitude={attendance.checkInLongitude} accuracy={attendance.checkInAccuracyMeters} distance={attendance.checkInDistanceMeters} gpsStatus={attendance.checkInGpsStatus} geofenceLatitude={attendance.checkInGeofenceLatitude} geofenceLongitude={attendance.checkInGeofenceLongitude} radius={attendance.checkInGeofenceRadiusMeters} locationName={attendance.checkInLocationName} selfieUrl={attendance.checkInSelfieUrl} />
-      <EvidenceDetail title="Check-out" at={attendance.checkOutAt} latitude={attendance.checkOutLatitude} longitude={attendance.checkOutLongitude} accuracy={attendance.checkOutAccuracyMeters} distance={attendance.checkOutDistanceMeters} gpsStatus={attendance.checkOutGpsStatus} geofenceLatitude={attendance.checkOutGeofenceLatitude} geofenceLongitude={attendance.checkOutGeofenceLongitude} radius={attendance.checkOutGeofenceRadiusMeters} locationName={attendance.checkOutLocationName} selfieUrl={attendance.checkOutSelfieUrl} />
-    </div>
-    <div className="mt-4 rounded-xl border border-slate-200 p-4 text-sm"><h3 className="font-semibold">Review</h3><p className="mt-1"><span className="text-slate-500">Waktu review:</span> {attendance.reviewedAt ? new Date(attendance.reviewedAt).toLocaleString('id-ID') : '-'}</p><p><span className="text-slate-500">Catatan:</span> {attendance.reviewNote ?? '-'}</p>{attendance.reviews?.map((review) => <p key={review.id} className="mt-2 border-t border-slate-100 pt-2">{review.decision} oleh {review.reviewer?.name ?? review.reviewer?.role ?? 'Reviewer'} · {new Date(review.reviewedAt).toLocaleString('id-ID')} · {review.note}</p>)}</div>
-  </div></div>;
+function SelfAttendanceHistoryRecord({ record, onOpen }: { record: AttendanceRecord; onOpen: (id: string) => void }) {
+  return <MobileRecord><RecordHeader title={record.date ? new Date(record.date).toLocaleDateString('id-ID') : '-'} detail={record.latenessStatus === 'LATE' ? 'Terlambat' : record.checkInAt ? 'Presensi tercatat' : 'Belum hadir'} status={<StatusBadge status={record.validationStatus} label={VALIDATION_LABEL[record.validationStatus]?.label} />} /><RecordBody><dl className="grid grid-cols-2 gap-4 text-sm"><div><dt className="dossier-label">Masuk</dt><dd className="mt-1 font-semibold tabular-nums">{formatTime(record.checkInAt)}</dd></div><div><dt className="dossier-label">Pulang</dt><dd className="mt-1 font-semibold tabular-nums">{formatTime(record.checkOutAt)}</dd></div></dl></RecordBody><RecordActions><Button type="button" variant="ghost" size="sm" className="ml-auto" onClick={() => onOpen(record.id)}>Lihat detail</Button></RecordActions></MobileRecord>;
 }
 
-function EvidenceDetail(props: { title: string; at?: string | null; latitude?: number | null; longitude?: number | null; accuracy?: number | null; distance?: number | null; gpsStatus?: string | null; geofenceLatitude?: number | null; geofenceLongitude?: number | null; radius?: number | null; locationName?: string | null; selfieUrl?: string | null }) {
+function AttendanceDetail({ attendance, onClose }: { attendance: AttendanceRecord; onClose: () => void }) {
+  return <Dialog open onOpenChange={(open) => !open && onClose()}><DialogContent className="fixed inset-0 z-50 overflow-y-auto overscroll-contain max-w-none rounded-none sm:inset-auto sm:max-w-4xl sm:rounded-2xl"><DialogTitle>Detail Riwayat Absensi</DialogTitle><DialogDescription>{attendance.employee?.name ?? 'Absensi saya'} · {attendance.date ? new Date(attendance.date).toLocaleDateString('id-ID') : '-'}</DialogDescription>
+    <div className="mb-4 grid gap-2 text-sm sm:grid-cols-3"><p><span className="text-slate-500">Status:</span> {attendance.latenessStatus}</p><p><span className="text-slate-500">Validasi:</span> {attendance.validationStatus}</p><p><span className="text-slate-500">Sumber checkout:</span> {attendance.checkOutSource ?? '-'}</p></div>
+    <div className="grid gap-4 lg:grid-cols-2">
+      <EvidenceDetail title="Check-in" attendanceMode={attendance.checkInAttendanceMode} at={attendance.checkInAt} latitude={attendance.checkInLatitude} longitude={attendance.checkInLongitude} accuracy={attendance.checkInAccuracyMeters} distance={attendance.checkInDistanceMeters} gpsStatus={attendance.checkInGpsStatus} geofenceLatitude={attendance.checkInGeofenceLatitude} geofenceLongitude={attendance.checkInGeofenceLongitude} radius={attendance.checkInGeofenceRadiusMeters} locationName={attendance.checkInLocationName} selfieUrl={attendance.checkInSelfieUrl} />
+      <EvidenceDetail title="Check-out" attendanceMode={attendance.checkOutAttendanceMode} at={attendance.checkOutAt} latitude={attendance.checkOutLatitude} longitude={attendance.checkOutLongitude} accuracy={attendance.checkOutAccuracyMeters} distance={attendance.checkOutDistanceMeters} gpsStatus={attendance.checkOutGpsStatus} geofenceLatitude={attendance.checkOutGeofenceLatitude} geofenceLongitude={attendance.checkOutGeofenceLongitude} radius={attendance.checkOutGeofenceRadiusMeters} locationName={attendance.checkOutLocationName} selfieUrl={attendance.checkOutSelfieUrl} />
+    </div>
+    <div className="mt-4 rounded-xl border border-slate-200 p-4 text-sm"><h3 className="font-semibold">Review</h3><p className="mt-1"><span className="text-slate-500">Waktu review:</span> {attendance.reviewedAt ? new Date(attendance.reviewedAt).toLocaleString('id-ID') : '-'}</p><p><span className="text-slate-500">Catatan:</span> {attendance.reviewNote ?? '-'}</p>{attendance.reviews?.map((review) => <p key={review.id} className="mt-2 border-t border-slate-100 pt-2">{review.decision} oleh {review.reviewer?.name ?? review.reviewer?.role ?? 'Reviewer'} · {new Date(review.reviewedAt).toLocaleString('id-ID')} · {review.note}</p>)}</div>
+  </DialogContent></Dialog>;
+}
+
+function EvidenceDetail(props: { title: string; attendanceMode?: AttendanceMode | null; at?: string | null; latitude?: number | null; longitude?: number | null; accuracy?: number | null; distance?: number | null; gpsStatus?: string | null; geofenceLatitude?: number | null; geofenceLongitude?: number | null; radius?: number | null; locationName?: string | null; selfieUrl?: string | null }) {
   const work = props.geofenceLatitude !== null && props.geofenceLatitude !== undefined && props.geofenceLongitude !== null && props.geofenceLongitude !== undefined ? { latitude: props.geofenceLatitude, longitude: props.geofenceLongitude } : null;
   const point = props.latitude !== null && props.latitude !== undefined && props.longitude !== null && props.longitude !== undefined ? { latitude: props.latitude, longitude: props.longitude, accuracy: props.accuracy ?? 0 } : null;
-  const hasHistory = !!work && !!point;
-  return <section className="rounded-xl border border-slate-200 p-4"><h3 className="mb-2 font-semibold">{props.title}</h3><div className="space-y-1 text-sm"><p><span className="text-slate-500">Waktu:</span> {props.at ? new Date(props.at).toLocaleString('id-ID') : '-'}</p><p><span className="text-slate-500">Lokasi:</span> {props.locationName ?? 'Lokasi historis tidak tersedia'}</p><p><span className="text-slate-500">Koordinat:</span> {point ? `${point.latitude.toFixed(6)}, ${point.longitude.toFixed(6)}` : 'Lokasi historis tidak tersedia'}</p><p><span className="text-slate-500">Akurasi:</span> {props.accuracy === null || props.accuracy === undefined ? '-' : `${Math.round(props.accuracy)} m`}</p><p><span className="text-slate-500">Jarak:</span> {props.distance === null || props.distance === undefined ? '-' : `${Math.round(props.distance)} m`}</p><p><span className="text-slate-500">Geofence:</span> {props.gpsStatus ?? '-'}</p></div>{hasHistory ? <div className="mt-3"><AttendanceMap work={work} current={point} radiusMeters={props.radius ?? 0} /></div> : <p className="mt-3 rounded-lg bg-slate-50 p-3 text-sm text-slate-500">Lokasi historis tidak tersedia</p>}{props.selfieUrl && <img src={protectedMediaUrl(props.selfieUrl)} alt={`Selfie ${props.title}`} className="mt-3 h-32 w-32 rounded-lg object-cover" />}</section>;
+  const isMobile = props.attendanceMode === 'MOBILE';
+  const hasHistory = !!point && (isMobile || !!work);
+  return <section className="min-w-0 rounded-xl border border-slate-200 p-4"><h3 className="mb-2 font-semibold">{props.title}</h3><div className="min-w-0 space-y-1 text-sm [&_p]:break-words [&_p]:[overflow-wrap:anywhere]"><p><span className="text-slate-500">Waktu:</span> {props.at ? new Date(props.at).toLocaleString('id-ID') : '-'}</p><p><span className="text-slate-500">Mode:</span> {props.attendanceMode === 'MOBILE' ? 'Mobile' : props.attendanceMode === 'GEOFENCE' ? 'Geofence' : '-'}</p><p><span className="text-slate-500">Lokasi:</span> {props.locationName ?? 'Lokasi historis tidak tersedia'}</p><p className="tabular-nums"><span className="text-slate-500">Koordinat:</span> {point ? `${point.latitude.toFixed(6)}, ${point.longitude.toFixed(6)}` : 'Lokasi historis tidak tersedia'}</p><p><span className="text-slate-500">Akurasi:</span> {props.accuracy === null || props.accuracy === undefined ? '-' : `${Math.round(props.accuracy)} m`}</p><p><span className="text-slate-500">Jarak:</span> {isMobile ? 'Tidak berlaku (tanpa radius tetap)' : props.distance === null || props.distance === undefined ? '-' : `${Math.round(props.distance)} m`}</p><p><span className="text-slate-500">Status GPS:</span> {props.gpsStatus ?? '-'}</p></div>{hasHistory ? <div className="mt-3 min-w-0"><AttendanceMap work={isMobile ? null : work} current={point} radiusMeters={props.radius ?? 0} showGeofence={!isMobile} /></div> : <p className="mt-3 rounded-lg bg-slate-50 p-3 text-sm text-slate-500">Lokasi historis tidak tersedia</p>}{props.selfieUrl && <img src={protectedMediaUrl(props.selfieUrl)} alt={`Selfie ${props.title}`} className="mt-3 h-32 w-32 max-w-full rounded-lg object-cover" />}</section>;
 }
 
 // ---------------------------------------------------------------------
 // Monitoring dashboard (HR/Koordinator/Direktur/System Admin) — §14
 // ---------------------------------------------------------------------
 function MonitoringDashboard({ role }: { role: string }) {
+  const { session } = useSession();
   const [summary, setSummary] = useState<{ hadir: number; terlambat: number; tidakHadir: number; perluDitinjau: number } | null>(null);
   const [rows, setRows] = useState<any[]>([]);
   const [openRows, setOpenRows] = useState<any[]>([]);
@@ -545,15 +641,24 @@ function MonitoringDashboard({ role }: { role: string }) {
   const [correctingId, setCorrectingId] = useState<string | null>(null);
   const [correctionForm, setCorrectionForm] = useState({ checkInAt: '', checkOutAt: '', reason: '' });
   const [detail, setDetail] = useState<AttendanceRecord | null>(null);
+  const [reviewTarget, setReviewTarget] = useState<{ id: string; decision: 'APPROVED' | 'REJECTED' } | null>(null);
+  const [reviewNote, setReviewNote] = useState('');
+  const [reviewing, setReviewing] = useState(false);
   const canCorrect = role === 'ADMIN_HR' || role === 'SYSTEM_ADMIN';
   const canReview = role === 'ADMIN_HR' || role === 'SYSTEM_ADMIN' || role === 'KOORDINATOR';
 
   async function load() {
     try {
       const token = getToken();
+      const pageParams = new URLSearchParams(window.location.search);
+      const rowParams = new URLSearchParams();
+      const validationStatus = pageParams.get('validationStatus');
+      const employeeId = pageParams.get('employeeId');
+      if (validationStatus) rowParams.set('validationStatus', validationStatus);
+      if (employeeId) rowParams.set('employeeId', employeeId);
       const [s, r, o, a] = await Promise.all([
         apiFetch<any>('/attendance/summary', { token }),
-        apiFetch<any[]>('/attendance', { token }),
+        apiFetch<any[]>(`/attendance${rowParams.size ? `?${rowParams}` : ''}`, { token }),
         canCorrect ? apiFetch<any[]>('/attendance/open', { token }) : Promise.resolve([]),
         canReview ? apiFetch<any[]>('/attendance/attention', { token }) : Promise.resolve([]),
       ]);
@@ -618,15 +723,17 @@ function MonitoringDashboard({ role }: { role: string }) {
     }
   }
 
-  async function review(id: string, decision: 'APPROVED' | 'REJECTED') {
-    const note = window.prompt(decision === 'APPROVED' ? 'Catatan persetujuan (minimal 5 karakter):' : 'Alasan penolakan (minimal 5 karakter):');
-    if (!note || note.trim().length < 5) return;
+  async function submitReview() {
+    if (!reviewTarget || reviewNote.trim().length < 5) return;
+    setReviewing(true);
     try {
-      await apiFetch(`/attendance/${id}/review`, { method: 'POST', token: getToken(), body: { decision, note: note.trim() } });
+      await apiFetch(`/attendance/${reviewTarget.id}/review`, { method: 'POST', token: getToken(), body: { decision: reviewTarget.decision, note: reviewNote.trim() } });
+      setReviewTarget(null);
+      setReviewNote('');
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Gagal meninjau absensi');
-    }
+    } finally { setReviewing(false); }
   }
 
   return (
@@ -653,9 +760,9 @@ function MonitoringDashboard({ role }: { role: string }) {
                 <span>{new Date(r.date).toLocaleDateString('id-ID')}</span>
                 {r.forgottenCheckout && <span className="rounded-full bg-orange-100 px-2 py-0.5 text-xs text-orange-800">Lupa check-out</span>}
                 {r.checkInAt && !r.checkOutAt && <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs text-red-700">Belum check-out</span>}
-                {r.validationStatus === 'NEEDS_REVIEW' && <>
-                  <button onClick={() => review(r.id, 'APPROVED')} className="rounded-lg bg-green-600 px-2 py-1 text-xs text-white hover:bg-green-700">Setujui</button>
-                  <button onClick={() => review(r.id, 'REJECTED')} className="rounded-lg bg-red-600 px-2 py-1 text-xs text-white hover:bg-red-700">Tolak</button>
+                {r.validationStatus === 'NEEDS_REVIEW' && !(role === 'KOORDINATOR' && r.employee.id === session.employee?.id) && <>
+                  <button onClick={() => setReviewTarget({ id: r.id, decision: 'APPROVED' })} className="min-h-10 rounded-lg bg-green-600 px-3 py-2 text-xs font-semibold text-white hover:bg-green-700">Tinjau untuk setujui</button>
+                  <button onClick={() => setReviewTarget({ id: r.id, decision: 'REJECTED' })} className="min-h-10 rounded-lg bg-red-600 px-3 py-2 text-xs font-semibold text-white hover:bg-red-700">Tinjau untuk tolak</button>
                 </>}
               </div>
             ))}
@@ -674,7 +781,7 @@ function MonitoringDashboard({ role }: { role: string }) {
             </button>
           </div>
           {showOpen && (
-            <table className="w-full text-sm">
+            <div className="overflow-x-auto overscroll-x-contain"><table className="w-full min-w-[680px] text-sm">
               <tbody>
                 {openRows.map((r) => (
                   <tr key={r.id} className="border-t border-yellow-200">
@@ -690,7 +797,7 @@ function MonitoringDashboard({ role }: { role: string }) {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </table></div>
           )}
         </div>
       )}
@@ -726,17 +833,17 @@ function MonitoringDashboard({ role }: { role: string }) {
         </div>
       )}
 
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-        <table className="w-full text-sm">
+      <div className="overflow-x-auto overscroll-x-contain rounded-xl border border-slate-200 bg-white">
+        <table className="w-full min-w-[860px] text-sm">
           <thead className="bg-slate-50 text-left text-slate-500">
             <tr>
-              <th className="px-4 py-2">Karyawan</th>
-              <th className="px-4 py-2">Lokasi</th>
-              <th className="px-4 py-2">Masuk</th>
-              <th className="px-4 py-2">Pulang</th>
-              <th className="px-4 py-2">Status</th>
-              <th className="px-4 py-2">Validasi</th>
-              <th className="px-4 py-2"></th>
+              <th scope="col" className="px-4 py-2">Karyawan</th>
+              <th scope="col" className="px-4 py-2">Lokasi</th>
+              <th scope="col" className="px-4 py-2">Masuk</th>
+              <th scope="col" className="px-4 py-2">Pulang</th>
+              <th scope="col" className="px-4 py-2">Status</th>
+              <th scope="col" className="px-4 py-2">Validasi</th>
+              <th scope="col" className="px-4 py-2"><span className="sr-only">Tindakan</span></th>
             </tr>
           </thead>
           <tbody>
@@ -758,7 +865,7 @@ function MonitoringDashboard({ role }: { role: string }) {
                 <td className="px-4 py-2">
                   {(() => {
                     const status = VALIDATION_LABEL[r.validationStatus] ?? { label: r.validationStatus, style: 'bg-slate-100 text-slate-600' };
-                    return <span className={`rounded-full px-2 py-0.5 text-xs ${status.style}`}>{status.label}</span>;
+                    return <StatusBadge status={r.validationStatus} label={status.label} />;
                   })()}
                   {r.forgottenCheckout && <div className="mt-1 text-xs font-medium text-orange-700">Checkout otomatis: terlupa</div>}
                 </td>
@@ -773,7 +880,8 @@ function MonitoringDashboard({ role }: { role: string }) {
           </tbody>
         </table>
       </div>
-      {detail && <AttendanceDetail attendance={detail} onClose={() => setDetail(null)} />}
+      <Dialog open={!!detail} onOpenChange={(open) => !open && setDetail(null)}><DialogContent className="max-w-6xl">{detail && <><DialogTitle>Detail Presensi</DialogTitle><DialogDescription>Periksa bukti check-in, check-out, lokasi, selfie, dan status review.</DialogDescription><div className="mt-4"><AttendanceDetailView attendance={detail} /></div></>}</DialogContent></Dialog>
+      <Dialog open={!!reviewTarget} onOpenChange={(open) => !open && setReviewTarget(null)}><DialogContent><DialogTitle>{reviewTarget?.decision === 'APPROVED' ? 'Setujui Bukti Presensi' : 'Tolak Bukti Presensi'}</DialogTitle><DialogDescription>Keputusan mengikuti workflow review backend dan akan dicatat secara permanen.</DialogDescription><label className="mt-5 block text-sm">Catatan review<textarea value={reviewNote} onChange={(event) => setReviewNote(event.target.value)} rows={4} className="input mt-1 w-full" placeholder="Minimal 5 karakter" /></label><Button variant={reviewTarget?.decision === 'REJECTED' ? 'danger' : 'primary'} disabled={reviewing || reviewNote.trim().length < 5} onClick={submitReview} className="mt-4 w-full">{reviewing ? 'Menyimpan...' : 'Konfirmasi Keputusan'}</Button></DialogContent></Dialog>
     </div>
   );
 }

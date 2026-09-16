@@ -30,12 +30,14 @@ export class PlacementRequestsService {
   async findAll(user: AuthenticatedUser) {
     // BR-005/§9.2: Koordinator only sees requests they themselves submitted;
     // HR/Direktur/System Admin see everything for review purposes.
-    const isReviewer = [Role.ADMIN_HR, Role.SYSTEM_ADMIN, Role.DIREKTUR].includes(
-      user.role as Role,
-    );
+    const isReviewer = [Role.ADMIN_HR, Role.SYSTEM_ADMIN].includes(user.role as Role);
 
     return this.prisma.placementRequest.findMany({
-      where: isReviewer ? undefined : { requestedById: user.userId },
+      where: isReviewer
+        ? undefined
+        : user.role === Role.DIREKTUR
+          ? { status: 'PENDING_DIRECTOR' }
+          : { requestedById: user.userId },
       include: INCLUDE,
       orderBy: { requestedAt: 'desc' },
     });
@@ -49,6 +51,9 @@ export class PlacementRequestsService {
     if (!req) throw new NotFoundException('Pengajuan penempatan tidak ditemukan');
     if (actor?.role === Role.KOORDINATOR && req.requestedById !== actor.userId) {
       throw new ForbiddenException('Anda hanya dapat mengakses pengajuan yang Anda buat');
+    }
+    if (actor?.role === Role.DIREKTUR && req.status !== 'PENDING_DIRECTOR') {
+      throw new ForbiddenException('Direktur hanya dapat mengakses pengajuan pada tahap persetujuan Direktur');
     }
     return req;
   }
@@ -73,7 +78,7 @@ export class PlacementRequestsService {
       throw new BadRequestException('Lokasi tujuan sama dengan lokasi penempatan saat ini');
     }
 
-    const type = employee.employmentType === 'TENAGA_ARSIPARIS' ? 'MUTATION' : 'REASSIGNMENT';
+    const type = employee.employmentType === 'TENAGA_BORONGAN' ? 'REASSIGNMENT' : 'MUTATION';
 
     const request = await this.prisma.placementRequest.create({
       data: {
@@ -147,7 +152,7 @@ export class PlacementRequestsService {
   async directorApprove(id: string, dto: ReviewPlacementRequestDto, actor: AuthenticatedUser) {
     const request = await this.findOne(id);
     if (request.type !== 'MUTATION') {
-      throw new BadRequestException('Hanya mutasi (Tenaga Arsiparis) yang memerlukan approval Direktur');
+      throw new BadRequestException('Hanya mutasi (Tenaga Arsiparis atau Staff Kantor) yang memerlukan approval Direktur');
     }
     if (request.status !== 'PENDING_DIRECTOR') {
       throw new BadRequestException(`Pengajuan berstatus ${request.status}, belum siap untuk approval Direktur`);

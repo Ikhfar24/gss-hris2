@@ -102,10 +102,12 @@ test('UAT Fix Pack 04 excludes every non-System Admin role from Company Settings
 
 test('UAT Fix Pack 04 keeps settings navigation and page access System Admin-only and hydration-safe', () => {
   const layout = fs.readFileSync('../frontend/app/(dashboard)/layout.tsx', 'utf8');
+  const navigation = fs.readFileSync('../frontend/lib/navigation.ts', 'utf8');
   const page = fs.readFileSync('../frontend/app/(dashboard)/settings/page.tsx', 'utf8');
-  assert.match(layout, /role=\{user\?\.role\} allow=\{\['SYSTEM_ADMIN'\]\}>\s*<Link href="\/settings"/);
-  assert.match(page, /user\?\.role !== 'SYSTEM_ADMIN'/);
-  assert.match(page, /const \[authResolved, setAuthResolved\] = useState\(false\)/);
+  assert.match(navigation, /href: '\/settings'.*roles: \['SYSTEM_ADMIN'\]/);
+  assert.match(layout, /SessionProvider fallback=\{<AppShellSkeleton \/>\}/);
+  assert.match(page, /session\.role !== 'SYSTEM_ADMIN'/);
+  assert.match(page, /useSession\(\)/);
 });
 
 test('UAT Fix Pack 04 uses the shared authenticated file downloader for report PDF and Excel', () => {

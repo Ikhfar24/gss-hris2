@@ -9,5 +9,7 @@ export class LifecycleDto {
 export class AdminResetPasswordDto extends LifecycleDto {
   @IsString()
   @MinLength(8)
-  password: string;
+  currentPassword: string;
 }
+
+export class RevealTemporaryCredentialDto extends AdminResetPasswordDto {}

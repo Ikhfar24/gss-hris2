@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { CreateHolidayDto } from './dto/create-holiday.dto';
@@ -15,12 +15,19 @@ export class HolidaysService {
   }
 
   async create(dto: CreateHolidayDto, actorId: string) {
+    const type = dto.type ?? 'NATIONAL';
+    if (type === 'LOCATION_SPECIFIC' && !dto.locationId) {
+      throw new BadRequestException('Hari libur khusus lokasi wajib memilih lokasi');
+    }
+    if (type !== 'LOCATION_SPECIFIC' && dto.locationId) {
+      throw new BadRequestException('Lokasi hanya boleh diisi untuk hari libur khusus lokasi');
+    }
     const holiday = await this.prisma.holiday.create({
       data: {
         date: new Date(dto.date),
         name: dto.name,
-        type: dto.type,
-        locationId: dto.locationId,
+        type,
+        locationId: dto.locationId ?? null,
       },
     });
 

@@ -1,9 +1,162 @@
-@import 'leaflet/dist/leaflet.css';
+@import "leaflet/dist/leaflet.css";
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  --brand-color: #0f172a;
+  color-scheme: light;
+  --brand-color: #001f3f;
+  --brand-rgb: 0 31 63;
+  --brand-hover-rgb: 0 24 49;
+  --brand-subtle-rgb: 236 240 244;
+  --binder-rgb: 0 31 63;
+  --binder-deep-rgb: 0 20 41;
+  --binder-soft-rgb: 13 48 82;
+  --paper-rgb: 255 255 255;
+  --canvas-rgb: 240 240 240;
+  --rule-rgb: 226 223 217;
+  --accent-rgb: 255 215 0;
+  --accent-hover-rgb: 230 194 0;
+  --accent-subtle-rgb: 255 249 214;
+  --indigo-rgb: 41 41 122;
+  --navy: #001f3f;
+  --grey: #f0f0f0;
+  --background: #f0f0f0;
+  --background-rgb: 240 240 240;
+  --surface: #ffffff;
+  --surface-rgb: 255 255 255;
+  --surface-subtle-rgb: 248 247 245;
+  --foreground: #1b1513;
+  --foreground-rgb: 27 21 19;
+  --muted: #655e5a;
+  --muted-rgb: 101 94 90;
+  --border: #e2dfd9;
+  --border-rgb: 226 223 217;
+  --success: #b6d588;
+  --success-rgb: 182 213 136;
+  --success-foreground-rgb: 54 83 20;
+  --success-surface-rgb: 244 248 237;
+  --success-border-rgb: 160 194 111;
+  --warning: #ffd700;
+  --warning-rgb: 255 215 0;
+  --warning-foreground-rgb: 107 87 0;
+  --warning-surface-rgb: 255 249 214;
+  --warning-border-rgb: 224 185 0;
+  --danger: #dc143c;
+  --danger-rgb: 220 20 60;
+  --danger-hover-rgb: 180 15 48;
+  --danger-surface-rgb: 255 240 243;
+  --danger-border-rgb: 241 166 181;
+  --info: #29297a;
+  --info-rgb: 41 41 122;
+  --info-surface-rgb: 242 242 251;
+  --info-border-rgb: 181 181 220;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  html {
+    min-height: 100%;
+    min-height: 100dvh;
+    overflow-x: clip;
+    scroll-padding-bottom: calc(7rem + env(safe-area-inset-bottom));
+    @apply bg-background;
+  }
+  body {
+    min-height: 100%;
+    min-height: 100dvh;
+    overflow-x: clip;
+    @apply min-w-0 bg-canvas font-sans text-foreground antialiased;
+    font-feature-settings: "cv02", "cv05", "cv08", "tnum";
+  }
+  ::selection {
+    @apply bg-accent/55 text-foreground;
+  }
+  input,
+  textarea,
+  select {
+    caret-color: rgb(var(--brand-rgb));
+  }
+  :focus-visible {
+    @apply outline-none ring-2 ring-brand ring-offset-2 ring-offset-surface;
+  }
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+  a {
+    text-underline-offset: 3px;
+  }
+  * {
+    scrollbar-color: rgb(var(--muted-rgb) / 0.45) transparent;
+    scrollbar-width: thin;
+  }
+}
+
+@supports not (overflow: clip) {
+  html,
+  body {
+    overflow-x: hidden;
+  }
+}
+
+@layer components {
+  .input {
+    @apply w-full rounded-lg border border-border bg-paper px-3 text-sm text-foreground shadow-control transition-[border-color,box-shadow,background-color] placeholder:text-muted focus-visible:border-brand disabled:cursor-not-allowed disabled:bg-background disabled:text-muted;
+  }
+  .input:not(textarea) {
+    @apply h-10;
+  }
+  textarea.input {
+    @apply h-auto min-h-24 py-2;
+  }
+  /* prettier-ignore */
+  .mobile-nav-clearance { padding-bottom: calc(7rem + env(safe-area-inset-bottom)); }
+  .dossier-rule {
+    @apply border-t border-rule;
+  }
+  .dossier-index {
+    @apply relative before:absolute before:left-0 before:top-0 before:h-full before:w-1 before:bg-accent;
+  }
+  .dossier-sheet {
+    @apply rounded-xl bg-paper shadow-sheet;
+  }
+  .dossier-label {
+    @apply text-caption font-semibold text-muted;
+  }
+}
+
+@media (min-width: 1024px) {
+  html {
+    scrollbar-gutter: stable;
+  }
+  body[data-scroll-locked] {
+    padding-right: 0 !important;
+  }
+  .mobile-nav-clearance {
+    padding-bottom: 2rem;
+  }
+  html {
+    scroll-padding-bottom: 2rem;
+  }
+}
+
+@media (max-width: 1023px) {
+  /* prettier-ignore */
+  [role='dialog'] .sticky.bottom-0 { position: static; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

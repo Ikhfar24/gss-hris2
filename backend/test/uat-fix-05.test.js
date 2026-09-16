@@ -35,16 +35,16 @@ test('UAT Fix Pack 05 exposes a proper Employee edit modal using the existing ma
   const modal = page.slice(page.indexOf('Edit Data Karyawan'), page.indexOf('{showForm &&', page.indexOf('Edit Data Karyawan')));
   assert.match(page, /Edit Data Karyawan/);
   assert.match(page, /apiFetch\(`\/employees\/\$\{editing\.id\}`/);
-  assert.match(page, /setEditing\(null\); setEditForm\(null\)/);
+  assert.match(page, /setEditing\(null\);\s*setEditForm\(null\)/);
   assert.doesNotMatch(editFunction, /window\.prompt|window\.confirm/);
-  for (const field of ['Nama', 'NIP', 'NIK', 'Email', 'Telepon', 'Alamat', 'Jabatan']) assert.match(page, new RegExp(`label="${field}"|>${field}<`));
+  for (const field of ['Nama', 'NIP(?: \\(nomor karyawan internal\\))?', 'NIK(?: \\(16 digit kependudukan\\))?', 'Email', 'Telepon', 'Alamat', 'Jabatan']) assert.match(page, new RegExp(`label="${field}"|>\\s*${field}\\s*<`));
   for (const field of ['dailyRate', 'baseSalary', 'netPay', 'bankAccountNumber']) assert.doesNotMatch(modal, new RegExp(field));
 });
 
 test('UAT Fix Pack 05 changes user-facing Employee 360 terminology to Profil Lengkap', () => {
   const list = fs.readFileSync('../frontend/app/(dashboard)/employees/page.tsx', 'utf8');
   const profile = fs.readFileSync('../frontend/app/(dashboard)/employees/[id]/360/page.tsx', 'utf8');
-  assert.match(list, />Profil Lengkap<\/Link>/);
+  assert.match(list, />\s*Profil Lengkap\s*<\/Link>/);
   assert.match(profile, />Profil Lengkap<\/h1>/);
   assert.doesNotMatch(`${list}\n${profile}`, /Employee 360/);
 });
@@ -103,9 +103,13 @@ test('UAT Fix Pack 05 includes photo metadata in an already-authorized Coordinat
 
 test('UAT Fix Pack 05 keeps placeholder, deterministic HR controls, and Profile Change Request policy', () => {
   const profile = fs.readFileSync('../frontend/app/(dashboard)/employees/[id]/360/page.tsx', 'utf8');
+  const managementProfile = fs.readFileSync('../frontend/components/management/ManagementEmployeeProfile.tsx', 'utf8');
   assert.match(profile, /Foto profil belum tersedia/);
-  assert.match(profile, /role === 'ADMIN_HR'/);
-  assert.match(profile, /setRole\(getUser\(\)\?\.role \?\? null\)/);
+  assert.match(profile, /session\.role === 'ADMIN_HR'/);
+  assert.match(managementProfile, /uploadFile\(`\/employees\/\$\{profile\.id\}\/profile-photo`/);
+  assert.doesNotMatch(managementProfile, /SYSTEM_ADMIN/);
+  assert.match(profile, /useSession\(\)/);
+  assert.doesNotMatch(profile, /getUser\(/);
   assert.deepEqual(Reflect.getMetadata('roles', EmployeeProfileChangeRequestsController.prototype.create), ['KARYAWAN']);
 });
 

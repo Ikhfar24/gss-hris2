@@ -3,10 +3,12 @@ import { IsBoolean, IsDateString, IsEnum, IsInt, IsOptional, IsString, Min } fro
 export enum EmploymentTypeDto {
   TENAGA_BORONGAN = 'TENAGA_BORONGAN',
   TENAGA_ARSIPARIS = 'TENAGA_ARSIPARIS',
+  STAFF_OFFICE = 'STAFF_OFFICE',
 }
 
 export enum GenderDto { MALE = 'MALE', FEMALE = 'FEMALE' }
 export enum EmployeeStatusCreateDto { TRAINING = 'TRAINING', ACTIVE = 'ACTIVE', INACTIVE = 'INACTIVE', ON_LEAVE = 'ON_LEAVE', RESIGNED = 'RESIGNED', TERMINATED = 'TERMINATED' }
+export enum AttendanceModeDto { GEOFENCE = 'GEOFENCE', MOBILE = 'MOBILE' }
 
 export class CreateEmployeeDto {
   @IsString()
@@ -92,6 +94,10 @@ export class CreateEmployeeDto {
   @IsOptional()
   @IsString()
   attendanceExemptionReason?: string;
+
+  @IsOptional()
+  @IsEnum(AttendanceModeDto)
+  attendanceMode?: AttendanceModeDto;
 
   // Optional first placement so a new employee isn't left "location-less".
   @IsOptional()

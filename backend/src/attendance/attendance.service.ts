@@ -11,9 +11,10 @@ import { CheckInDto } from './dto/check-in.dto';
 import { CheckOutDto } from './dto/check-out.dto';
 import { QueryAttendanceDto, QueryOpenAttendanceDto } from './dto/query-attendance.dto';
 import { CorrectAttendanceDto } from './dto/correct-attendance.dto';
-import { ResetDeviceDto } from './dto/reset-device.dto';
 import { ReviewAttendanceDto } from './dto/review-attendance.dto';
 import { CoordinatorScopeService } from '../coordinator-scopes/coordinator-scope.service';
+import { QueryAttendanceMonitoringDto } from './dto/query-attendance-monitoring.dto';
+import { approvedFullDayAbsenceWhere } from '../common/domain/approved-full-day-absence';
 
 function startOfDay(d: Date): Date {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate());
@@ -29,7 +30,7 @@ interface ResolvedEvidence {
   accuracy: number | null;
   geofenceLatitude: number | null;
   geofenceLongitude: number | null;
-  geofenceRadiusMeters: number;
+  geofenceRadiusMeters: number | null;
   locationName: string;
   gpsStatus: 'OK' | 'OUT_OF_RADIUS' | 'UNAVAILABLE' | 'SUSPICIOUS' | 'FAILED' | null;
   selfieUrl: string | null;
@@ -37,6 +38,13 @@ interface ResolvedEvidence {
   needsReview: boolean;
   failureReason: string | null;
   failureNote: string | null;
+}
+
+export interface NonWorkingDay {
+  reason: 'HOLIDAY' | 'WEEKDAY';
+  label: string;
+  weekday: number;
+  holiday: { id: string; name: string; type: string } | null;
 }
 
 @Injectable()
@@ -63,11 +71,14 @@ export class AttendanceService {
     const employee = await this.prisma.employee.findUnique({
       where: { id: user.employeeId },
       include: {
-        placements: { where: { status: { in: ['ACTIVE', 'SCHEDULED'] } }, include: { location: true }, orderBy: { startDate: 'desc' } },
+        placements: { where: { status: { in: ['ACTIVE', 'SCHEDULED', 'ENDED'] } }, include: { location: true }, orderBy: { startDate: 'desc' } },
         temporaryAssignments: { where: { status: 'APPROVED' }, include: { location: true }, orderBy: { startDate: 'desc' } },
       },
     });
     if (!employee) throw new NotFoundException('Data karyawan tidak ditemukan');
+    if (employee.deletedAt || (employee.status && !['TRAINING', 'ACTIVE'].includes(employee.status))) {
+      throw new BadRequestException('Status karyawan tidak mengizinkan presensi');
+    }
     if (!employee.attendanceRequired) {
       throw new BadRequestException('Profil Anda tidak diwajibkan melakukan absensi');
     }
@@ -89,52 +100,49 @@ export class AttendanceService {
     return { employee, location };
   }
 
-  /**
-   * Device binding (§11.5): one bound device per employee. First
-   * successful check-in self-registers the device. A different device
-   * afterwards is hard-rejected — HR must reset the binding (e.g. new
-   * phone) via resetDevice(). This binds a browser/app install (an opaque
-   * client-generated id), not real hardware — see README for that caveat.
-   */
-  private async enforceDeviceBinding(employeeId: string, deviceId: string, deviceLabel?: string) {
-    const existing = await this.prisma.employeeDevice.findUnique({ where: { employeeId } });
-
-    if (!existing) {
-      await this.prisma.employeeDevice.create({
-        data: { employeeId, deviceId, label: deviceLabel ?? null },
-      });
-      return;
-    }
-
-    if (existing.deviceId !== deviceId) {
-      throw new ForbiddenException(
-        'Perangkat ini tidak dikenali untuk akun Anda. Hubungi HR untuk reset perangkat jika Anda berganti HP.',
-      );
-    }
-
-    await this.prisma.employeeDevice.update({
-      where: { employeeId },
-      data: { lastUsedAt: new Date(), label: deviceLabel ?? existing.label },
+  private async getApprovedFullDayAbsence(employeeId: string, date: Date) {
+    return this.prisma.leaveRequest.findFirst({
+      where: { employeeId, ...approvedFullDayAbsenceWhere(date) },
+      select: { id: true, type: true, startDate: true, endDate: true, status: true },
+      orderBy: { startDate: 'desc' },
     });
+  }
+
+  private async assertNoApprovedFullDayAbsence(employeeId: string, date: Date) {
+    const absence = await this.getApprovedFullDayAbsence(employeeId, date);
+    if (absence) {
+      throw new BadRequestException('Presensi tidak tersedia pada tanggal cuti, sakit, atau izin tidak masuk yang telah disetujui');
+    }
   }
 
   /**
    * Resolves GPS + selfie evidence for one check-in/out event, honoring the
    * §11.5 MVP policy: if GPS or camera genuinely failed on the device, the
    * employee can still record attendance by declaring the failure — but the
-   * record is always flagged NEEDS_REVIEW for HR. Being inside the radius
-   * is still a hard gate whenever coordinates ARE present.
+   * record is always flagged NEEDS_REVIEW for HR. GEOFENCE keeps radius as
+   * a hard gate; MOBILE requires a GPS fix but does not apply a fixed radius.
    */
   private evaluateEvidence(
     location: { name: string; latitude: number | null; longitude: number | null; radiusMeters: number },
     dto: CheckInDto,
     employeeId: string,
+    attendanceMode: 'GEOFENCE' | 'MOBILE' = 'GEOFENCE',
   ): ResolvedEvidence {
     if ((dto.latitude === undefined) !== (dto.longitude === undefined)) {
       throw new BadRequestException('Latitude dan longitude harus dikirim bersama');
     }
     const hasCoords = dto.latitude !== undefined && dto.longitude !== undefined;
     const hasSelfie = !!dto.selfieBase64;
+
+    if (attendanceMode === 'GEOFENCE' && (!Number.isFinite(location.latitude) || !Number.isFinite(location.longitude))) {
+      throw new BadRequestException('Konfigurasi lokasi kerja tidak valid: koordinat geofence belum lengkap');
+    }
+
+    const hasCompleteGps = typeof dto.latitude === 'number' && Number.isFinite(dto.latitude)
+      && typeof dto.longitude === 'number' && Number.isFinite(dto.longitude);
+    if (attendanceMode === 'MOBILE' && !hasCompleteGps) {
+      throw new BadRequestException('Mode MOBILE mewajibkan latitude dan longitude lengkap');
+    }
 
     if (!hasCoords || !hasSelfie) {
       if (!dto.failureReason || !dto.failureNote) {
@@ -148,7 +156,14 @@ export class AttendanceService {
     let gpsStatus: ResolvedEvidence['gpsStatus'] = null;
     let needsReview = false;
 
-    if (hasCoords) {
+    if (attendanceMode === 'MOBILE') {
+      if (dto.mockLocationDetected) {
+        gpsStatus = 'SUSPICIOUS';
+        needsReview = true;
+      } else {
+        gpsStatus = 'OK';
+      }
+    } else if (hasCoords) {
       if (location.latitude === null || location.longitude === null) {
         gpsStatus = 'UNAVAILABLE';
         needsReview = true;
@@ -172,15 +187,20 @@ export class AttendanceService {
       needsReview = true;
     }
 
+    const accuracyLimit = attendanceMode === 'MOBILE' ? 100 : Math.max(50, location.radiusMeters);
+    if (hasCompleteGps && (typeof dto.accuracyMeters !== 'number' || dto.accuracyMeters > accuracyLimit)) {
+      needsReview = true;
+    }
+
     const selfieUrl = hasSelfie ? saveBase64Image(dto.selfieBase64!, `selfies/${employeeId}`) : null;
     if (!hasSelfie) needsReview = true;
 
     return {
       distance,
       accuracy: dto.accuracyMeters ?? null,
-      geofenceLatitude: location.latitude,
-      geofenceLongitude: location.longitude,
-      geofenceRadiusMeters: location.radiusMeters,
+      geofenceLatitude: attendanceMode === 'MOBILE' ? null : location.latitude,
+      geofenceLongitude: attendanceMode === 'MOBILE' ? null : location.longitude,
+      geofenceRadiusMeters: attendanceMode === 'MOBILE' ? null : location.radiusMeters,
       locationName: location.name,
       gpsStatus,
       selfieUrl,
@@ -201,14 +221,18 @@ export class AttendanceService {
   private resolveEventTime(clientRecordedAt?: string): { at: Date; clientAt: Date | null; isOffline: boolean } {
     if (!clientRecordedAt) return { at: new Date(), clientAt: null, isOffline: false };
     const parsed = new Date(clientRecordedAt);
+    const now = Date.now();
+    if (Number.isNaN(parsed.getTime())) throw new BadRequestException('Waktu rekam offline tidak valid');
+    if (parsed.getTime() > now + 5 * 60 * 1000) throw new BadRequestException('Waktu rekam offline tidak boleh berada di masa depan');
+    if (parsed.getTime() < now - 7 * 24 * 60 * 60 * 1000) throw new BadRequestException('Data absensi offline lebih dari 7 hari dan tidak dapat diproses');
     return { at: parsed, clientAt: parsed, isOffline: true };
   }
 
   async checkIn(dto: CheckInDto, actor: AuthenticatedUser) {
     const { at: checkInAt, clientAt, isOffline } = this.resolveEventTime(dto.clientRecordedAt);
     const { employee, location } = await this.getEmployeeForUser(actor.userId, checkInAt);
-    await this.enforceDeviceBinding(employee.id, dto.deviceId, dto.deviceInfo);
     const today = startOfDay(checkInAt);
+    await this.assertNoApprovedFullDayAbsence(employee.id, today);
 
     const existing = await this.prisma.attendance.findUnique({
       where: { employeeId_date: { employeeId: employee.id, date: today } },
@@ -217,10 +241,13 @@ export class AttendanceService {
       throw new BadRequestException('Sudah melakukan check-in hari ini');
     }
 
-    const evidence = this.evaluateEvidence(location, dto, employee.id);
-    const latenessStatus = await this.computeLatenessStatus(location, checkInAt, today);
-    const isOffWorkDay = !location.workDays.includes(checkInAt.getDay());
-    const needsReview = evidence.needsReview || isOffWorkDay || isOffline;
+    const evidence = this.evaluateEvidence(location, dto, employee.id, employee.attendanceMode);
+    const nonWorkingDay = await this.resolveNonWorkingDay(location, today);
+    const latenessStatus = nonWorkingDay ? 'NOT_APPLICABLE' : await this.computeLatenessStatus(location, checkInAt, today);
+    const needsReview = evidence.needsReview || !!nonWorkingDay || isOffline;
+    const reviewNote = nonWorkingDay
+      ? `Check-in pada ${nonWorkingDay.label.toLowerCase()}`
+      : null;
 
     const attendance = await this.prisma.attendance.upsert({
       where: { employeeId_date: { employeeId: employee.id, date: today } },
@@ -242,15 +269,14 @@ export class AttendanceService {
         checkInGpsStatus: evidence.gpsStatus,
         checkInFaceStatus: evidence.faceStatus,
         checkInMockLocationFlag: !!dto.mockLocationDetected,
-        checkInDeviceInfo: dto.deviceInfo,
-        checkInDeviceId: dto.deviceId,
         checkInFailureReason: evidence.failureReason as any,
         checkInFailureNote: evidence.failureNote,
+        checkInAttendanceMode: employee.attendanceMode,
         checkInSyncedOffline: isOffline,
         latenessStatus,
         validationStatus: needsReview ? 'NEEDS_REVIEW' : 'VALID',
         payableStatus: needsReview ? 'PENDING_REVIEW' : 'NOT_PAYABLE',
-        reviewNote: isOffWorkDay ? 'Check-in di luar hari kerja terjadwal lokasi ini' : null,
+        reviewNote,
       },
       update: {}, // upsert only used as an atomic find-or-create guard; existing rows are rejected above
       include: INCLUDE,
@@ -261,7 +287,7 @@ export class AttendanceService {
       action: 'ATTENDANCE_CHECK_IN',
       entity: 'Attendance',
       entityId: attendance.id,
-      newValue: { checkInAt, gpsStatus: evidence.gpsStatus, distance: evidence.distance, latenessStatus, isOffline },
+      newValue: { checkInAt, attendanceMode: employee.attendanceMode, gpsStatus: evidence.gpsStatus, distance: evidence.distance, latenessStatus, isOffline },
       actorRole: actor.role,
       source: 'EMPLOYEE',
       reason: evidence.failureNote ?? 'Employee check-in',
@@ -273,25 +299,47 @@ export class AttendanceService {
   async checkOut(dto: CheckOutDto, actor: AuthenticatedUser) {
     const { at: checkOutAt, clientAt, isOffline } = this.resolveEventTime(dto.clientRecordedAt);
     const { employee } = await this.getEmployeeForUser(actor.userId, checkOutAt);
-    await this.enforceDeviceBinding(employee.id, dto.deviceId, dto.deviceInfo);
     const today = startOfDay(checkOutAt);
+    await this.assertNoApprovedFullDayAbsence(employee.id, today);
 
-    const existing = await this.prisma.attendance.findUnique({
+    let existing = await this.prisma.attendance.findUnique({
       where: { employeeId_date: { employeeId: employee.id, date: today } },
       include: { location: true },
     });
+    if (!existing?.checkInAt) {
+      const previousDay = new Date(today);
+      previousDay.setDate(previousDay.getDate() - 1);
+      const previous = await this.prisma.attendance.findUnique({
+        where: { employeeId_date: { employeeId: employee.id, date: previousDay } },
+        include: { location: true },
+      });
+      if (previous?.checkInAt && !previous.checkOutAt) {
+        const [hour, minute] = previous.location.checkOutTime.split(':').map(Number);
+        const [checkInHour, checkInMinute] = previous.location.checkInTime.split(':').map(Number);
+        const scheduledCheckOut = new Date(previous.date);
+        scheduledCheckOut.setHours(hour, minute, 0, 0);
+        if (hour * 60 + minute <= checkInHour * 60 + checkInMinute) existing = previous;
+      }
+    }
     if (!existing || !existing.checkInAt) {
       throw new BadRequestException('Belum melakukan check-in hari ini');
     }
     if (existing.checkOutAt) {
       throw new BadRequestException('Sudah melakukan check-out hari ini');
     }
+    if (checkOutAt <= existing.checkInAt) {
+      throw new BadRequestException('Waktu check-out harus setelah waktu check-in');
+    }
 
     // Uses the same location the check-in was recorded against (not a
     // fresh placement lookup) so a same-day placement change can't
     // silently move where this attendance record is attributed.
-    const evidence = this.evaluateEvidence(existing.location, dto, employee.id);
-    const needsReview = evidence.needsReview || isOffline;
+    // Every pre-AttendanceMode record used the geofence policy. Keep legacy
+    // snapshots null while preserving that known checkout behavior.
+    const attendanceMode = existing.checkInAttendanceMode ?? 'GEOFENCE';
+    const evidence = this.evaluateEvidence(existing.location, dto, employee.id, attendanceMode);
+    const nonWorkingDay = await this.resolveNonWorkingDay(existing.location, existing.date);
+    const needsReview = evidence.needsReview || !!nonWorkingDay || isOffline;
 
     const updated = await this.prisma.attendance.update({
       where: { id: existing.id },
@@ -310,10 +358,9 @@ export class AttendanceService {
         checkOutGpsStatus: evidence.gpsStatus,
         checkOutFaceStatus: evidence.faceStatus,
         checkOutMockLocationFlag: !!dto.mockLocationDetected,
-        checkOutDeviceInfo: dto.deviceInfo,
-        checkOutDeviceId: dto.deviceId,
         checkOutFailureReason: evidence.failureReason as any,
         checkOutFailureNote: evidence.failureNote,
+        checkOutAttendanceMode: attendanceMode,
         checkOutSyncedOffline: isOffline,
         validationStatus: needsReview && existing.validationStatus === 'VALID' ? 'NEEDS_REVIEW' : existing.validationStatus,
         payableStatus: payableAttendanceState({
@@ -322,6 +369,9 @@ export class AttendanceService {
           validationStatus: needsReview && existing.validationStatus === 'VALID' ? 'NEEDS_REVIEW' : existing.validationStatus,
           checkOutSource: 'EMPLOYEE',
         }),
+        reviewNote: existing.reviewNote ?? (nonWorkingDay
+          ? `Presensi pada ${nonWorkingDay.label.toLowerCase()}`
+          : null),
         checkOutSource: 'EMPLOYEE',
       },
       include: INCLUDE,
@@ -332,7 +382,7 @@ export class AttendanceService {
       action: 'ATTENDANCE_CHECK_OUT',
       entity: 'Attendance',
       entityId: updated.id,
-      newValue: { checkOutAt, gpsStatus: evidence.gpsStatus, distance: evidence.distance, isOffline },
+      newValue: { checkOutAt, attendanceMode, gpsStatus: evidence.gpsStatus, distance: evidence.distance, isOffline },
       actorRole: actor.role,
       source: 'EMPLOYEE',
       reason: evidence.failureNote ?? 'Employee check-out',
@@ -348,7 +398,10 @@ export class AttendanceService {
       where: { employeeId_date: { employeeId: employee.id, date: today } },
       include: INCLUDE,
     });
-    return { attendance: attendance ? this.present(attendance) : null, expectedLocation: location };
+    const attendanceMode = attendance?.checkInAt ? (attendance.checkInAttendanceMode ?? 'GEOFENCE') : employee.attendanceMode;
+    const nonWorkingDay = await this.resolveNonWorkingDay(location, today);
+    const approvedAbsence = await this.getApprovedFullDayAbsence(employee.id, today);
+    return { attendance: attendance ? this.present(attendance) : null, attendanceMode, expectedLocation: location, nonWorkingDay, approvedAbsence };
   }
 
   async myHistory(actor: AuthenticatedUser) {
@@ -393,6 +446,119 @@ export class AttendanceService {
     return records.map((record) => this.present(record));
   }
 
+  async monitoring(query: QueryAttendanceMonitoringDto, actor: AuthenticatedUser) {
+    const date = query.date ? startOfDay(new Date(query.date)) : startOfDay(new Date());
+    const coordinatorScope = actor.role === Role.KOORDINATOR ? await this.scopes.employeeWhere(actor.userId) : {};
+    const employees = await this.prisma.employee.findMany({
+      where: {
+        status: { in: ['TRAINING', 'ACTIVE', 'ON_LEAVE'] },
+        joinDate: { lte: date },
+        OR: [{ resignDate: null }, { resignDate: { gte: date } }],
+        attendanceRequired: true,
+        AND: [coordinatorScope, ...(query.employmentType ? [{ employmentType: query.employmentType }] : [])],
+        placements: { some: { status: { in: ['ACTIVE', 'SCHEDULED', 'ENDED'] }, startDate: { lte: date }, OR: [{ endDate: null }, { endDate: { gte: date } }] } },
+      },
+      select: {
+        id: true, name: true, photoUrl: true, employmentType: true, jobTitle: true, status: true,
+        placements: {
+          where: { status: { in: ['ACTIVE', 'SCHEDULED', 'ENDED'] }, startDate: { lte: date }, OR: [{ endDate: null }, { endDate: { gte: date } }] },
+          orderBy: { startDate: 'desc' }, take: 1,
+          select: { id: true, startDate: true, endDate: true, locationId: true, location: { select: { id: true, name: true, address: true, checkInTime: true, checkOutTime: true, workDays: true } } },
+        },
+        temporaryAssignments: {
+          where: { status: 'APPROVED', startDate: { lte: date }, endDate: { gte: date } }, orderBy: { startDate: 'desc' },
+          select: { id: true, status: true, startDate: true, endDate: true, locationId: true, location: { select: { id: true, name: true, address: true, checkInTime: true, checkOutTime: true, workDays: true } } },
+        },
+        leaveRequests: {
+          where: approvedFullDayAbsenceWhere(date),
+          orderBy: { startDate: 'desc' }, take: 1,
+          select: { id: true, type: true, startDate: true, endDate: true, status: true },
+        },
+        attendances: {
+          where: { date }, take: 1,
+          select: {
+            id: true, checkInAt: true, checkOutAt: true, latenessStatus: true, validationStatus: true,
+            payableStatus: true, reviewNote: true, reviewedById: true, reviewedAt: true,
+            reviews: { orderBy: { reviewedAt: 'desc' }, take: 1, select: { id: true, decision: true, note: true, reviewedById: true, reviewedAt: true } },
+          },
+        },
+      },
+      orderBy: { name: 'asc' },
+    });
+
+    const locationIds = new Set<string>();
+    for (const employee of employees) {
+      const placement = employee.placements[0];
+      if (placement) locationIds.add(effectiveWorkLocation(placement.locationId, date, employee.temporaryAssignments));
+    }
+    const holidays = await this.prisma.holiday.findMany({
+      where: { date, OR: [{ locationId: null }, { locationId: { in: [...locationIds] } }] },
+      select: { locationId: true },
+    });
+    const isGlobalHoliday = holidays.some((holiday) => holiday.locationId === null);
+    const holidayLocationIds = new Set(holidays.flatMap((holiday) => holiday.locationId ? [holiday.locationId] : []));
+
+    const people = employees.flatMap((employee) => {
+      const placement = employee.placements[0];
+      if (!placement) return [];
+      const effectiveLocationId = effectiveWorkLocation(placement.locationId, date, employee.temporaryAssignments);
+      const assignment = employee.temporaryAssignments.find((item) => item.locationId === effectiveLocationId);
+      const location = assignment?.location ?? placement.location;
+      if (query.locationId && location.id !== query.locationId) return [];
+      if (!location.workDays.includes(date.getDay()) || isGlobalHoliday || holidayLocationIds.has(location.id)) return [];
+
+      const attendance = employee.attendances[0] ?? null;
+      const approvedLeave = employee.leaveRequests[0] ?? null;
+      const state = approvedLeave || employee.status === 'ON_LEAVE'
+        ? 'ON_LEAVE'
+        : !attendance?.checkInAt ? 'NOT_ATTENDED' : attendance.checkOutAt ? 'CHECKED_OUT' : 'CHECKED_IN';
+      return [{
+        employee: { id: employee.id, name: employee.name, photoUrl: toProtectedMediaPath(employee.photoUrl), employmentType: employee.employmentType, jobTitle: employee.jobTitle, status: employee.status },
+        placement: { id: placement.id, startDate: placement.startDate, endDate: placement.endDate, temporaryAssignmentId: assignment?.id ?? null },
+        location: { id: location.id, name: location.name, address: location.address, checkInTime: location.checkInTime, checkOutTime: location.checkOutTime },
+        state,
+        attendance: attendance ? {
+          id: attendance.id, checkInAt: attendance.checkInAt, checkOutAt: attendance.checkOutAt,
+          latenessStatus: attendance.latenessStatus, validationStatus: attendance.validationStatus, payableStatus: attendance.payableStatus,
+          reviewNote: attendance.reviewNote, reviewedById: attendance.reviewedById, reviewedAt: attendance.reviewedAt,
+          latestReview: attendance.reviews[0] ?? null,
+        } : null,
+        approvedLeave,
+      }];
+    });
+
+    const onLeave = people.filter((person) => person.state === 'ON_LEAVE').length;
+    return {
+      date: date.toISOString().slice(0, 10),
+      leaveSemantics: 'Approved leave remains in the scheduled roster as ON_LEAVE and is not counted as not attended.',
+      summary: {
+        totalScheduled: people.length,
+        expectedToAttend: people.length - onLeave,
+        attended: people.filter((person) => person.state === 'CHECKED_IN' || person.state === 'CHECKED_OUT').length,
+        checkedIn: people.filter((person) => person.state === 'CHECKED_IN').length,
+        checkedOut: people.filter((person) => person.state === 'CHECKED_OUT').length,
+        notAttended: people.filter((person) => person.state === 'NOT_ATTENDED').length,
+        onLeave,
+        late: people.filter((person) => person.attendance?.latenessStatus === 'LATE').length,
+        needsReview: people.filter((person) => person.attendance?.validationStatus === 'NEEDS_REVIEW').length,
+      },
+      people,
+    };
+  }
+
+  async reviewAudit() {
+    return this.prisma.auditLog.findMany({
+      where: { action: { in: ['ATTENDANCE_REVIEW', 'ATTENDANCE_SELF_REVIEW'] } },
+      select: {
+        id: true, action: true, actorId: true, actorRole: true, entityId: true,
+        oldValue: true, newValue: true, reason: true, source: true, relatedEntityId: true, createdAt: true,
+        actor: { select: { name: true, email: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    });
+  }
+
   /** §11.5 "Karyawan lupa check-out" — surfaces every open (checked-in but
    * not checked-out) record in a date range so HR can follow up / correct. */
   async findOpen(query: QueryOpenAttendanceDto, actor: AuthenticatedUser) {
@@ -417,6 +583,10 @@ export class AttendanceService {
   async correct(id: string, dto: CorrectAttendanceDto, actor: AuthenticatedUser) {
     const existing = await this.prisma.attendance.findUnique({ where: { id }, include: { location: true } });
     if (!existing) throw new NotFoundException('Data absensi tidak ditemukan');
+    if (actor.role === Role.SYSTEM_ADMIN) {
+      const user = await this.prisma.user.findUnique({ where: { id: actor.userId }, select: { employeeId: true } });
+      if (user?.employeeId === existing.employeeId) throw new ForbiddenException('System Admin tidak dapat mengoreksi absensi sendiri');
+    }
 
     const nextCheckInAt = dto.checkInAt ? new Date(dto.checkInAt) : existing.checkInAt;
     const nextCheckOutAt = dto.clearCheckOut ? null : dto.checkOutAt ? new Date(dto.checkOutAt) : existing.checkOutAt;
@@ -473,7 +643,8 @@ export class AttendanceService {
     });
     if (!attendance) throw new NotFoundException('Data absensi tidak ditemukan');
     const reviewer = await this.prisma.user.findUnique({ where: { id: actor.userId }, select: { employeeId: true } });
-    if (reviewer?.employeeId === attendance.employee.id) {
+    const isSelfReview = reviewer?.employeeId === attendance.employee.id;
+    if (isSelfReview && actor.role !== Role.ADMIN_HR) {
       throw new ForbiddenException('Karyawan tidak dapat meninjau absensinya sendiri');
     }
     await this.assertMayReview(attendance.employee, actor);
@@ -502,13 +673,13 @@ export class AttendanceService {
     await this.auditLog.record({
       actorId: actor.userId,
       actorRole: actor.role,
-      action: 'ATTENDANCE_REVIEW',
+      action: isSelfReview ? 'ATTENDANCE_SELF_REVIEW' : 'ATTENDANCE_REVIEW',
       entity: 'Attendance',
       entityId: id,
       oldValue: { validationStatus: attendance.validationStatus, payableStatus: attendance.payableStatus },
-      newValue: { reviewId: review.id, decision: dto.decision, validationStatus, payableStatus },
+      newValue: { reviewId: review.id, decision: dto.decision, validationStatus, payableStatus, selfReview: isSelfReview },
       reason: dto.note,
-      source: 'ATTENDANCE_REVIEW',
+      source: isSelfReview ? 'ATTENDANCE_SELF_REVIEW' : 'ATTENDANCE_REVIEW',
       relatedEntityId: review.id,
     });
     return this.present(updated);
@@ -577,12 +748,12 @@ export class AttendanceService {
 
   private async assertMayViewAttendance(attendance: { employeeId: string; employee: { employmentType: string } }, actor: AuthenticatedUser) {
     if ([Role.ADMIN_HR, Role.SYSTEM_ADMIN, Role.DIREKTUR].includes(actor.role as Role)) return;
+    const user = await this.prisma.user.findUnique({ where: { id: actor.userId }, select: { employeeId: true } });
+    if (user?.employeeId === attendance.employeeId) return;
     if (actor.role === Role.KOORDINATOR) {
       await this.scopes.assertEmployee(actor.userId, attendance.employee);
       return;
     }
-    const user = await this.prisma.user.findUnique({ where: { id: actor.userId }, select: { employeeId: true } });
-    if (user?.employeeId === attendance.employeeId) return;
     throw new ForbiddenException('Anda hanya dapat mengakses detail absensi yang diizinkan');
   }
 
@@ -616,18 +787,24 @@ export class AttendanceService {
     const weekday = date.getDay();
 
     const coordinatorEmployeeWhere = actor?.role === Role.KOORDINATOR ? await this.scopes.employeeWhere(actor.userId) : {};
-    const coordinatorQueryWhere = actor?.role === Role.KOORDINATOR ? { employee: coordinatorEmployeeWhere } : {};
+    const eligibleEmployeeWhere = {
+      ...coordinatorEmployeeWhere,
+      attendanceRequired: true,
+      leaveRequests: { none: approvedFullDayAbsenceWhere(date) },
+    };
     const [scheduledToday, records] = await Promise.all([
       // Employees whose active placement's location works on this weekday.
       this.prisma.employee.count({
         where: {
           status: 'ACTIVE',
+          attendanceRequired: true,
           ...coordinatorEmployeeWhere,
+          leaveRequests: { none: approvedFullDayAbsenceWhere(date) },
           placements: { some: { status: 'ACTIVE', location: { workDays: { has: weekday } } } },
         },
       }),
       this.prisma.attendance.findMany({
-        where: { date, ...coordinatorQueryWhere },
+        where: { date, employee: eligibleEmployeeWhere },
         select: { checkInAt: true, latenessStatus: true, validationStatus: true },
       }),
     ]);
@@ -643,35 +820,6 @@ export class AttendanceService {
       tidakHadir: Math.max(scheduledToday - hadir, 0),
       perluDitinjau,
     };
-  }
-
-  // --- Device binding management (§11.5) ---------------------------------
-
-  async listDevices() {
-    return this.prisma.employeeDevice.findMany({
-      include: { employee: { select: { id: true, name: true } } },
-      orderBy: { lastUsedAt: 'desc' },
-    });
-  }
-
-  async resetDevice(employeeId: string, dto: ResetDeviceDto, actor: AuthenticatedUser) {
-    const existing = await this.prisma.employeeDevice.findUnique({ where: { employeeId } });
-    if (!existing) throw new NotFoundException('Karyawan ini belum punya perangkat terikat');
-
-    await this.prisma.employeeDevice.delete({ where: { employeeId } });
-
-    await this.auditLog.record({
-      actorId: actor.userId,
-      action: 'DEVICE_RESET',
-      entity: 'EmployeeDevice',
-      entityId: employeeId,
-      oldValue: { deviceId: existing.deviceId, label: existing.label },
-      reason: dto.reason,
-      actorRole: actor.role,
-      source: 'DEVICE_MANAGEMENT',
-    });
-
-    return { reset: true };
   }
 
   private async computeLatenessStatus(
@@ -692,6 +840,21 @@ export class AttendanceService {
     deadline.setHours(h, m + location.toleranceMin, 0, 0);
 
     return checkInAt.getTime() <= deadline.getTime() ? 'ON_TIME' : 'LATE';
+  }
+
+  private async resolveNonWorkingDay(
+    location: { id: string; workDays: number[] },
+    date: Date,
+  ): Promise<NonWorkingDay | null> {
+    const weekday = date.getDay();
+    const holiday = await this.prisma.holiday.findFirst({
+      where: { date, OR: [{ locationId: null }, { locationId: location.id }] },
+      select: { id: true, name: true, type: true },
+      orderBy: { locationId: 'desc' },
+    });
+    if (holiday) return { reason: 'HOLIDAY', label: `Hari libur: ${holiday.name}`, weekday, holiday };
+    if (!location.workDays.includes(weekday)) return { reason: 'WEEKDAY', label: 'Akhir pekan / hari kerja tidak terjadwal', weekday, holiday: null };
+    return null;
   }
 
   private present<T extends { checkInSelfieUrl?: string | null; checkOutSelfieUrl?: string | null }>(attendance: T): T {

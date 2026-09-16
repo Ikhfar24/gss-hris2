@@ -1,15 +1,31 @@
-import type { Metadata } from 'next';
-import './globals.css';
+import type { Metadata, Viewport } from "next";
+import "@fontsource-variable/archivo";
+import "./globals.css";
+import { BrandingProvider } from "@/components/providers/BrandingProvider";
+import { Toaster } from "sonner";
 
 export const metadata: Metadata = {
-  title: 'Papaiz HR',
-  description: 'HRIS & Workforce Management',
+  title: "Papaiz HR",
+  description: "HRIS & Workforce Management",
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+};
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <html lang="id">
-      <body className="bg-slate-50 text-slate-900 antialiased">{children}</body>
+      <body>
+        <BrandingProvider>{children}</BrandingProvider>
+        <Toaster position="top-right" richColors closeButton />
+      </body>
     </html>
   );
 }
