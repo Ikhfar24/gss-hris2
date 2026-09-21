@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ActionDialog } from '@/components/ui/action-dialog';
 import { Alert } from '@/components/ui/feedback';
-import { ContextBand, DossierPage } from '@/components/ui/dossier';
+import { DossierPage } from '@/components/ui/dossier';
 
 type HolidayType = 'NATIONAL' | 'CUTI_BERSAMA' | 'LOCATION_SPECIFIC';
 
@@ -143,11 +143,11 @@ export default function HolidaysPage() {
   });
 
   return <DossierPage>
-    <ContextBand title="Hari Libur & Kalender" description="Jadwal libur nasional, cuti bersama, dan libur khusus lokasi." meta={<span>REGISTRY · KALENDER OPERASIONAL</span>} actions={canManage && <Button onClick={showForm ? () => setShowForm(false) : openCreate} variant={showForm ? 'secondary' : 'primary'}><Plus className="size-4" />{showForm ? 'Tutup Form' : 'Tambah Hari Libur'}</Button>} />
+    <header className="mb-5 flex flex-col justify-between gap-4 border-b border-border bg-paper px-4 py-4 sm:flex-row sm:items-end"><div className="min-w-0"><h1 className="text-page-title text-brand">Hari Libur & Kalender</h1><p className="mt-1 text-body text-muted">Jadwal libur nasional, cuti bersama, dan libur khusus lokasi.</p><p className="mt-2 text-caption font-semibold text-muted">REGISTRY · KALENDER OPERASIONAL</p></div>{canManage && <Button onClick={showForm ? () => setShowForm(false) : openCreate} variant={showForm ? 'secondary' : 'primary'}><Plus className="size-4" />{showForm ? 'Tutup Form' : 'Tambah Hari Libur'}</Button>}</header>
 
     {error && <Alert variant="danger" title="Kalender tidak dapat diproses" className="mb-4">{error}</Alert>}
 
-    {canManage && showForm && <form onSubmit={onCreate} aria-busy={submitting} className="mb-5 grid gap-3 rounded-2xl border border-border bg-surface p-4 shadow-card sm:grid-cols-2 lg:grid-cols-4">
+    {canManage && showForm && <form onSubmit={onCreate} aria-busy={submitting} className="mb-5 grid gap-3 rounded-xl border border-border bg-paper p-4 sm:grid-cols-2 lg:grid-cols-4">
       <label className="text-sm font-semibold text-foreground">Tanggal<input required type="date" value={form.date} onChange={(event) => setForm({ ...form, date: event.target.value })} className="input mt-1" /></label>
       <label className="text-sm font-semibold text-foreground">Nama<input required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} className="input mt-1" placeholder="Nama hari libur" /></label>
       <label className="text-sm font-semibold text-foreground">Jenis<select value={form.type} onChange={(event) => setForm({ ...form, type: event.target.value as HolidayType, locationId: '' })} className="input mt-1"><option value="NATIONAL">Libur Nasional</option><option value="CUTI_BERSAMA">Cuti Bersama</option><option value="LOCATION_SPECIFIC">Khusus Lokasi</option></select></label>
@@ -156,7 +156,7 @@ export default function HolidaysPage() {
     </form>}
 
     <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_20rem]">
-      <section className="overflow-hidden rounded-2xl border bg-white shadow-card">
+      <section className="overflow-hidden rounded-xl border border-border bg-paper">
         <div className="flex items-center justify-between border-b px-4 py-3 sm:px-5"><Button variant="ghost" size="sm" aria-label="Bulan sebelumnya" onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))}><ChevronLeft className="size-5" /></Button><h2 className="capitalize font-bold text-navy">{MONTH_FORMAT.format(month)}</h2><Button variant="ghost" size="sm" aria-label="Bulan berikutnya" onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))}><ChevronRight className="size-5" /></Button></div>
 
         <div className="grid grid-cols-7 border-b bg-surface-subtle text-center text-xs font-bold uppercase tracking-wider text-muted">{WEEKDAYS.map((day) => <div key={day} className="py-2">{day}</div>)}</div>
@@ -173,7 +173,7 @@ export default function HolidaysPage() {
         <div className="border-t p-4 md:hidden"><h3 className="text-sm font-bold text-navy">Daftar {MONTH_FORMAT.format(month)}</h3><div className="mt-3 space-y-2">{monthHolidays.length ? monthHolidays.map((holiday) => <HolidayItem key={holiday.id} holiday={holiday} canManage={canManage} onRemove={setPendingDelete} />) : <p className="rounded-xl bg-surface-subtle p-3 text-body text-muted">Tidak ada hari libur bulan ini.</p>}</div></div>
       </section>
 
-      <aside className="h-fit rounded-2xl border bg-white p-4 shadow-card lg:sticky lg:top-24">
+      <aside className="h-fit rounded-xl border border-border bg-paper p-4 lg:sticky lg:top-24">
         <div className="flex items-center gap-2 text-brand"><CalendarDays className="size-5" /><p className="text-xs font-bold uppercase tracking-wider">Tanggal Terpilih</p></div>
         <h2 className="mt-2 font-bold text-navy">{localDate(selectedDate).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</h2>
         <div className="mt-4 space-y-3">{selectedHolidays.length ? selectedHolidays.map((holiday) => <HolidayItem key={holiday.id} holiday={holiday} canManage={canManage} onRemove={setPendingDelete} />) : <p className="rounded-xl bg-surface-subtle p-3 text-body text-muted">Tidak ada hari libur pada tanggal ini.</p>}</div>

@@ -51,19 +51,50 @@ function Section({
 }) {
   if (!rows)
     return (
-      <WorkSheet title={title}>
+      <WorkSheet className="shadow-none [&>div:first-child]:py-2.5 [&>div:last-child]:p-3" title={title}>
         <p className="text-body text-muted">
           Bagian ini tidak tersedia untuk akses Anda.
         </p>
       </WorkSheet>
     );
   return (
-    <WorkSheet title={title}>
+    <WorkSheet className="shadow-none [&>div:first-child]:py-2.5 [&>div:last-child]:p-3" title={title}>
       {rows.length === 0 ? (
         <p className="text-body text-muted">Belum ada data.</p>
       ) : (
-        <DataRegion>
-          <table className="min-w-[640px] text-sm">
+        <>
+          <div className="grid gap-3 md:hidden">
+            {rows.map((row, index) => (
+              <article
+                key={row.id ?? index}
+                className="rounded-xl border border-border bg-paper p-4"
+              >
+                <dl className="grid gap-3">
+                  {columns.map((column) => (
+                    <div
+                      key={column.key}
+                      className="grid grid-cols-[7.5rem_minmax(0,1fr)] gap-3"
+                    >
+                      <dt className="text-caption font-semibold text-muted">
+                        {column.label}
+                      </dt>
+                      <dd className="min-w-0 break-words text-sm text-foreground [overflow-wrap:anywhere]">
+                        {column.key.toLowerCase().includes("status") ? (
+                          <StatusBadge status={value(row[column.key])} />
+                        ) : column.format === "date" ? (
+                          date(row[column.key])
+                        ) : (
+                          value(row[column.key])
+                        )}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              </article>
+            ))}
+          </div>
+          <DataRegion className="hidden border border-border shadow-none md:block">
+          <table className="min-w-[640px] text-sm [&_td]:py-2.5 [&_th]:py-2.5 [&_thead]:bg-surface-subtle [&_thead]:text-muted">
             <thead>
               <tr>
                 {columns.map((column) => (
@@ -91,7 +122,8 @@ function Section({
               ))}
             </tbody>
           </table>
-        </DataRegion>
+          </DataRegion>
+        </>
       )}
     </WorkSheet>
   );
@@ -161,19 +193,19 @@ export default function Employee360Page() {
       <Link href="/employees" className="text-sm underline">
         Kembali ke Data Karyawan
       </Link>
-      <section className="dossier-index mt-4 overflow-hidden rounded-xl bg-binder px-5 py-5 text-white shadow-sheet">
-        <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
+      <section className="mt-3 overflow-hidden border-y border-border bg-paper py-3">
+        <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
           <div className="min-w-0">
-            <h1>Profil Lengkap</h1>
-            <p className="mt-2 break-words text-lg font-semibold [overflow-wrap:anywhere]">
+            <h1 className="text-page-title text-brand">Profil Lengkap</h1>
+            <p className="mt-1 break-words text-lg font-semibold [overflow-wrap:anywhere]">
               {profile.name}
             </p>
-            <p className="mt-1 text-body text-white/65">
+            <p className="mt-1 text-body text-muted">
               {profile.employeeNumber
                 ? `NIP ${profile.employeeNumber}`
                 : "NIP belum tersedia"}
             </p>
-            <div className="mt-3 flex flex-wrap gap-2 text-caption text-white/70">
+            <div className="mt-2 flex flex-wrap gap-2 text-caption text-muted">
               <StatusBadge status={value(profile.status)} />
               <span>
                 {value(profile.jobTitle)} · {value(profile.employmentType)}
@@ -188,26 +220,26 @@ export default function Employee360Page() {
               src={protectedMediaUrl(String(profile.photoUrl))}
               alt={`Foto profil ${profile.name}`}
               onError={() => setPhotoFailed(true)}
-              className="h-20 w-20 rounded-lg border border-white/20 object-cover"
+              className="h-16 w-16 rounded-lg border border-border object-cover sm:h-20 sm:w-20"
             />
           ) : (
             <div
               aria-label="Foto profil belum tersedia"
-              className="flex h-20 w-20 items-center justify-center rounded-lg border border-white/20 bg-white/10 text-xl font-semibold text-white"
+              className="flex h-16 w-16 items-center justify-center rounded-lg border border-border bg-surface-subtle text-xl font-semibold text-brand sm:h-20 sm:w-20"
             >
               {initials}
             </div>
           )}
         </div>
       </section>
-      <Tabs defaultValue="work" className="mt-5">
+      <Tabs defaultValue="work" className="mt-3">
         <TabsList>
           <TabsTrigger value="work">Pekerjaan</TabsTrigger>
           <TabsTrigger value="attendance">Presensi</TabsTrigger>
           <TabsTrigger value="requests">Pengajuan</TabsTrigger>
           <TabsTrigger value="changes">Perubahan</TabsTrigger>
         </TabsList>
-        <TabsContent value="work" className="grid gap-4">
+        <TabsContent value="work" className="grid gap-3">
           <Section
             title="Riwayat Penempatan"
             rows={profile.placements}
@@ -228,7 +260,7 @@ export default function Employee360Page() {
             ]}
           />
         </TabsContent>
-        <TabsContent value="attendance" className="grid gap-4">
+        <TabsContent value="attendance" className="grid gap-3">
           <Section
             title="Absensi Terbaru"
             rows={data.recentAttendance}
@@ -250,7 +282,7 @@ export default function Employee360Page() {
             ]}
           />
         </TabsContent>
-        <TabsContent value="requests" className="grid gap-4">
+        <TabsContent value="requests" className="grid gap-3">
           <Section
             title="Cuti, Izin, dan Resign"
             rows={data.leaveRequests}

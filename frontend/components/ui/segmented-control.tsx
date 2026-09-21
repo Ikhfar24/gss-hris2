@@ -26,7 +26,7 @@ export function SegmentedControl<T extends string>({
     <div
       role="group"
       className={cn(
-        "inline-flex max-w-full overscroll-x-contain overflow-x-auto rounded-lg border border-border bg-surface-subtle p-1",
+        "inline-flex max-w-full overscroll-x-contain overflow-x-auto rounded-lg border border-border bg-background p-1",
         className,
       )}
       {...props}
@@ -43,7 +43,7 @@ export function SegmentedControl<T extends string>({
             className={cn(
               "min-h-11 shrink-0 whitespace-nowrap rounded-lg px-3 text-xs font-semibold transition-colors duration-200 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-1 disabled:pointer-events-none disabled:opacity-50 sm:min-h-9",
               selected
-                ? "bg-paper text-brand shadow-control"
+                 ? "bg-paper text-brand shadow-control ring-1 ring-border"
                 : "text-muted hover:bg-paper/70 hover:text-brand",
             )}
           >

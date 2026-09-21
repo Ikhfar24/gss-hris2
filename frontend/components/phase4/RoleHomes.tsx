@@ -24,12 +24,12 @@ import { formatFullDate, formatTime, formatDate } from "@/lib/format";
 import { canAttend } from "@/lib/navigation";
 import { useSession } from "@/components/providers/SessionProvider";
 import { EmployeeAvatar } from "@/components/employee/EmployeeAvatar";
+import { MobileIdentityHeader } from "@/components/employee/MobileIdentityHeader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   ContextBand,
   DossierPage,
-  MetricStrip,
   WorkSheet,
 } from "@/components/ui/dossier";
 import { EmptyState, ErrorState } from "@/components/ui/feedback";
@@ -116,13 +116,14 @@ export function FinanceHome() {
   const activeRun = runs.find((run) => run.status !== "FINALIZED") ?? runs[0];
   const pending = attention.filter((item) => item.count > 0);
   return (
-    <DossierPage className="space-y-5">
-      <IdentityZone eyebrow="KEUANGAN · PRIBADI & PAYROLL" />
-      <div className="grid gap-5 xl:grid-cols-[0.8fr_1.2fr]">
+    <DossierPage className="space-y-4">
+      <MobileIdentityHeader className="sm:hidden" />
+      <div className="hidden sm:block"><IdentityZone eyebrow="KEUANGAN · PRIBADI & PAYROLL" /></div>
+      <div className="grid gap-4 xl:grid-cols-[0.75fr_1.25fr]">
         <PersonalAttendance today={today} />
         <WorkSheet
           title="Payroll Terkini"
-          description="PAYROLL"
+          description="Periode payroll yang sedang menjadi fokus."
           actions={<WalletCards className="size-5 text-brand" />}
         >
           {activeRun ? (
@@ -162,26 +163,27 @@ export function FinanceHome() {
           )}
         </WorkSheet>
       </div>
-      <WorkSheet
-        title="Perlu Tindakan"
-        description="Hanya antrean Finance dari lifecycle payroll yang aktif."
-      >
-        {pending.length ? (
-          <div className="divide-y divide-border">
-            {pending.map((item) => (
-              <ActionCard key={item.key} item={item} />
-            ))}
-          </div>
-        ) : (
-          <EmptyState
-            title="Tidak ada antrean Finance"
-            description="Semua tindakan payroll telah tertangani."
-          />
-        )}
-      </WorkSheet>
-      <section>
-        <SectionHeading eyebrow="AKTIVITAS" title="Ringkasan Payroll" />
-        <MetricStrip>
+      <div className="grid min-w-0 gap-4 xl:grid-cols-[1.25fr_0.75fr]">
+        <WorkSheet
+          title="Perlu Tindakan"
+          description="Hanya antrean Finance dari lifecycle payroll yang aktif."
+        >
+          {pending.length ? (
+            <div className="divide-y divide-border">
+              {pending.map((item) => (
+                <ActionCard key={item.key} item={item} />
+              ))}
+            </div>
+          ) : (
+            <EmptyState
+              title="Tidak ada antrean Finance"
+              description="Semua tindakan payroll telah tertangani."
+            />
+          )}
+        </WorkSheet>
+        <section>
+          <h2 className="mb-3 text-section-title text-brand">Ringkasan Payroll</h2>
+          <div className="grid grid-cols-2 gap-3">
           <Metric label="Total Periode" value={runs.length} />
           <Metric
             label="Draft"
@@ -205,8 +207,9 @@ export function FinanceHome() {
               ).length
             }
           />
-        </MetricStrip>
-      </section>
+          </div>
+        </section>
+      </div>
     </DossierPage>
   );
 }
@@ -254,25 +257,25 @@ export function ExecutiveHome({ role }: { role: "DIREKTUR" | "KOMISARIS" }) {
   ).length;
   const queue = attention.filter((item) => item.count > 0);
   return (
-    <DossierPage className="space-y-6">
-      <IdentityZone
+    <DossierPage className="space-y-4">
+      <MobileIdentityHeader className="sm:hidden" />
+      <div className="hidden sm:block"><IdentityZone
         eyebrow={
           role === "DIREKTUR"
             ? "DIREKTUR · EXECUTIVE OVERVIEW"
             : "KOMISARIS · READ-ONLY OVERVIEW"
         }
-      />
+      /></div>
       <section>
-        <SectionHeading
-          eyebrow="KONDISI PERUSAHAAN"
-          title="Ringkasan Hari Ini"
-          description={
-            role === "KOMISARIS"
+        <div className="mb-3">
+          <h2 className="text-section-title text-brand">Ringkasan Hari Ini</h2>
+          <p className="mt-1 text-body text-muted">
+            {role === "KOMISARIS"
               ? "Monitoring agregat tanpa tindakan operasional."
-              : "Kondisi workforce dan sinyal operasional untuk pengambilan keputusan."
-          }
-        />
-        <MetricStrip>
+              : "Kondisi workforce dan sinyal operasional untuk pengambilan keputusan."}
+          </p>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <Metric label="Karyawan Aktif" value={active.length} />
           <Metric label="Penempatan Aktif" value={summary.activePlacements} />
           <Metric
@@ -285,9 +288,9 @@ export function ExecutiveHome({ role }: { role: "DIREKTUR" | "KOMISARIS" }) {
             value={summary.attendance.perluDitinjau}
             tone="warning"
           />
-        </MetricStrip>
+        </div>
       </section>
-      <div className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
+      <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
         <WorkSheet title="Komposisi Tenaga Kerja" className="h-full">
           <div className="space-y-5">
             <Composition
@@ -308,7 +311,7 @@ export function ExecutiveHome({ role }: { role: "DIREKTUR" | "KOMISARIS" }) {
           </div>
         </WorkSheet>
         <WorkSheet title="Kondisi Presensi" className="h-full">
-          <div className="grid grid-cols-3 divide-x divide-border border-y border-border">
+          <div className="grid grid-cols-3 divide-x divide-border overflow-hidden rounded-lg bg-surface-subtle">
             <SmallMetric
               label="Terlambat"
               value={summary.attendance.terlambat}
@@ -372,39 +375,39 @@ export function ExecutiveHome({ role }: { role: "DIREKTUR" | "KOMISARIS" }) {
 
 export function SystemAdminHome() {
   return (
-    <DossierPage className="space-y-6">
-      <IdentityZone eyebrow="SYSTEM ADMIN · SYSTEM AUTHORITY" />
-      <WorkSheet className="border-l-4 border-l-accent">
-        <p className="font-semibold text-brand">
-          Administrasi sistem terpisah dari proses bisnis
-        </p>
-        <p className="mt-1 text-body text-muted">
-          Kelola akun, akses, cakupan, konfigurasi, dan master operasional tanpa
-          mengambil alih kewenangan Finance, Direktur, atau Admin HR.
-        </p>
-      </WorkSheet>
+    <DossierPage className="space-y-4">
+      <MobileIdentityHeader className="sm:hidden" />
+      <div className="hidden sm:block"><IdentityZone eyebrow="SYSTEM ADMIN · SYSTEM AUTHORITY" /></div>
       <WorkSheet
         title="Administrasi Utama"
         description="Modul yang sudah tersedia dan dilindungi backend."
       >
-        <div className="divide-y divide-border">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {systemModules.slice(0, 4).map((module) => (
             <ModuleCard key={module.href} {...module} />
           ))}
         </div>
       </WorkSheet>
-      <WorkSheet title="Operasional & Akses" description="KONFIGURASI">
-        <div className="divide-y divide-border">
+      <WorkSheet title="Operasional & Akses" description="Master data dan konfigurasi operasional.">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {systemModules.slice(4).map((module) => (
             <ModuleCard key={module.href} {...module} />
           ))}
         </div>
       </WorkSheet>
-      <Button asChild>
-        <Link href="/system">
-          Buka Hub Sistem <ArrowRight className="size-4" />
-        </Link>
-      </Button>
+      <div className="flex flex-col gap-3 rounded-xl bg-brand px-5 py-4 text-white shadow-sheet sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <p className="font-semibold">Administrasi sistem terpisah dari proses bisnis</p>
+          <p className="mt-1 max-w-3xl text-body text-white/70">
+            Kelola akses dan konfigurasi tanpa mengambil alih kewenangan workflow bisnis.
+          </p>
+        </div>
+        <Button asChild variant="secondary" className="w-full shrink-0 sm:w-auto">
+          <Link href="/system">
+            Buka Hub Sistem <ArrowRight className="size-4" />
+          </Link>
+        </Button>
+      </div>
     </DossierPage>
   );
 }
@@ -480,6 +483,7 @@ function IdentityZone({ eyebrow }: { eyebrow: string }) {
           className="size-20 border-white/20"
         />
       }
+      className="mb-0 py-4"
     />
   );
 }
@@ -492,10 +496,7 @@ function PersonalAttendance({ today }: { today: Today | null }) {
     <WorkSheet
       title="Presensi Saya"
       description={
-        <>
-          <span className="font-semibold text-brand">PRIBADI</span> ·{" "}
-          {formatFullDate(record?.date ?? new Date())}
-        </>
+        formatFullDate(record?.date ?? new Date())
       }
       actions={
         today && (
@@ -507,7 +508,7 @@ function PersonalAttendance({ today }: { today: Today | null }) {
         )
       }
     >
-      <div className="grid grid-cols-2 divide-x divide-border border-y border-border">
+      <div className="grid grid-cols-2 divide-x divide-border overflow-hidden rounded-lg bg-surface-subtle">
         <SmallMetric label="Check-in" text={formatTime(record?.checkInAt)} />
         <SmallMetric label="Check-out" text={formatTime(record?.checkOutAt)} />
       </div>
@@ -531,27 +532,6 @@ function PersonalAttendance({ today }: { today: Today | null }) {
     </WorkSheet>
   );
 }
-function SectionHeading({
-  eyebrow,
-  title,
-  description,
-}: {
-  eyebrow: string;
-  title: string;
-  description?: string;
-}) {
-  return (
-    <div className="mb-3">
-      <p className="text-caption font-bold uppercase tracking-[0.12em] text-brand">
-        {eyebrow}
-      </p>
-      <h2 className="mt-1 text-section-title text-brand">{title}</h2>
-      {description && (
-        <p className="mt-1 text-body text-muted">{description}</p>
-      )}
-    </div>
-  );
-}
 function Metric({
   label,
   value,
@@ -562,13 +542,14 @@ function Metric({
   tone?: "neutral" | "success" | "warning";
 }) {
   return (
-    <div className="dossier-index min-w-0 border-y border-r border-border bg-paper px-4 py-4">
+    <div className="min-w-0 rounded-xl bg-paper px-4 py-4 shadow-sheet">
       <p className="text-caption font-semibold text-muted">{label}</p>
       <p
-        className={`mt-2 text-2xl font-bold tabular-nums ${tone === "success" ? "text-success" : tone === "warning" ? "text-warning" : "text-brand"}`}
+        className={`mt-1.5 text-2xl font-bold tabular-nums ${tone === "success" ? "text-success" : tone === "warning" ? "text-warning" : "text-brand"}`}
       >
         {value}
       </p>
+      <div className={`mt-3 h-1 w-8 rounded-full ${tone === "success" ? "bg-success" : tone === "warning" ? "bg-warning" : "bg-accent"}`} />
     </div>
   );
 }
@@ -594,17 +575,13 @@ function ActionCard({ item }: { item: Attention }) {
   return (
     <Link
       href={item.href}
-      className="group flex min-h-16 min-w-0 items-center gap-3 py-3 first:pt-0 last:pb-0"
+      className="group flex min-h-14 min-w-0 items-center gap-3 py-3 first:pt-0 last:pb-0"
     >
       <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-warning-surface text-warning">
         <AlertTriangle className="size-5" />
       </span>
-      <span className="min-w-0 flex-1">
-        <span className="block text-2xl font-bold tabular-nums text-brand">
-          {item.count}
-        </span>
-        <span className="block text-body text-muted">{item.label}</span>
-      </span>
+      <span className="min-w-0 flex-1 break-words text-body font-semibold text-brand [overflow-wrap:anywhere]">{item.label}</span>
+      <span className="rounded-full bg-warning-surface px-2.5 py-1 text-sm font-bold tabular-nums text-warning-foreground">{item.count}</span>
       <ArrowRight className="size-4 shrink-0 text-muted" />
     </Link>
   );
@@ -650,18 +627,20 @@ function ModuleCard({
   return (
     <Link
       href={href}
-      className="group flex min-h-20 min-w-0 items-center gap-4 py-3 first:pt-0 last:pb-0"
+      className="group flex min-h-32 min-w-0 flex-col items-start rounded-xl bg-surface-subtle p-4 transition-colors hover:bg-brand/10"
     >
-      <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-brand/10 text-brand">
-        <Icon className="size-5" />
+      <span className="flex w-full items-start justify-between gap-3">
+        <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-brand/10 text-brand">
+          <Icon className="size-5" />
+        </span>
+        <ArrowRight className="size-4 shrink-0 text-muted" />
       </span>
-      <span className="min-w-0 flex-1">
+      <span className="mt-3 min-w-0 flex-1">
         <span className="block font-semibold text-brand">{title}</span>
         <span className="mt-1 block break-words text-caption leading-5 text-muted [overflow-wrap:anywhere]">
           {description}
         </span>
       </span>
-      <ArrowRight className="size-4 shrink-0 text-muted" />
     </Link>
   );
 }

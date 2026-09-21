@@ -66,8 +66,8 @@ const config: Config = {
       },
       fontSize: {
         "page-title": [
-          "1.5rem",
-          { lineHeight: "2rem", letterSpacing: "-0.02em", fontWeight: "700" },
+          "1.625rem",
+          { lineHeight: "2rem", letterSpacing: "-0.025em", fontWeight: "700" },
         ],
         "section-title": [
           "1.125rem",
@@ -85,12 +85,12 @@ const config: Config = {
         control: "2.5rem",
         "control-touch": "2.75rem",
       },
-      borderRadius: { lg: "0.5rem", xl: "0.75rem", "2xl": "1rem" },
+      borderRadius: { lg: "0.5rem", xl: "0.625rem", "2xl": "0.875rem" },
       boxShadow: {
-        control: "0 1px 1px rgb(0 31 63 / 0.05)",
-        card: "0 8px 20px -18px rgb(0 31 63 / 0.42)",
-        sheet: "0 18px 36px -28px rgb(0 31 63 / 0.5)",
-        lift: "0 24px 64px -24px rgb(0 20 41 / 0.42)",
+        control: "0 1px 2px rgb(0 31 63 / 0.045)",
+        card: "0 4px 14px -10px rgb(0 31 63 / 0.24)",
+        sheet: "0 8px 24px -18px rgb(0 31 63 / 0.28)",
+        lift: "0 20px 48px -20px rgb(0 20 41 / 0.34)",
       },
     },
   },

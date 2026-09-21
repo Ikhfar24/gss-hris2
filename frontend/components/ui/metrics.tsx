@@ -22,11 +22,11 @@ export function MetricCard({
   tone?: Tone;
 }) {
   return (
-    <div className="dossier-index min-w-0 border-y border-r border-border bg-paper px-5 py-4">
+    <div className="min-w-0 rounded-xl border border-border bg-paper px-4 py-3 shadow-control">
       <p className="text-caption font-semibold text-muted">{label}</p>
       <p
         className={cn(
-          "mt-2 break-words text-[1.75rem] font-bold leading-none tabular-nums [overflow-wrap:anywhere]",
+          "mt-1.5 break-words text-[1.625rem] font-bold leading-none tabular-nums [overflow-wrap:anywhere]",
           toneStyles[tone],
         )}
       >

@@ -122,10 +122,10 @@ export default function ProfileChangeRequestsPage() {
 
   return (
     <DossierPage className="max-w-5xl space-y-5">
-      <ContextBand title="Pengajuan Perubahan Profil" description={isEmployee ? 'Ajukan perubahan data yang didukung untuk ditinjau HR.' : 'Tinjau perubahan profil Karyawan yang menunggu keputusan.'} meta={<span>{isEmployee ? 'PRIBADI' : 'WORK QUEUE · DATA PROFIL'}</span>} />
+      <ContextBand className="mb-0 border border-border bg-paper px-4 py-4 text-foreground shadow-none sm:px-5 [&_h1]:text-brand [&_.text-white\/70]:text-muted [&_.text-white\/72]:text-muted" title="Pengajuan Perubahan Profil" description={isEmployee ? 'Ajukan perubahan data yang didukung untuk ditinjau HR.' : 'Tinjau perubahan profil Karyawan yang menunggu keputusan.'} meta={<span>{isEmployee ? 'PRIBADI' : 'WORK QUEUE · DATA PROFIL'}</span>} />
       {error && <Alert variant="danger" title="Pengajuan profil tidak dapat diproses">{error}</Alert>}
       {isEmployee && (
-        <Card>
+        <Card className="shadow-none">
           <CardHeader>
             <CardTitle>Data yang Diajukan</CardTitle>
           </CardHeader>
@@ -179,7 +179,7 @@ export default function ProfileChangeRequestsPage() {
           {reviewRequests.length ? (
             <div className="space-y-3">
               {reviewRequests.map((request) => (
-                <Card key={request.id}>
+                <Card key={request.id} className="shadow-none">
                   <CardContent className="p-4">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="min-w-0">
@@ -193,7 +193,7 @@ export default function ProfileChangeRequestsPage() {
                           {changesText(request)}
                         </p>
                       </div>
-                      <div className="flex gap-2">
+                      <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto">
                         <Button
                           size="sm"
                           onClick={() =>
@@ -282,7 +282,7 @@ function RequestList({
       {requests.length ? (
         <div className="space-y-3">
           {requests.map((request) => (
-            <Card key={request.id}>
+            <Card key={request.id} className="shadow-none">
               <CardContent className="min-w-0 p-4">
                 <div className="min-w-0">
                   <p className="break-words font-semibold text-brand [overflow-wrap:anywhere]">

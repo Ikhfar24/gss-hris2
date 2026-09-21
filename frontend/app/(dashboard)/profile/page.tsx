@@ -7,10 +7,11 @@ import {
   FileText,
   Fingerprint,
   History,
+  MapPin,
 } from "lucide-react";
 import { useSession } from "@/components/providers/SessionProvider";
-import { EmployeeIdentityBand } from "@/components/employee/EmployeeIdentityBand";
-import { ContextBand, DossierPage, WorkSheet } from "@/components/ui/dossier";
+import { EmployeeAvatar } from "@/components/employee/EmployeeAvatar";
+import { ContextBand, DossierPage } from "@/components/ui/dossier";
 import { Alert } from "@/components/ui/feedback";
 import { employmentTypeLabel } from "@/lib/employment";
 import { canAttend } from "@/lib/navigation";
@@ -82,72 +83,70 @@ export default function EmployeeProfilePage() {
   ];
 
   return (
-    <DossierPage className="max-w-5xl space-y-5">
-      <EmployeeIdentityBand
-        name={employee.name}
-        jobTitle={employee.jobTitle}
-        photoUrl={employee.photoUrl}
-        employmentType={employmentTypeLabel(employee.employmentType)}
-        status={employee.status}
-        placement={employee.activePlacementName ?? (isStaffOffice ? "Lokasi kerja belum ditetapkan" : "Penempatan belum tersedia")}
-      />
-      <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1fr)_19rem]">
-        <WorkSheet
-          title="Dokumen & Layanan"
-          description="Akses informasi personal yang tersedia untuk akun Anda."
-        >
-          <div className="divide-y divide-border">
-            {shortcuts.map(({ icon: Icon, ...item }, index) => (
-              <Link
-                key={item.title}
-                href={item.href}
-                className="group flex min-h-20 min-w-0 items-center gap-4 py-3.5 first:pt-0 last:pb-0"
-              >
-                <span className="w-7 shrink-0 text-caption font-bold tabular-nums text-muted">
-                  {String(index + 1).padStart(2, "0")}
+    <DossierPage className="mx-auto max-w-5xl space-y-4">
+      <header className="flex min-w-0 items-center gap-4 rounded-xl bg-brand p-4 text-white shadow-card sm:p-5">
+        <EmployeeAvatar
+          name={employee.name}
+          photoUrl={employee.photoUrl}
+          size="lg"
+          className="size-16 border-white/20 bg-white/10 text-white"
+        />
+        <div className="min-w-0 flex-1">
+          <h1 className="truncate text-xl font-bold">{employee.name}</h1>
+          <p className="mt-0.5 truncate text-sm text-white/75">
+            {employee.jobTitle || employmentTypeLabel(employee.employmentType)}
+          </p>
+          <p className="mt-2 flex min-w-0 items-center gap-1.5 text-caption text-white/70">
+            <MapPin className="size-3.5 shrink-0" />
+            <span className="truncate">
+              {employee.activePlacementName ??
+                (isStaffOffice
+                  ? "Lokasi kerja belum ditetapkan"
+                  : "Penempatan belum tersedia")}
+            </span>
+          </p>
+        </div>
+        <span className="rounded-full bg-white/10 px-3 py-1 text-caption font-semibold">
+          {employee.status === "ACTIVE" ? "Aktif" : employee.status}
+        </span>
+      </header>
+
+      <section aria-labelledby="profile-services-title">
+        <div className="mb-2 px-1">
+          <h2 id="profile-services-title" className="text-section-title text-brand">
+            Profil & Layanan
+          </h2>
+          <p className="mt-0.5 text-caption text-muted">
+            Informasi personal dan layanan akun Anda.
+          </p>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          {shortcuts.map(({ icon: Icon, ...item }) => (
+            <Link
+              key={item.title}
+              href={item.href}
+              className="group flex min-h-32 min-w-0 flex-col items-start gap-3 rounded-xl bg-paper p-3.5 shadow-card transition-colors hover:bg-surface-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand sm:min-h-24 sm:flex-row sm:items-center"
+            >
+              <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-brand/10 text-brand">
+                <Icon className="size-5" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block font-semibold text-brand">{item.title}</span>
+                <span className="mt-0.5 block break-words text-caption text-muted [overflow-wrap:anywhere]">
+                  {item.description}
                 </span>
-                <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-brand/10 text-brand">
-                  <Icon className="size-5" />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block font-semibold text-brand">
-                    {item.title}
-                  </span>
-                  <span className="block break-words text-caption text-muted [overflow-wrap:anywhere]">
-                    {item.description}
-                  </span>
-                </span>
-                <ArrowUpRight className="size-4 shrink-0 text-muted transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5 motion-reduce:transform-none" />
-              </Link>
-            ))}
-          </div>
-        </WorkSheet>
-        <WorkSheet title="Konteks Kerja" className="self-start">
-          <dl className="space-y-4">
-            <div>
-              <dt className="dossier-label">Status</dt>
-              <dd className="mt-1 font-semibold text-brand">
-                {employee.status === "ACTIVE" ? "Aktif" : employee.status}
-              </dd>
-            </div>
-            <div className="border-t border-border pt-4">
-              <dt className="dossier-label">Jenis Tenaga</dt>
-              <dd className="mt-1 font-semibold text-brand">
-                {employmentTypeLabel(employee.employmentType)}
-              </dd>
-            </div>
-            <div className="border-t border-border pt-4">
-              <dt className="dossier-label">Penempatan / Lokasi</dt>
-              <dd className="mt-1 break-words font-semibold text-brand [overflow-wrap:anywhere]">
-                {employee.activePlacementName ??
-                  (isStaffOffice
-                    ? "Lokasi kerja belum ditetapkan"
-                    : "Penempatan belum tersedia")}
-              </dd>
-            </div>
-          </dl>
-        </WorkSheet>
-      </div>
+              </span>
+              <ArrowUpRight className="absolute size-0 text-muted sm:static sm:size-4" />
+            </Link>
+          ))}
+        </div>
+      </section>
+
+      <section className="grid grid-cols-2 gap-2 rounded-xl bg-paper p-4 shadow-card sm:grid-cols-3">
+        <ProfileFact label="Status" value={employee.status === "ACTIVE" ? "Aktif" : employee.status} />
+        <ProfileFact label="Jenis Tenaga" value={employmentTypeLabel(employee.employmentType)} />
+        <ProfileFact label="Peran Akun" value={session.role.replaceAll("_", " ")} />
+      </section>
       {session.role === "KARYAWAN" && (
         <Alert title="Perubahan data profil">
           Untuk memperbarui data personal, gunakan Pengajuan Perubahan Profil.
@@ -161,5 +160,16 @@ export default function EmployeeProfilePage() {
         </Alert>
       )}
     </DossierPage>
+  );
+}
+
+function ProfileFact({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0 rounded-lg bg-surface-subtle px-3 py-2.5">
+      <p className="text-caption font-semibold text-muted">{label}</p>
+      <p className="mt-1 break-words text-sm font-semibold text-brand [overflow-wrap:anywhere]">
+        {value}
+      </p>
+    </div>
   );
 }

@@ -10,7 +10,7 @@ import { Alert, EmptyState } from '@/components/ui/feedback';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { ContextBand, DossierPage } from '@/components/ui/dossier';
+import { DossierPage } from '@/components/ui/dossier';
 import { XlsxImportPanel } from '@/components/XlsxImportPanel';
 
 interface ClientOption {
@@ -223,14 +223,14 @@ export default function LocationsPage() {
 
   return (
     <DossierPage>
-      <ContextBand title="Lokasi Kerja" description="Kelola titik geofence, radius, dan jadwal operasional lokasi." meta={<span>REGISTRY · SITE & GEOFENCE</span>} actions={canManage && <Button onClick={editing ? () => setEditing(null) : openCreate}>{editing ? <X className="size-4" /> : <Plus className="size-4" />}{editing ? 'Tutup Form' : 'Tambah Lokasi'}</Button>} />
+      <header className="mb-5 flex flex-col justify-between gap-4 border-b border-border bg-paper px-4 py-4 sm:flex-row sm:items-end"><div className="min-w-0"><h1 className="text-page-title text-brand">Lokasi Kerja</h1><p className="mt-1 text-body text-muted">Kelola titik geofence, radius, dan jadwal operasional lokasi.</p><p className="mt-2 text-caption font-semibold text-muted">REGISTRY · SITE & GEOFENCE</p></div>{canManage && <Button onClick={editing ? () => setEditing(null) : openCreate}>{editing ? <X className="size-4" /> : <Plus className="size-4" />}{editing ? 'Tutup Form' : 'Tambah Lokasi'}</Button>}</header>
 
       {error && <Alert variant="danger" className="mb-4">{error}</Alert>}
 
       {canManage && <XlsxImportPanel resource="locations" title="Impor Lokasi dari Excel" onCommitted={load} />}
 
       {canManage && editing && (
-        <Card className="mb-6 overflow-hidden">
+        <Card className="mb-6 overflow-hidden shadow-none">
           <CardHeader className="border-b bg-slate-50/70 pb-4">
             <CardTitle>{editing === 'new' ? 'Tambah Lokasi' : `Edit ${editing.name}`}</CardTitle>
             <p className="mt-1 text-sm text-slate-500">Atur data operasional dan pilih pusat geofence pada peta.</p>
@@ -276,9 +276,9 @@ export default function LocationsPage() {
         </Card>
       )}
 
-      {locations.length > 0 && <div className="mb-4 rounded-xl border border-slate-200 bg-white p-4"><p className="text-sm font-semibold text-navy">Kode Referensi Lokasi</p><p className="mt-1 text-xs text-slate-500">Gunakan kode berikut pada kolom initialLocationReference di template karyawan.</p><div className="mt-3 flex flex-wrap gap-2">{locations.map((location) => <span key={location.id} className="rounded-lg bg-slate-100 px-2.5 py-1.5 text-xs text-slate-600"><code className="font-semibold text-brand">{location.referenceCode}</code> · {location.name}</span>)}</div></div>}
+      {locations.length > 0 && <div className="mb-4 rounded-xl border border-border bg-paper p-4"><p className="text-sm font-semibold text-navy">Kode Referensi Lokasi</p><p className="mt-1 text-xs text-muted">Gunakan kode berikut pada kolom initialLocationReference di template karyawan.</p><div className="mt-3 flex flex-wrap gap-2">{locations.map((location) => <span key={location.id} className="rounded-lg bg-surface-subtle px-2.5 py-1.5 text-xs text-muted"><code className="font-semibold text-brand">{location.referenceCode}</code> · {location.name}</span>)}</div></div>}
 
-      {!locations.length ? <EmptyState title="Belum ada lokasi kerja" description="Lokasi yang dibuat akan tampil di sini." action={canManage && <Button onClick={openCreate}><Plus className="size-4" />Tambah Lokasi</Button>} /> : <div className="grid gap-4 xl:grid-cols-2">{locations.map((location) => {
+      {!locations.length ? <EmptyState title="Belum ada lokasi kerja" description="Lokasi yang dibuat akan tampil di sini." action={canManage && <Button onClick={openCreate}><Plus className="size-4" />Tambah Lokasi</Button>} /> : <div className="grid gap-3 md:grid-cols-2 [&>div]:shadow-none">{locations.map((location) => {
         const expanded = expandedId === location.id;
         const point = location.latitude != null && location.longitude != null ? { latitude: location.latitude, longitude: location.longitude } : null;
         return <Card key={location.id} className="overflow-hidden"><CardHeader className="pb-3"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><CardTitle className="truncate">{location.name}</CardTitle><Badge variant={location.isActive ? 'success' : 'neutral'}>{location.isActive ? 'Aktif' : 'Nonaktif'}</Badge></div><p className="mt-1 truncate text-sm text-slate-500">{location.address || location.client?.name || 'Alamat belum diisi'}</p></div>{canManage && <Button size="sm" variant="secondary" onClick={() => openEdit(location)}><Pencil className="size-3.5" />Edit</Button>}</div></CardHeader><CardContent className="pt-2"><div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3"><div className="rounded-xl bg-slate-50 p-3"><MapPin className="mb-2 size-4 text-brand" /><p className="text-xs text-slate-500">Geofence</p><p className="mt-0.5 font-semibold text-navy">{location.radiusMeters} meter</p></div><div className="rounded-xl bg-slate-50 p-3"><CalendarDays className="mb-2 size-4 text-brand" /><p className="text-xs text-slate-500">Jam kerja</p><p className="mt-0.5 font-semibold text-navy">{location.checkInTime}-{location.checkOutTime}</p></div><div className="col-span-2 rounded-xl bg-slate-50 p-3 sm:col-span-1"><p className="text-xs text-slate-500">Hari / toleransi</p><p className="mt-1 font-semibold text-navy">{daySummary(location.workDays ?? [])}</p><p className="text-xs text-slate-500">{location.toleranceMin} menit</p></div></div><button type="button" onClick={() => setExpandedId(expanded ? null : location.id)} className="mt-3 flex w-full items-center justify-between border-t border-slate-100 pt-3 text-sm font-semibold text-slate-600"><span>{expanded ? 'Tutup detail lokasi' : 'Lihat koordinat dan peta'}</span>{expanded ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}</button>{expanded && <div className="mt-4 space-y-3"><div className="grid grid-cols-2 gap-3 text-sm"><div><p className="text-xs text-slate-500">Latitude</p><p className="font-mono text-xs sm:text-sm">{location.latitude == null ? 'Belum diatur' : location.latitude.toFixed(7)}</p></div><div><p className="text-xs text-slate-500">Longitude</p><p className="font-mono text-xs sm:text-sm">{location.longitude == null ? 'Belum diatur' : location.longitude.toFixed(7)}</p></div></div><LocationMap point={point} radiusMeters={location.radiusMeters} />{!point && canManage && <Button className="w-full" variant="secondary" onClick={() => openEdit(location)}><MapPin className="size-4" />Tambahkan Koordinat</Button>}</div>}</CardContent></Card>;

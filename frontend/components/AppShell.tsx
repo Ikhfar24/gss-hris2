@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import {
   Bell,
+  CheckCircle2,
   ChevronDown,
   Fingerprint,
   LogOut,
@@ -54,6 +55,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const [attendanceOpen, setAttendanceOpen] = useState(false);
+  const [attendanceCompleted, setAttendanceCompleted] = useState<
+    "check-in" | "check-out" | null
+  >(null);
 
   async function logout() {
     try {
@@ -74,13 +78,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       >
         Lewati ke konten utama
       </a>
-      <aside className="fixed inset-y-0 left-0 z-40 hidden h-dvh w-[248px] flex-col border-r border-white/10 bg-binder-deep text-white lg:flex">
-        <div className="flex h-[72px] items-center border-b border-white/10 px-5">
+      <aside className="fixed inset-y-0 left-0 z-40 hidden h-dvh w-[224px] flex-col border-r border-white/10 bg-binder-deep text-white lg:flex">
+        <div className="flex h-14 items-center border-b border-white/10 px-4">
           <AppLogo inverse />
         </div>
         <nav
           aria-label="Navigasi utama"
-          className="flex-1 overflow-y-auto px-3 py-5"
+          className="flex-1 overflow-y-auto px-2.5 py-4"
         >
           {navigation.map((group) => {
             const attendanceReviewer = [
@@ -99,7 +103,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             );
             if (!items.length) return null;
             return (
-              <div key={group.label} className="mb-6">
+              <div key={group.label} className="mb-4">
                 <p className="mb-2 px-3 text-[0.6875rem] font-bold uppercase tracking-[0.16em] text-white/40">
                   {group.label}
                 </p>
@@ -120,21 +124,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <AccountDialog inverse onLogout={logout} />
         </div>
       </aside>
-      <div className="min-w-0 lg:ml-[248px]">
-        <header className="sticky top-0 z-30 flex h-[calc(4.5rem+env(safe-area-inset-top))] items-center justify-between border-b border-white/10 bg-binder pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] pt-[env(safe-area-inset-top)] shadow-card lg:h-[72px] lg:border-border lg:bg-paper lg:px-7 lg:pt-0 lg:shadow-none">
+      <div className="min-w-0 lg:ml-[224px]">
+        <header className="sticky top-0 z-30 flex h-[calc(4rem+env(safe-area-inset-top))] items-center justify-between border-b border-white/10 bg-binder pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] pt-[env(safe-area-inset-top)] shadow-card lg:h-14 lg:border-border lg:bg-paper lg:px-5 lg:pt-0 lg:shadow-none">
           <AppLogo inverse className="lg:hidden" />
           <div className="hidden min-w-0 lg:block">
-            <p className="text-[0.6875rem] font-semibold uppercase tracking-[0.16em] text-muted">
-              Konteks aktif
-            </p>
-            <p className="mt-0.5 truncate text-sm font-semibold text-brand">
+            <p className="truncate text-sm font-semibold text-brand">
               {session.employee?.activePlacementName ??
                 roleLabels[session.role]}
             </p>
+            <p className="mt-0.5 text-caption text-muted">Ruang kerja {roleLabels[session.role]}</p>
           </div>
           <div className="flex items-center gap-1">
             {/* prettier-ignore */}
-            <Link href="/activity" aria-label="Pusat Aktivitas" title="Pusat Aktivitas" className="grid size-11 place-items-center rounded-xl text-white/80 hover:bg-white/10 lg:text-muted lg:hover:bg-surface-subtle"><Bell className="size-5" /></Link>
+            <Link href="/activity" aria-label="Pusat Aktivitas" title="Pusat Aktivitas" className="grid size-11 place-items-center rounded-2xl text-white/80 hover:bg-white/10 lg:text-muted lg:hover:bg-surface-subtle"><Bell className="size-5" /></Link>
             <div className="lg:hidden">
               <MobileModules />
             </div>
@@ -147,7 +149,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </header>
         {/* prettier-ignore */}
-        <main id="main-content" className="mobile-nav-clearance mx-auto w-full max-w-[1540px] pt-4 pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] sm:pt-6 sm:pl-[max(1.5rem,env(safe-area-inset-left))] sm:pr-[max(1.5rem,env(safe-area-inset-right))] lg:px-7 lg:pt-7">{children}</main>
+        <main id="main-content" className="mobile-nav-clearance mx-auto w-full max-w-[1640px] pt-4 pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] sm:pt-5 sm:pl-[max(1.5rem,env(safe-area-inset-left))] sm:pr-[max(1.5rem,env(safe-area-inset-right))] lg:px-5 lg:pt-5">{children}</main>
       </div>
       <MobileNavigation
         items={mobileNavigation(session)}
@@ -155,25 +157,68 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         pathname={pathname}
         onAttendance={() => setAttendanceOpen(true)}
       />
-      <Dialog open={attendanceOpen} onOpenChange={setAttendanceOpen}>
+      <Dialog
+        open={attendanceOpen}
+        onOpenChange={(open) => {
+          setAttendanceOpen(open);
+          if (!open) setAttendanceCompleted(null);
+        }}
+      >
         <DialogContent className="inset-0 h-[100dvh] w-full max-w-none translate-x-0 translate-y-0 overflow-y-auto rounded-none border-0 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))] sm:left-1/2 sm:top-1/2 sm:h-[min(92dvh,860px)] sm:w-[min(100%-2rem,720px)] sm:max-w-2xl sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-xl sm:p-6">
           <DialogTitle className="sr-only">Presensi langsung</DialogTitle>
           <DialogDescription className="sr-only">
             Ambil foto dan lokasi GPS untuk check-in atau check-out.
           </DialogDescription>
-          <AttendancePresentationProvider
-            onCompleted={(action) => {
-              toast.success(
-                action === "check-in"
-                  ? "Check-in berhasil"
-                  : "Check-out berhasil",
-              );
-              window.dispatchEvent(new Event("attendance-updated"));
-              setAttendanceOpen(false);
-            }}
-          >
-            <AttendancePage />
-          </AttendancePresentationProvider>
+          {attendanceCompleted ? (
+            <div className="mx-auto flex min-h-[calc(100dvh-2rem)] w-full max-w-md flex-col items-center justify-center text-center sm:min-h-0 sm:py-12">
+              <span className="grid size-24 place-items-center rounded-full bg-success-surface text-success">
+                <CheckCircle2 className="size-12" strokeWidth={2.5} />
+              </span>
+              <h2 className="mt-6 text-2xl font-bold text-brand">
+                Presensi Berhasil
+              </h2>
+              <p className="mt-2 text-body text-muted">
+                {attendanceCompleted === "check-in"
+                  ? "Check-in sudah tercatat. Selamat bekerja."
+                  : "Check-out sudah tercatat. Terima kasih atas pekerjaan hari ini."}
+              </p>
+              <Button
+                size="lg"
+                className="mt-8 w-full"
+                onClick={() => {
+                  setAttendanceOpen(false);
+                  setAttendanceCompleted(null);
+                }}
+              >
+                Selesai
+              </Button>
+              <Button asChild variant="ghost" className="mt-2 w-full">
+                <Link
+                  href="/attendance/history?view=mine"
+                  onClick={() => {
+                    setAttendanceOpen(false);
+                    setAttendanceCompleted(null);
+                  }}
+                >
+                  Lihat Riwayat Presensi
+                </Link>
+              </Button>
+            </div>
+          ) : (
+            <AttendancePresentationProvider
+              onCompleted={(action) => {
+                toast.success(
+                  action === "check-in"
+                    ? "Check-in berhasil"
+                    : "Check-out berhasil",
+                );
+                window.dispatchEvent(new Event("attendance-updated"));
+                setAttendanceCompleted(action);
+              }}
+            >
+              <AttendancePage />
+            </AttendancePresentationProvider>
+          )}
         </DialogContent>
       </Dialog>
     </div>
@@ -259,9 +304,9 @@ function NavLink({ item, active }: { item: NavigationItem; active: boolean }) {
       href={item.href}
       aria-current={active ? "page" : undefined}
       className={cn(
-        "relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
+        "relative flex items-center gap-3 rounded-lg px-3 py-2 text-[0.8125rem] font-medium transition-colors",
         active
-          ? "bg-white/10 text-white before:absolute before:inset-y-2 before:left-0 before:w-0.5 before:bg-accent"
+          ? "bg-accent text-binder-deep shadow-control"
           : "text-white/58 hover:bg-white/[0.06] hover:text-white",
       )}
     >
@@ -313,7 +358,7 @@ function MobileNavigation({
               aria-label="Buka presensi langsung"
               className="group -mt-8 flex min-h-11 flex-1 flex-col items-center gap-1 text-caption font-bold text-brand"
             >
-              <span className="relative grid size-14 place-items-center overflow-hidden rounded-2xl border-4 border-paper bg-brand text-white shadow-lift transition-transform before:absolute before:inset-y-0 before:left-0 before:w-1 before:bg-accent group-active:scale-95 motion-reduce:transition-none">
+              <span className="relative grid size-14 place-items-center overflow-hidden rounded-full border-4 border-paper bg-brand text-white shadow-lift transition-transform group-active:scale-95 motion-reduce:transition-none">
                 <Icon className="size-6" />
               </span>
               <span>Presensi</span>
@@ -451,7 +496,7 @@ function isActive(pathname: string, href: string) {
 export function AppShellSkeleton() {
   return (
     <LoadingState label="Memuat ruang kerja" className="min-h-dvh lg:flex">
-      <aside className="hidden h-dvh w-[248px] border-r border-white/10 bg-binder-deep p-5 lg:block">
+      <aside className="hidden h-dvh w-[224px] border-r border-white/10 bg-binder-deep p-4 lg:block">
         <Skeleton className="h-10 w-36 bg-white/10" />
         <div className="mt-12 space-y-4">
           {Array.from({ length: 10 }).map((_, index) => (
@@ -460,8 +505,8 @@ export function AppShellSkeleton() {
         </div>
       </aside>
       <div className="flex-1">
-        <div className="h-[72px] bg-brand lg:border-b lg:border-border lg:bg-paper" />
-        <main className="mobile-nav-clearance px-4 pt-4 sm:px-6 sm:pt-6 lg:px-7 lg:pt-7">
+        <div className="h-14 bg-brand lg:border-b lg:border-border lg:bg-paper" />
+        <main className="mobile-nav-clearance px-4 pt-4 sm:px-6 sm:pt-5 lg:px-5 lg:pt-5">
           <Skeleton className="h-8 w-56" />
           <Skeleton className="mt-3 h-4 w-80 max-w-full" />
           <div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">

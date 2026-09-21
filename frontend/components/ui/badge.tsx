@@ -1,7 +1,7 @@
 import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '@/lib/utils';
 
-const badgeVariants = cva('inline-flex max-w-full min-w-0 items-center whitespace-normal break-words rounded-full border px-2.5 py-1 text-left text-xs font-semibold leading-tight [overflow-wrap:anywhere] [&_svg]:shrink-0', {
+const badgeVariants = cva('inline-flex max-w-full min-w-0 items-center whitespace-normal break-words rounded-full border px-2.5 py-0.5 text-left text-xs font-semibold leading-5 [overflow-wrap:anywhere] [&_svg]:shrink-0', {
   variants: { variant: { neutral: 'border-border bg-surface-subtle text-muted', success: 'border-success-border bg-success-surface text-success', warning: 'border-warning-border bg-warning-surface text-warning', danger: 'border-danger-border bg-danger-surface text-danger', info: 'border-info-border bg-info-surface text-info' } },
   defaultVariants: { variant: 'neutral' },
 });

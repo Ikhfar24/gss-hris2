@@ -10,7 +10,7 @@ import { useSession } from '@/components/providers/SessionProvider';
 import { formatFullDate, formatTime } from '@/lib/format';
 import { Alert, ErrorState } from '@/components/ui/feedback';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { AttendanceDetailView } from '@/components/attendance/AttendanceDetailView';
 import { Button } from '@/components/ui/button';
 import { StatusBadge } from '@/components/ui/badge';
@@ -18,6 +18,7 @@ import { useAttendancePresentation } from '@/components/attendance/AttendancePre
 import { PeopleAttendanceMonitoring } from '@/components/attendance/PeopleAttendanceMonitoring';
 import { ContextBand, DataRegion, DossierPage, IndexTabs, MobileRecord, RecordActions, RecordBody, RecordHeader, WorkSheet } from '@/components/ui/dossier';
 import { approvedAbsenceLabel, type ApprovedFullDayAbsence } from '@/lib/attendance';
+import { CalendarDays, Camera, CheckCircle2, Fingerprint, LocateFixed, MapPin, ShieldCheck } from 'lucide-react';
 
 type AttendanceMode = 'GEOFENCE' | 'MOBILE';
 
@@ -457,6 +458,18 @@ function SelfCheckIn({ showHistory = true, autoStart = false, overlay = false, o
 
   if (today.approvedAbsence) {
     const label = approvedAbsenceLabel(today.approvedAbsence.type);
+    if (overlay) return (
+      <div className="mx-auto flex min-h-[calc(100dvh-2rem)] w-full max-w-md flex-col items-center justify-center text-center sm:min-h-0 sm:py-12">
+        <span className="grid size-24 place-items-center rounded-full bg-info-surface text-info">
+          <CalendarDays className="size-11" />
+        </span>
+        <h2 className="mt-6 text-2xl font-bold text-brand">{label} Disetujui</h2>
+        <p className="mt-2 max-w-sm text-body text-muted">
+          Presensi tidak tersedia karena ketidakhadiran penuh Anda telah disetujui.
+        </p>
+        <StatusBadge status="APPROVED" label={label} className="mt-5" />
+      </div>
+    );
     return (
       <div className={`mx-auto w-full min-w-0 max-w-5xl ${overlay ? 'flex min-h-full flex-col' : ''}`}>
         <ContextBand title="Presensi Hari Ini" description={formatFullDate(new Date())} meta={<span>DISETUJUI</span>} className={overlay ? 'mb-4' : undefined} />
@@ -470,6 +483,136 @@ function SelfCheckIn({ showHistory = true, autoStart = false, overlay = false, o
           </div>
           {showHistory && <Button asChild variant="secondary" className="mt-5 w-full sm:w-auto"><Link href="/attendance/history?view=mine">Lihat riwayat presensi</Link></Button>}
         </WorkSheet>
+      </div>
+    );
+  }
+
+  if (overlay && att?.checkInAt && att.checkOutAt) {
+    return (
+      <div className="mx-auto flex min-h-[calc(100dvh-2rem)] w-full max-w-md flex-col items-center justify-center text-center sm:min-h-0 sm:py-12">
+        <span className="grid size-24 place-items-center rounded-full bg-success-surface text-success">
+          <CheckCircle2 className="size-12" strokeWidth={2.5} />
+        </span>
+        <h2 className="mt-6 text-2xl font-bold text-brand">Presensi Hari Ini Selesai</h2>
+        <p className="mt-2 max-w-sm text-body text-muted">
+          Check-in dan check-out sudah tercatat. Tidak ada presensi lain yang perlu dilakukan hari ini.
+        </p>
+        <div className="mt-6 grid w-full grid-cols-2 divide-x divide-border overflow-hidden rounded-xl bg-surface-subtle py-4">
+          <div>
+            <p className="text-caption font-semibold text-muted">Check-in</p>
+            <p className="mt-1 font-bold tabular-nums text-brand">{formatTime(att.checkInAt)}</p>
+          </div>
+          <div>
+            <p className="text-caption font-semibold text-muted">Check-out</p>
+            <p className="mt-1 font-bold tabular-nums text-brand">{formatTime(att.checkOutAt)}</p>
+          </div>
+        </div>
+        <StatusBadge status={att.validationStatus} label={VALIDATION_LABEL[att.validationStatus]?.label} className="mt-5" />
+        <DialogClose asChild>
+          <Button size="lg" className="mt-8 w-full">Selesai</Button>
+        </DialogClose>
+        <DialogClose asChild>
+          <Button asChild variant="ghost" className="mt-2 w-full">
+            <Link href="/attendance/history?view=mine">Lihat Riwayat Presensi</Link>
+          </Button>
+        </DialogClose>
+      </div>
+    );
+  }
+
+  if (overlay) {
+    const outsideRadius = !isMobile && liveDistance !== null && liveDistance > today.expectedLocation.radiusMeters;
+    const locationReady = locationState === 'available' && !poorAccuracy && !outsideRadius && (isMobile || !!workPoint);
+    return (
+      <div className="mx-auto flex min-h-[calc(100dvh-2rem)] w-full max-w-md flex-col sm:min-h-0">
+        <header className="px-7 pb-4 pt-2 text-center">
+          <h2 className="text-xl font-bold text-brand">
+            {mode === 'check-out' ? 'Absen Pulang' : 'Absen Masuk'}
+          </h2>
+          <p className="mt-1 text-caption text-muted">
+            Pastikan wajah, GPS, dan lokasi kerja siap.
+          </p>
+        </header>
+
+        {cameraOn ? (
+          <div className="mx-auto mb-5 grid size-[15rem] place-items-center overflow-hidden rounded-full border-[6px] border-paper bg-brand shadow-[0_0_0_2px_#E2DFD9,0_14px_35px_rgba(0,31,63,0.16)]">
+            {!cameraFailed ? (
+              <video ref={videoRef} autoPlay playsInline muted className="size-full -scale-x-100 object-cover" />
+            ) : (
+              <div className="px-8 text-center text-white">
+                <Camera className="mx-auto size-10" />
+                <p className="mt-3 text-sm font-semibold">Kamera tidak tersedia</p>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="mx-auto mb-5 grid size-32 place-items-center rounded-full bg-brand text-white shadow-lift">
+            <Fingerprint className="size-14" />
+          </div>
+        )}
+        <canvas ref={canvasRef} className="hidden" />
+
+        <div className="space-y-2 rounded-xl border border-border bg-paper p-3 shadow-card">
+          <CaptureCheck
+            icon={MapPin}
+            label="Lokasi terdeteksi"
+            detail={today.expectedLocation.name}
+            ready={locationState === 'available'}
+          />
+          <CaptureCheck
+            icon={LocateFixed}
+            label={isMobile ? 'GPS aktif' : outsideRadius ? 'Di luar jangkauan' : 'Dalam jangkauan'}
+            detail={isMobile ? (position ? `Akurasi ${Math.round(position.accuracy)} meter` : locationStatus) : liveDistance === null ? locationStatus : `Jarak ${Math.round(liveDistance)} dari radius ${today.expectedLocation.radiusMeters} meter`}
+            ready={locationReady}
+          />
+          <CaptureCheck
+            icon={Camera}
+            label={cameraFailed ? 'Kamera gagal' : cameraOn ? 'Wajah terlihat' : 'Kamera belum aktif'}
+            detail={cameraFailed ? 'Isi alasan untuk melanjutkan' : cameraOn ? 'Siap untuk presensi' : 'Aktifkan kamera untuk verifikasi'}
+            ready={cameraOn && !cameraFailed}
+          />
+        </div>
+
+        {outsideRadius && (
+          <Alert className="mt-3" variant="danger">
+            Anda berada di luar radius lokasi kerja. Presensi tidak dapat diproses sebelum lokasi valid.
+          </Alert>
+        )}
+        {cameraFailed && (
+          <textarea
+            placeholder="Alasan kamera gagal (wajib diisi)"
+            value={failureNote}
+            onChange={(event) => setFailureNote(event.target.value)}
+            aria-label="Alasan GPS atau kamera gagal"
+            className="mt-3 min-h-20 w-full rounded-lg border border-border bg-paper px-3 py-2 text-sm"
+            rows={2}
+          />
+        )}
+        {error && <Alert className="mt-3" variant="danger">{error}</Alert>}
+        {info && <Alert className="mt-3" variant={info.includes('berhasil') ? 'success' : 'info'}>{info}</Alert>}
+
+        <div className="mt-auto grid gap-2 pt-5">
+          {!cameraOn ? (
+            <Button size="lg" onClick={() => startCamera(att?.checkInAt ? 'check-out' : 'check-in')}>
+              Mulai Verifikasi
+            </Button>
+          ) : (
+            <Button size="lg" onClick={submit} disabled={busy || outsideRadius}>
+              {busy ? 'Memproses presensi...' : `Proses ${mode === 'check-out' ? 'Check-out' : 'Check-in'}`}
+            </Button>
+          )}
+          {cameraOn && (
+            <Button
+              variant="secondary"
+              onClick={() => {
+                stopCamera();
+                setMode(null);
+              }}
+            >
+              Batal
+            </Button>
+          )}
+        </div>
       </div>
     );
   }
@@ -543,7 +686,7 @@ function SelfCheckIn({ showHistory = true, autoStart = false, overlay = false, o
       {cameraOn && (
         <WorkSheet className={overlay ? 'order-first mb-4' : ''}>
           {!cameraFailed && (
-            <video ref={videoRef} autoPlay playsInline muted className="mb-3 aspect-[4/3] max-w-full rounded-lg bg-black object-cover" />
+            <video ref={videoRef} autoPlay playsInline muted className="mb-3 aspect-[4/3] max-w-full -scale-x-100 rounded-lg bg-black object-cover" />
           )}
           <canvas ref={canvasRef} className="hidden" />
 
@@ -600,6 +743,21 @@ function SelfCheckIn({ showHistory = true, autoStart = false, overlay = false, o
         {history.length === 0 ? <p className="rounded-xl bg-paper px-4 py-6 text-center text-body text-muted shadow-sheet">Belum ada riwayat absensi.</p> : <><div className="space-y-3 md:hidden">{history.map((record) => <SelfAttendanceHistoryRecord key={record.id} record={record} onOpen={openDetail} />)}</div><DataRegion className="hidden md:block"><table className="min-w-[640px] text-sm"><thead><tr><th scope="col">Tanggal</th><th scope="col">Masuk</th><th scope="col">Pulang</th><th scope="col">Validasi</th><th scope="col"><span className="sr-only">Tindakan</span></th></tr></thead><tbody>{history.map((record) => <tr key={record.id}><td className="whitespace-nowrap tabular-nums">{record.date ? new Date(record.date).toLocaleDateString('id-ID') : '-'}</td><td className="whitespace-nowrap tabular-nums">{record.checkInAt ? new Date(record.checkInAt).toLocaleTimeString('id-ID') : '-'}</td><td className="whitespace-nowrap tabular-nums">{record.checkOutAt ? new Date(record.checkOutAt).toLocaleTimeString('id-ID') : '-'}</td><td><StatusBadge status={record.validationStatus} label={VALIDATION_LABEL[record.validationStatus]?.label} /></td><td className="text-right"><button onClick={() => openDetail(record.id)} className="text-xs font-semibold text-brand underline">Detail</button></td></tr>)}</tbody></table></DataRegion></>}
       </div>}
       {showHistory && detail && <AttendanceDetail attendance={detail} onClose={() => setDetail(null)} />}
+    </div>
+  );
+}
+
+function CaptureCheck({ icon: Icon, label, detail, ready }: { icon: typeof ShieldCheck; label: string; detail: string; ready: boolean }) {
+  return (
+    <div className="flex min-w-0 items-center gap-3 rounded-lg bg-surface-subtle px-3 py-2.5">
+      <span className={`grid size-9 shrink-0 place-items-center rounded-lg ${ready ? 'bg-success-surface text-success' : 'bg-danger-surface text-danger'}`}>
+        <Icon className="size-[18px]" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-semibold text-brand">{label}</span>
+        <span className="block truncate text-caption text-muted">{detail}</span>
+      </span>
+      <CheckCircle2 className={`size-5 shrink-0 ${ready ? 'text-success' : 'text-danger'}`} />
     </div>
   );
 }

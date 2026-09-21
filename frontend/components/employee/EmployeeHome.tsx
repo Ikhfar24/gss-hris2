@@ -3,27 +3,25 @@
 import Link from "next/link";
 import {
   ArrowRight,
-  ArrowUpRight,
   CalendarCheck,
   CalendarDays,
   Clock3,
   Fingerprint,
-  LogOut,
   MapPin,
+  ReceiptText,
+  UserRound,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { ApiError, apiFetch } from "@/lib/api";
 import type { ApprovedFullDayAbsence, AttendanceMode, AttendanceRecord } from "@/lib/attendance";
 import { approvedAbsenceLabel, attendanceStatus, latenessLabel } from "@/lib/attendance";
 import { formatFullDate, formatTime } from "@/lib/format";
-import { employmentTypeLabel } from "@/lib/employment";
 import { canAttend } from "@/lib/navigation";
 import { useSession } from "@/components/providers/SessionProvider";
-import { EmployeeIdentityBand } from "./EmployeeIdentityBand";
+import { MobileIdentityHeader } from "./MobileIdentityHeader";
 import { AttendanceHistoryView } from "@/components/attendance/AttendanceHistoryView";
 import { Badge, StatusBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { DossierPage, WorkSheet } from "@/components/ui/dossier";
 import { Alert, ErrorState } from "@/components/ui/feedback";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -118,25 +116,15 @@ export function EmployeeHome({
   );
   const pendingCheckout =
     today?.attendance?.checkInAt && !today.attendance.checkOutAt;
-
   return (
-    <DossierPage className="space-y-5">
-      <EmployeeIdentityBand
-        name={employee.name}
-        jobTitle={employee.jobTitle}
-        photoUrl={employee.photoUrl}
-        employmentType={employmentTypeLabel(employee.employmentType)}
-        placement={employee.activePlacementName ?? (employee.employmentType === "STAFF_OFFICE" ? "Lokasi kerja belum ditetapkan" : "Penempatan belum tersedia")}
-      />
-      <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1.15fr)_minmax(20rem,0.85fr)]">
+    <div className="mx-auto w-full max-w-6xl space-y-5 pb-4 sm:space-y-6">
+      <span className="sr-only">PRIBADI</span>
+      <MobileIdentityHeader className="sm:py-2" />
+
+      <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(19rem,0.85fr)] lg:items-start">
         <div className="min-w-0 space-y-5">
           <TodayCard today={today} eligible={canAttend(session)} />
-          {pendingCheckout ? (
-            <Alert variant="warning" title="Jangan lupa absen pulang">
-              Check-in Anda sudah tercatat. Selesaikan check-out melalui menu
-              Presensi.
-            </Alert>
-          ) : pendingAbsence ? (
+          {pendingAbsence && !pendingCheckout ? (
             <Alert variant="warning" title="Data absensi memerlukan perhatian">
               Ada kasus ketidakhadiran yang menunggu penjelasan Anda.{" "}
               <Link href="/absence-cases" className="font-semibold underline">
@@ -146,36 +134,50 @@ export function EmployeeHome({
           ) : null}
           <QuickServices capabilities={capabilities} />
         </div>
-        <WorkSheet
-          id="activity"
-          title="Aktivitas Terbaru"
-          description="Perubahan terakhir pada pengajuan Anda."
-        >
+        <section id="activity" aria-labelledby="activity-title" className="min-w-0">
+          <div className="mb-2 flex items-end justify-between gap-3 px-1">
+            <div>
+              <h2 id="activity-title" className="text-section-title text-brand">
+                Aktivitas Terbaru
+              </h2>
+              <p className="mt-0.5 text-caption text-muted">
+                Status pengajuan yang terakhir berubah.
+              </p>
+            </div>
+            <Link
+              href="/activity"
+              className="inline-flex min-h-11 shrink-0 items-center gap-1 text-caption font-semibold text-brand underline-offset-4 hover:underline focus-visible:rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand sm:min-h-8"
+            >
+              Lihat semua <ArrowRight className="size-3.5" />
+            </Link>
+          </div>
           {activity.length ? (
-            <div className="divide-y divide-border">
+            <div className="divide-y divide-border rounded-xl bg-paper px-4 shadow-card">
               {activity.map((item) => (
                 <ActivityRow key={`${item.kind}-${item.id}`} item={item} />
               ))}
             </div>
           ) : (
-            <p className="py-8 text-center text-body text-muted">
+            <p className="rounded-xl bg-paper px-4 py-8 text-center text-body text-muted shadow-card">
               Belum ada aktivitas terbaru.
             </p>
           )}
-          <Button asChild variant="ghost" className="mt-3 w-full">
-            <Link href="/activity">
-              Lihat pusat aktivitas <ArrowRight className="size-4" />
-            </Link>
-          </Button>
-        </WorkSheet>
+        </section>
       </div>
-      <WorkSheet
-        title="Presensi Terakhir"
-        description="Tiga catatan terbaru Anda."
-      >
-        <AttendanceHistoryView compact />
-      </WorkSheet>
-    </DossierPage>
+      <section aria-labelledby="attendance-history-title" className="min-w-0">
+        <div className="mb-2 px-1">
+          <h2 id="attendance-history-title" className="text-section-title text-brand">
+            Presensi Terakhir
+          </h2>
+          <p className="mt-0.5 text-caption text-muted">
+            Tiga catatan terbaru Anda.
+          </p>
+        </div>
+        <div className="rounded-xl bg-paper p-4 shadow-card sm:p-5">
+          <AttendanceHistoryView compact />
+        </div>
+      </section>
+    </div>
   );
 }
 
@@ -188,34 +190,38 @@ function TodayCard({
 }) {
   if (!eligible)
     return (
-      <WorkSheet title="Presensi Hari Ini">
-        <p className="text-body text-muted">
+      <section className="rounded-xl bg-paper p-4 shadow-card sm:p-5">
+        <h2 className="text-section-title text-brand">Presensi Hari Ini</h2>
+        <p className="mt-1 text-body text-muted">
           Presensi tidak tersedia untuk profil atau penempatan Anda saat ini.
         </p>
-      </WorkSheet>
+      </section>
     );
   const attendance = today?.attendance;
   const approvedAbsence = today?.approvedAbsence;
   return (
-    <WorkSheet
-      title="Presensi Hari Ini"
-      description={formatFullDate(attendance?.date ?? new Date())}
-      actions={
+    <section className="rounded-xl bg-paper p-4 shadow-card sm:p-5">
+      <div className="flex min-w-0 items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-section-title text-brand">Presensi Hari Ini</h2>
+          <p className="mt-0.5 truncate text-caption text-muted">
+            {formatFullDate(attendance?.date ?? new Date())}
+          </p>
+        </div>
         <Badge
           variant={today?.attendanceMode === "MOBILE" ? "info" : "neutral"}
         >
           {today?.attendanceMode === "MOBILE" ? "Mobile" : "Lokasi kerja"}
         </Badge>
-      }
-    >
-      <div className="grid grid-cols-2 border-y border-border">
+      </div>
+      <div className="mt-4 grid grid-cols-2 overflow-hidden rounded-lg bg-surface-subtle">
         <TimeBlock label="Check-in" value={formatTime(attendance?.checkInAt)} />
         <TimeBlock
           label="Check-out"
           value={formatTime(attendance?.checkOutAt)}
         />
       </div>
-      <div className="mt-5 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+      <div className="mt-3 flex min-w-0 items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="font-semibold text-brand">
             {approvedAbsence ? `${approvedAbsenceLabel(approvedAbsence.type)} disetujui` : attendance ? attendanceStatus(attendance) : "Belum presensi"}
@@ -230,30 +236,31 @@ function TodayCard({
             </p>
           )}
         </div>
-        {approvedAbsence ? (
+        {approvedAbsence && (
           <StatusBadge status="APPROVED" label={approvedAbsenceLabel(approvedAbsence.type)} />
-        ) : (
-          <Button asChild className="w-full sm:w-auto">
-            <Link href="/attendance?view=mine">
-              <Fingerprint className="size-4" />
-              {!attendance?.checkInAt
-                ? "Check-in"
-                : !attendance.checkOutAt
-                  ? "Check-out"
-                  : "Lihat Presensi"}
-            </Link>
-          </Button>
         )}
       </div>
-    </WorkSheet>
+      {!approvedAbsence && (
+        <Button asChild size="lg" className="mt-4 w-full">
+          <Link href="/attendance?view=mine">
+            <Fingerprint className="size-5" />
+            {!attendance?.checkInAt
+              ? "Presensi Sekarang"
+              : !attendance.checkOutAt
+                ? "Presensi Pulang"
+                : "Lihat Presensi"}
+          </Link>
+        </Button>
+      )}
+    </section>
   );
 }
 
 function TimeBlock({ label, value }: { label: string; value: string }) {
   return (
-    <div className="min-w-0 px-4 py-4 first:border-r first:border-border">
-      <p className="dossier-label">{label}</p>
-      <p className="mt-2 break-words text-2xl font-bold tabular-nums text-brand [overflow-wrap:anywhere]">
+    <div className="min-w-0 px-4 py-3.5 first:border-r first:border-border">
+      <p className="text-caption font-semibold text-muted">{label}</p>
+      <p className="mt-1.5 break-words text-2xl font-bold tabular-nums text-brand [overflow-wrap:anywhere]">
         {value}
       </p>
     </div>
@@ -276,57 +283,63 @@ const services = [
     color: "bg-brand/10 text-brand",
   },
   {
-    label: "Resign",
-    description: "Ajukan pengunduran diri",
-    href: "/leave-requests?view=mine&new=RESIGN",
-    icon: LogOut,
-    color: "bg-danger-surface text-danger",
-  },
-  {
     label: "Riwayat",
     description: "Lihat catatan presensi",
     href: "/attendance/history?view=mine",
     icon: CalendarCheck,
     color: "bg-success-surface text-success",
   },
+  {
+    label: "Slip Gaji",
+    description: "Lihat rincian penghasilan",
+    href: "/payroll?view=mine",
+    icon: ReceiptText,
+    color: "bg-warning-surface text-warning",
+  },
 ];
+const marketingService = {
+  label: "Profil",
+  description: "Lihat data pribadi",
+  href: "/profile",
+  icon: UserRound,
+  color: "bg-info-surface text-info",
+};
 function QuickServices({
   capabilities,
 }: {
   capabilities: "employee" | "marketing";
 }) {
   // prettier-ignore
-  const visible = capabilities === 'marketing' ? services.filter((service) => service.label !== 'Lembur') : services;
+  const visible = capabilities === 'marketing' ? [...services.filter((service) => service.label !== 'Lembur'), marketingService] : services;
   return (
-    <WorkSheet title="Layanan Karyawan">
-      <div className="divide-y divide-border">
-        {visible.map(({ icon: Icon, ...service }, index) => (
+    <section aria-labelledby="quick-services-title">
+      <h2 id="quick-services-title" className="mb-2 px-1 text-section-title text-brand">
+        Akses Cepat
+      </h2>
+      <div className="grid grid-cols-4 gap-2 lg:grid-cols-2 xl:grid-cols-4">
+        {visible.map(({ icon: Icon, ...service }) => (
           <Link
             key={service.label}
             href={service.href}
-            className="group flex min-h-16 min-w-0 items-center gap-3 py-3 first:pt-0 last:pb-0"
+            className="group flex min-h-24 min-w-0 flex-col items-center justify-center gap-2 rounded-xl bg-paper p-2 text-center shadow-card transition-[background-color,transform] hover:bg-surface-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 active:scale-[0.98] motion-reduce:transform-none sm:min-h-28 sm:p-3.5 lg:items-start lg:text-left xl:items-center xl:text-center"
           >
-            <span className="w-6 shrink-0 text-caption font-bold tabular-nums text-muted">
-              {String(index + 1).padStart(2, "0")}
-            </span>
             <span
-              className={`grid size-9 shrink-0 place-items-center rounded-lg ${service.color}`}
+              className={`grid size-9 shrink-0 place-items-center rounded-lg sm:size-10 ${service.color}`}
             >
-              <Icon className="size-4" />
+              <Icon className="size-4 sm:size-5" />
             </span>
-            <span className="min-w-0 flex-1">
-              <span className="block text-body font-semibold text-brand">
+            <span className="min-w-0">
+              <span className="block break-words text-caption font-semibold leading-tight text-brand sm:text-body [overflow-wrap:anywhere]">
                 {service.label}
               </span>
-              <span className="block break-words text-caption text-muted [overflow-wrap:anywhere]">
+              <span className="mt-1 hidden break-words text-caption text-muted xl:block [overflow-wrap:anywhere]">
                 {service.description}
               </span>
             </span>
-            <ArrowUpRight className="size-4 shrink-0 text-muted transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5 motion-reduce:transform-none" />
           </Link>
         ))}
       </div>
-    </WorkSheet>
+    </section>
   );
 }
 
@@ -359,7 +372,7 @@ function ActivityRow({ item }: { item: Activity }) {
   return (
     <Link
       href={item.href}
-      className="flex min-h-16 min-w-0 items-center gap-3 py-3"
+      className="flex min-h-16 min-w-0 items-center gap-3 py-3 focus-visible:rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
     >
       <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-surface-subtle text-brand">
         {item.kind === "overtime" ? (
@@ -379,11 +392,23 @@ function ActivityRow({ item }: { item: Activity }) {
 }
 function EmployeeHomeSkeleton() {
   return (
-    <div className="space-y-5">
-      <Skeleton className="h-64 rounded-[1.75rem]" />
-      <div className="grid gap-5 xl:grid-cols-2">
-        <Skeleton className="h-72 rounded-2xl" />
-        <Skeleton className="h-72 rounded-2xl" />
+    <div className="mx-auto w-full max-w-6xl space-y-5">
+      <div className="flex items-center justify-between px-1 py-1">
+        <div className="space-y-2">
+          <Skeleton className="h-8 w-40 rounded-lg" />
+          <Skeleton className="h-4 w-52 rounded" />
+        </div>
+        <Skeleton className="size-16 rounded-full" />
+      </div>
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(19rem,0.85fr)]">
+        <div className="space-y-5">
+          <Skeleton className="h-72 rounded-xl" />
+          <div className="grid grid-cols-2 gap-3">
+            <Skeleton className="aspect-square rounded-xl" />
+            <Skeleton className="aspect-square rounded-xl" />
+          </div>
+        </div>
+        <Skeleton className="h-64 rounded-xl" />
       </div>
     </div>
   );

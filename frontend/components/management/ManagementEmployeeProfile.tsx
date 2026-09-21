@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import {
-  BriefcaseBusiness,
   CalendarDays,
   Camera,
   Clock3,
@@ -10,7 +9,6 @@ import {
   MapPin,
   Pencil,
   ShieldAlert,
-  UserRound,
 } from "lucide-react";
 import { FormEvent, useState } from "react";
 import { ApiError, apiFetch, uploadFile } from "@/lib/api";
@@ -26,7 +24,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Alert } from "@/components/ui/feedback";
-import { ContextBand, DossierPage, WorkSheet } from "@/components/ui/dossier";
+import { DossierPage, WorkSheet } from "@/components/ui/dossier";
 
 interface ProfileData {
   profile: Record<string, any>;
@@ -224,8 +222,8 @@ export function AdminEmployeeProfile({
       <Identity profile={profile} eyebrow="ADMINISTRASI KARYAWAN" />
       {message && <Alert variant="success">{message}</Alert>}
       {error && <Alert variant="danger">{error}</Alert>}
-      <Card>
-        <CardContent className="flex flex-wrap gap-2 p-4">
+      <Card className="shadow-none">
+        <CardContent className="flex flex-wrap gap-2 p-3 sm:p-4">
           <Button onClick={() => setEditOpen(true)}>
             <Pencil className="size-4" />
             Edit Data
@@ -310,14 +308,14 @@ export function AdminEmployeeProfile({
         />
       </div>
       <PlacementCard placements={profile.placements} />
-      <Card>
+      <Card className="shadow-none">
         <CardHeader>
           <CardTitle>Kontrak</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-2">
             {profile.contracts?.map((item: any) => (
-              <div key={item.id} className="rounded-xl bg-surface-subtle p-3 text-sm">
+              <div key={item.id} className="border-b border-border py-3 text-sm last:border-b-0">
                 <div className="flex flex-wrap justify-between gap-2">
                   <strong>{item.type}</strong>
                   <StatusBadge status={item.status} />
@@ -529,7 +527,30 @@ function Identity({
   eyebrow: string;
 }) {
   return (
-    <ContextBand title={profile.name} description={`${profile.jobTitle ?? "Karyawan"} · ${profile.placements?.[0]?.location?.name ?? "Belum ditempatkan"}`} meta={<><span>{eyebrow}</span><Badge className="border-white/15 bg-white/10 text-white">{label(profile.employmentType)}</Badge><StatusBadge status={String(profile.status ?? '-')} label={label(profile.status)} className="border-white/15 bg-white/10 text-white" /></>} actions={<EmployeeAvatar name={profile.name ?? "Karyawan"} photoUrl={profile.photoUrl} size="lg" className="size-20 border-white/20" />} />
+    <header className="flex flex-col gap-4 border-b border-border bg-paper px-4 py-4 sm:flex-row sm:items-center">
+      <EmployeeAvatar
+        name={profile.name ?? "Karyawan"}
+        photoUrl={profile.photoUrl}
+        size="lg"
+        className="size-16 border-border sm:size-20"
+      />
+      <div className="min-w-0 flex-1">
+        <p className="text-caption font-semibold text-muted">{eyebrow}</p>
+        <h1 className="mt-1 break-words text-page-title text-brand [overflow-wrap:anywhere]">
+          {profile.name}
+        </h1>
+        <p className="mt-1 break-words text-body text-muted [overflow-wrap:anywhere]">
+          {profile.jobTitle ?? "Karyawan"} · {profile.placements?.[0]?.location?.name ?? "Belum ditempatkan"}
+        </p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Badge>{label(profile.employmentType)}</Badge>
+          <StatusBadge
+            status={String(profile.status ?? "-")}
+            label={label(profile.status)}
+          />
+        </div>
+      </div>
+    </header>
   );
 }
 function label(value: unknown) {
@@ -543,8 +564,8 @@ function InfoCard({
   items: [string, unknown][];
 }) {
   return (
-    <WorkSheet title={title}>
-      <div className="grid gap-4 sm:grid-cols-2">
+    <WorkSheet title={title} className="border border-border shadow-none [&>div:last-child]:p-4">
+      <div className="grid gap-3 sm:grid-cols-2">
         {items.map(([name, value]) => (
           <div key={name}>
              <p className="text-caption font-semibold uppercase tracking-wider text-muted">
@@ -563,13 +584,13 @@ function InfoCard({
 }
 function PlacementCard({ placements }: { placements?: any[] }) {
   return (
-    <WorkSheet id="placement" title="Penempatan">
+    <WorkSheet id="placement" title="Penempatan" className="border border-border shadow-none [&>div:last-child]:p-4">
         {placements?.length ? (
           <div className="space-y-2">
             {placements.map((item) => (
               <div
                 key={item.id}
-                className="flex gap-3 rounded-xl bg-slate-50 p-3"
+                className="flex gap-3 border-b border-border py-3 last:border-b-0"
               >
                 <MapPin className="mt-0.5 size-4 shrink-0 text-brand" />
                 <div>
@@ -621,7 +642,7 @@ function HistoryGrid({ data }: { data: ProfileData }) {
   return (
     <div className="grid gap-4 xl:grid-cols-2">
       {sections.map(({ icon: Icon, ...section }) => (
-        <WorkSheet key={section.title} title={<span className="flex items-center gap-2"><Icon className="size-5 text-brand" />{section.title}</span>}>
+        <WorkSheet key={section.title} className="border border-border shadow-none [&>div:last-child]:p-4" title={<span className="flex items-center gap-2"><Icon className="size-5 text-brand" />{section.title}</span>}>
             {section.rows?.length ? (
               <div className="divide-y">
                 {section.rows.slice(0, 5).map((row: any) => (

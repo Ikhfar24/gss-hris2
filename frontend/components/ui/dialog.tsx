@@ -23,10 +23,10 @@ export function DialogContent({
       };
   return (
     <DialogPrimitive.Portal>
-      <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-binder-deep/72 data-[state=open]:animate-in" />
+      <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-binder-deep/64 data-[state=open]:animate-in" />
       <DialogPrimitive.Content
         className={cn(
-          "fixed inset-x-0 bottom-0 z-50 max-h-[calc(100dvh-env(safe-area-inset-top)-0.75rem)] w-full overscroll-contain overflow-x-hidden overflow-y-auto rounded-t-2xl border border-border bg-surface p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-lift sm:bottom-auto sm:left-1/2 sm:right-auto sm:top-1/2 sm:w-[calc(100%-2rem)] sm:max-w-md sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-xl sm:p-6",
+          "fixed inset-x-0 bottom-0 z-50 max-h-[calc(100dvh-env(safe-area-inset-top)-0.75rem)] w-full overscroll-contain overflow-x-hidden overflow-y-auto rounded-t-2xl border border-border bg-surface p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-lift sm:bottom-auto sm:left-1/2 sm:right-auto sm:top-1/2 sm:w-[calc(100%-2rem)] sm:max-w-md sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-xl sm:p-5",
           className,
         )}
         style={viewportStyle}

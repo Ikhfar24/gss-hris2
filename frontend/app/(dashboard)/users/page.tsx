@@ -162,36 +162,36 @@ export default function UsersPage() {
 
   const actionProps = { canManageUsers, canManageCredential, onEdit: (user: UserRow) => setEditing({ ...user, reason: '' }), onLifecycle: (user: UserRow, action: LifecycleAction['action']) => setLifecycleAction({ user, action, reason: '' }), onCredential: openCredential };
 
-  return <DossierPage className="space-y-5">
-    <ContextBand title="Manajemen User" description="Kelola identitas akun, akses, tautan karyawan, dan kredensial sementara." meta={<span>{session.role === 'SYSTEM_ADMIN' ? 'OTORITAS SISTEM' : 'OTORITAS ADMIN HR'}</span>} />
+  return <DossierPage className="space-y-3">
+    <ContextBand className="mb-0 rounded-none border-x-0 border-t-0 bg-transparent px-0 py-3 shadow-none" title="Manajemen User" description="Kelola identitas akun, akses, tautan karyawan, dan kredensial sementara." meta={<span>{session.role === 'SYSTEM_ADMIN' ? 'OTORITAS SISTEM' : 'OTORITAS ADMIN HR'}</span>} />
     {error && <Alert variant="danger" title="Akun tidak dapat diproses">{error}</Alert>}
 
-    {canManageUsers && <WorkSheet title="Buat Akun" description="Hubungkan akun ke profil karyawan bila layanan personal diperlukan.">
-      <form onSubmit={create} className="grid max-w-3xl gap-4 sm:grid-cols-2">
+    {canManageUsers && <details className="rounded-xl border border-border bg-paper px-4 py-3"><summary className="cursor-pointer text-sm font-semibold text-brand">Buat akun baru</summary><WorkSheet className="mt-3 border-0 shadow-none [&>div:first-child]:py-2.5 [&>div:last-child]:p-3" title="Buat Akun" description="Hubungkan akun ke profil karyawan bila layanan personal diperlukan.">
+      <form onSubmit={create} className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[1fr_1.2fr_0.8fr_1.2fr_auto] xl:items-end">
         <label className="text-sm font-semibold text-foreground">Nama<Input required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} className="mt-1" /></label>
         <label className="text-sm font-semibold text-foreground">Email login<Input required type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} className="mt-1" /></label>
         <label className="text-sm font-semibold text-foreground">Role<Select value={form.role} onChange={(event) => setForm({ ...form, role: event.target.value })} className="mt-1">{assignableRoles.map((role) => <option key={role} value={role}>{ROLE_LABELS[role] ?? role}</option>)}</Select></label>
         <label className="text-sm font-semibold text-foreground">Profil karyawan<Select value={form.employeeId} onChange={(event) => setForm({ ...form, employeeId: event.target.value })} className="mt-1"><option value="">Tanpa profil karyawan</option>{employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.name} · {employee.employeeNumber ?? 'Tanpa NIP'}</option>)}</Select></label>
-        <p className="text-caption text-muted sm:col-span-2">Password kuat dibuat oleh server dan hanya tersedia melalui proses reveal yang diaudit.</p>
-        <Button className="w-full sm:col-span-2 sm:w-auto">Tambah User</Button>
+        <p className="text-caption text-muted sm:col-span-2 xl:col-span-4">Password kuat dibuat oleh server dan hanya tersedia melalui proses reveal yang diaudit.</p>
+        <Button className="w-full sm:col-span-2 sm:w-auto xl:col-span-1 xl:col-start-5 xl:row-start-1">Tambah User</Button>
       </form>
-    </WorkSheet>}
+    </WorkSheet></details>}
 
-    {canManageScopes && <WorkSheet id="coordinator-scopes" title="Cakupan Koordinator" description="Scope aktif terpisah dari role User dan berlaku untuk jenis tenaga yang dipilih.">
+    {canManageScopes && <details className="rounded-xl border border-border bg-paper px-4 py-3"><summary className="cursor-pointer text-sm font-semibold text-brand">Kelola cakupan Koordinator</summary><WorkSheet className="mt-3 border-0 shadow-none [&>div:first-child]:py-2.5 [&>div:last-child]:p-3" id="coordinator-scopes" title="Cakupan Koordinator" description="Scope aktif terpisah dari role User dan berlaku untuk jenis tenaga yang dipilih.">
       <div className="grid items-end gap-3 sm:grid-cols-[minmax(14rem,1fr)_minmax(12rem,0.7fr)_auto_auto]">
         <label className="min-w-0 text-sm font-semibold text-foreground">User Koordinator<Select required value={scopeForm.userId} onChange={(event) => setScopeForm({ ...scopeForm, userId: event.target.value })} className="mt-1"><option value="">Pilih User Koordinator</option>{data.data.filter((user) => user.role === 'KOORDINATOR' && user.isActive).map((user) => <option key={user.id} value={user.id}>{user.name} · {user.email}</option>)}</Select></label>
         <label className="min-w-0 text-sm font-semibold text-foreground">Jenis tenaga<Select value={scopeForm.employmentType} onChange={(event) => setScopeForm({ ...scopeForm, employmentType: event.target.value as CoordinatorScope['employmentType'] })} className="mt-1">{SCOPE_TYPES.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}</Select></label>
         <Button type="button" onClick={() => void setScope(true)}>Tetapkan</Button>
         <Button type="button" variant="danger" onClick={() => void setScope(false)}>Cabut</Button>
       </div>
-      <div className="mt-5 divide-y divide-border border-t border-border">
+      <div className="mt-3 divide-y divide-border border-t border-border">
         {scopes.filter((scope) => scope.active).map((scope) => <div key={scope.id} className="flex min-w-0 flex-col gap-3 py-3 sm:flex-row sm:items-center"><div className="min-w-0 flex-1"><p className="break-words font-semibold text-brand [overflow-wrap:anywhere]">{scope.coordinator.name}</p><p className="break-all text-caption text-muted">{scope.coordinator.email}</p></div><Badge className="self-start sm:self-auto">{SCOPE_TYPES.find((type) => type.value === scope.employmentType)?.label}</Badge><Button size="sm" variant="danger" type="button" onClick={() => void setScope(false, scope.coordinatorUserId, scope.employmentType)}>Cabut</Button></div>)}
         {scopes.filter((scope) => scope.active).length === 0 && <p className="py-5 text-center text-body text-muted">Belum ada cakupan aktif.</p>}
       </div>
-    </WorkSheet>}
+    </WorkSheet></details>}
 
-    <WorkSheet title="Daftar Akun" description="Identitas akun menjadi acuan utama; akses dan kredensial ditampilkan sebagai kondisi terpisah.">
-      <div className="mb-5 flex min-w-0 flex-col gap-3 sm:flex-row sm:items-end">
+    <WorkSheet className="shadow-none [&>div:first-child]:py-2.5 [&>div:last-child]:p-3" title="Daftar Akun" description="Identitas akun menjadi acuan utama; akses dan kredensial ditampilkan sebagai kondisi terpisah.">
+      <div className="mb-3 flex min-w-0 flex-col gap-2 border-b border-border pb-3 sm:flex-row sm:items-end">
         <label className="min-w-0 flex-1 text-sm font-semibold text-foreground">Cari user<Input placeholder="Nama atau email" value={search} onChange={(event) => setSearch(event.target.value)} className="mt-1" /></label>
         <Button type="button" variant="secondary" onClick={() => void load()}>Cari</Button>
         <span className="text-caption tabular-nums text-muted sm:pb-2.5">{data.meta.total} user</span>

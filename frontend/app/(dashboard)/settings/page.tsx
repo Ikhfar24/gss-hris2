@@ -63,10 +63,10 @@ export default function SettingsPage() {
   if (!form) return <LoadingState label="Memuat pengaturan perusahaan"><div className="h-96 animate-pulse rounded-2xl bg-surface-subtle" /></LoadingState>;
 
   return (
-    <DossierPage className="max-w-xl">
-      <ContextBand title="Company Settings" description="Identitas perusahaan dapat diganti tanpa mengubah source code (PRD §18)." meta={<span>IDENTITAS & BRANDING</span>} />
+    <DossierPage className="max-w-3xl space-y-5">
+      <ContextBand className="mb-0 border border-border bg-paper px-4 py-4 text-foreground shadow-none sm:px-5 [&_h1]:text-brand [&_.text-white\/70]:text-muted [&_.text-white\/72]:text-muted" title="Company Settings" description="Identitas perusahaan dapat diganti tanpa mengubah source code (PRD §18)." meta={<span>IDENTITAS & BRANDING</span>} />
 
-      <WorkSheet title="Konfigurasi Branding"><form onSubmit={onSubmit} aria-busy={saving} className="grid gap-4">
+      <WorkSheet className="border border-border shadow-none" title="Konfigurasi Branding"><form onSubmit={onSubmit} aria-busy={saving} className="grid gap-4 sm:grid-cols-2">
         <Field label="Nama Perusahaan" value={form.companyName} onChange={(v) => setForm({ ...form, companyName: v })} />
         <Field label="Nama Aplikasi" value={form.appName} onChange={(v) => setForm({ ...form, appName: v })} />
         <Field label="Email" value={form.email ?? ''} onChange={(v) => setForm({ ...form, email: v })} />
@@ -75,10 +75,10 @@ export default function SettingsPage() {
         <Field label="Path Favicon (contoh: /branding/favicon.ico)" value={form.faviconUrl ?? ''} onChange={(v) => setForm({ ...form, faviconUrl: v })} />
         <Field label="Warna Utama" value={form.primaryColor ?? ''} onChange={(v) => setForm({ ...form, primaryColor: v })} />
 
-        {error && <Alert variant="danger" title="Perubahan tidak tersimpan">{error}</Alert>}
-        {saved && <Alert variant="success" title="Pengaturan disimpan">Branding terbaru telah diterapkan.</Alert>}
+        {error && <Alert variant="danger" title="Perubahan tidak tersimpan" className="sm:col-span-2">{error}</Alert>}
+        {saved && <Alert variant="success" title="Pengaturan disimpan" className="sm:col-span-2">Branding terbaru telah diterapkan.</Alert>}
 
-        <Button type="submit" disabled={saving}>{saving ? 'Menyimpan...' : 'Simpan Pengaturan'}</Button>
+        <Button type="submit" disabled={saving} className="w-full sm:col-span-2 sm:w-auto sm:justify-self-end">{saving ? 'Menyimpan...' : 'Simpan Pengaturan'}</Button>
       </form></WorkSheet>
     </DossierPage>
   );

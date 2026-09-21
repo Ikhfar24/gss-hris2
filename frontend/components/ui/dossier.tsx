@@ -7,7 +7,7 @@ export function DossierPage({
 }: React.HTMLAttributes<HTMLDivElement>) {
   return (
     <div
-      className={cn("mx-auto w-full max-w-[1480px] min-w-0", className)}
+      className={cn("mx-auto w-full max-w-[1600px] min-w-0", className)}
       {...props}
     />
   );
@@ -29,29 +29,28 @@ export function ContextBand({
   return (
     <header
       className={cn(
-        "relative mb-6 overflow-hidden rounded-xl bg-binder px-5 py-5 text-white shadow-sheet sm:px-6",
+        "relative mb-4 overflow-hidden rounded-xl border border-border bg-paper px-4 py-4 shadow-card sm:px-5",
         className,
       )}
     >
-      <span aria-hidden className="absolute inset-y-0 left-0 w-1 bg-accent" />
-      <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
+      <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
         <div className="min-w-0">
-          <h1 className="break-words text-page-title text-white [overflow-wrap:anywhere]">
+          <h1 className="break-words text-page-title text-brand [overflow-wrap:anywhere]">
             {title}
           </h1>
           {description && (
-            <div className="mt-1 max-w-3xl text-body text-white/72">
+            <div className="mt-1 max-w-3xl text-body text-muted">
               {description}
             </div>
           )}
           {meta && (
-            <div className="mt-3 flex flex-wrap gap-2 text-caption text-white/70">
+            <div className="mt-2 flex flex-wrap gap-2 text-caption text-muted">
               {meta}
             </div>
           )}
         </div>
         {actions && (
-          <div className="flex w-full flex-wrap gap-2 sm:w-auto sm:shrink-0 sm:justify-end [&_.bg-brand]:border-white/20 [&_.bg-brand]:bg-white [&_.bg-brand]:text-brand">
+          <div className="flex w-full flex-wrap gap-2 sm:w-auto sm:shrink-0 sm:justify-end">
             {actions}
           </div>
         )}
@@ -74,11 +73,11 @@ export function WorkSheet({
 }) {
   return (
     <section
-      className={cn("min-w-0 rounded-xl bg-paper shadow-sheet", className)}
+      className={cn("min-w-0 rounded-xl border border-border bg-paper shadow-card", className)}
       {...props}
     >
       {(title || description || actions) && (
-        <div className="flex flex-col justify-between gap-3 border-b border-border px-5 py-4 sm:flex-row sm:items-center">
+        <div className="flex flex-col justify-between gap-2 border-b border-border px-4 py-3 sm:flex-row sm:items-center">
           <div className="min-w-0">
             {title && (
               <h2 className="break-words text-section-title text-brand [overflow-wrap:anywhere]">
@@ -92,7 +91,7 @@ export function WorkSheet({
           {actions && <div className="flex flex-wrap gap-2">{actions}</div>}
         </div>
       )}
-      <div className="min-w-0 p-5">{children}</div>
+      <div className="min-w-0 p-4">{children}</div>
     </section>
   );
 }
@@ -107,7 +106,7 @@ export function MetricStrip({
   return (
     <section
       className={cn(
-        "grid overflow-hidden rounded-xl bg-paper shadow-sheet sm:grid-cols-2 xl:grid-cols-4 [&>*]:border-t-0 [&>*+*]:border-l",
+        "grid gap-3 sm:grid-cols-2 xl:grid-cols-4",
         className,
       )}
     >
@@ -124,7 +123,7 @@ export function MobileRecord({
   return (
     <article
       className={cn(
-        "min-w-0 overflow-hidden rounded-xl bg-paper shadow-card",
+        "min-w-0 overflow-hidden rounded-xl border border-border bg-paper shadow-control",
         className,
       )}
       {...props}
@@ -196,7 +195,7 @@ export function DataRegion({
   return (
     <div
       className={cn(
-        "max-w-full overflow-x-auto overscroll-x-contain rounded-xl bg-paper shadow-sheet [&_table]:w-full [&_thead]:bg-binder [&_thead]:text-left [&_thead]:text-caption [&_thead]:font-semibold [&_thead]:text-white/75 [&_th]:whitespace-nowrap [&_th]:px-4 [&_th]:py-3 [&_tbody_tr]:border-b [&_tbody_tr]:border-border [&_tbody_tr]:transition-colors [&_tbody_tr:hover]:bg-surface-subtle [&_td]:px-4 [&_td]:py-3",
+        "max-w-full overflow-x-auto overscroll-x-contain rounded-xl border border-border bg-paper shadow-control [&_table]:w-full [&_thead]:bg-surface-subtle [&_thead]:text-left [&_thead]:text-caption [&_thead]:font-semibold [&_thead]:text-muted [&_th]:whitespace-nowrap [&_th]:px-4 [&_th]:py-2.5 [&_tbody_tr]:border-b [&_tbody_tr]:border-border [&_tbody_tr]:transition-colors [&_tbody_tr:last-child]:border-b-0 [&_tbody_tr:hover]:bg-surface-subtle/75 [&_td]:px-4 [&_td]:py-2.5",
         className,
       )}
       {...props}
@@ -211,7 +210,7 @@ export function FilterRail({
   return (
     <div
       className={cn(
-        "mb-5 flex min-w-0 flex-col gap-3 rounded-xl bg-binder px-4 py-4 text-white shadow-sheet sm:flex-row sm:flex-wrap sm:items-end [&_label]:text-white/75 [&_.input]:border-white/15 [&_.input]:bg-white [&_.input]:text-foreground",
+        "mb-4 flex min-w-0 flex-col gap-3 rounded-xl border border-border bg-paper px-4 py-3 shadow-control sm:flex-row sm:flex-wrap sm:items-end [&_label]:text-muted",
         className,
       )}
       {...props}

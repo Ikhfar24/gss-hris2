@@ -15,6 +15,14 @@ import { XlsxImportPanel } from "@/components/XlsxImportPanel";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { ActionDialog } from "@/components/ui/action-dialog";
+import {
+  ActionMenuTrigger,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Alert } from "@/components/ui/feedback";
 import { DossierPage } from "@/components/ui/dossier";
 
@@ -444,18 +452,18 @@ export default function EmployeesPage() {
 
   return (
     <DossierPage>
-      <div className="dossier-index mb-5 flex flex-wrap items-center justify-between gap-4 rounded-xl bg-binder px-5 py-5 text-white shadow-sheet">
+      <header className="mb-3 flex flex-col justify-between gap-3 border-b border-border pb-3 sm:flex-row sm:items-end">
         <div>
-          <p className="text-xs font-bold uppercase tracking-[0.14em] text-white/50">
+          <p className="text-caption font-semibold text-muted">
             {isCoordinator ? "TIM" : isAdminHr ? "WORKFORCE" : "TENAGA KERJA"}
           </p>
-          <h1 className="mt-1 text-2xl font-bold text-white">
+          <h1 className="mt-1 text-page-title text-brand">
             {isCoordinator
               ? `Tim Saya${scopeTypes.length === 1 ? ` — ${TYPE_LABEL[scopeTypes[0]].replace("Tenaga ", "")}` : ""}`
               : "Data Karyawan"}
           </h1>
           {redesignedList && (
-            <p className="mt-1 text-sm text-white/65">
+            <p className="mt-0.5 text-body text-muted">
               {isCoordinator
                 ? "Daftar ini selalu dibatasi oleh CoordinatorScope aktif Anda."
                 : "Cari dan buka Profil Lengkap untuk administrasi karyawan."}
@@ -480,7 +488,7 @@ export default function EmployeesPage() {
                       ),
                     )
                   }
-                  className="rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-sm font-semibold text-white hover:bg-white/15"
+                  className="rounded-lg border border-border bg-paper px-3 py-2 text-sm font-semibold text-foreground hover:bg-surface-subtle"
                 >
                   Ekspor Excel
                 </button>
@@ -498,7 +506,7 @@ export default function EmployeesPage() {
                       ),
                     )
                   }
-                  className="rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-sm font-semibold text-white hover:bg-white/15"
+                  className="rounded-lg border border-border bg-paper px-3 py-2 text-sm font-semibold text-foreground hover:bg-surface-subtle"
                 >
                   Ekspor PDF
                 </button>
@@ -551,13 +559,13 @@ export default function EmployeesPage() {
           {canManage && (
             <button
               onClick={() => setShowForm((s) => !s)}
-                className="rounded-lg border border-white bg-white px-4 py-2 text-sm font-semibold text-brand hover:bg-white/90"
+                className="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-brand-hover"
             >
               {showForm ? "Batal" : "+ Tambah Karyawan"}
             </button>
           )}
         </div>
-      </div>
+      </header>
 
       {error && <Alert variant="danger" className="mb-4">{error}</Alert>}
       {success && <Alert variant="success" className="mb-4">{success}</Alert>}
@@ -678,7 +686,7 @@ export default function EmployeesPage() {
       {showForm && (
         <form
           onSubmit={onCreate}
-          className="mb-6 grid max-w-xl gap-3 rounded-xl border border-slate-200 bg-white p-4"
+          className="mb-4 grid max-w-2xl gap-2 rounded-xl border border-border bg-paper p-3 sm:grid-cols-2"
         >
           <input
             required
@@ -702,7 +710,7 @@ export default function EmployeesPage() {
             onChange={(e) => setForm({ ...form, nik: e.target.value })}
             className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
           />
-          <p className="text-xs text-slate-500">NIK dan NIP adalah identitas berbeda. Gunakan format teks agar nol di depan tidak hilang.</p>
+          <p className="text-xs text-slate-500 sm:col-span-2">NIK dan NIP adalah identitas berbeda. Gunakan format teks agar nol di depan tidak hilang.</p>
           <input
             placeholder="Nomor telepon/WhatsApp"
             value={form.phone}
@@ -771,7 +779,7 @@ export default function EmployeesPage() {
           <button
             type="submit"
             disabled={submitting}
-            className="rounded-lg bg-slate-900 py-2 text-sm text-white hover:bg-slate-800 disabled:opacity-60"
+            className="rounded-lg bg-slate-900 py-2 text-sm text-white hover:bg-slate-800 disabled:opacity-60 sm:col-span-2"
           >
             {submitting ? "Menyimpan..." : "Simpan Karyawan"}
           </button>
@@ -780,7 +788,7 @@ export default function EmployeesPage() {
 
       <form
         onSubmit={applyFilters}
-        className="mb-4 grid gap-2 rounded-xl bg-binder p-4 shadow-sheet sm:grid-cols-2 lg:flex lg:flex-wrap"
+        className="mb-3 grid gap-2 border-y border-border bg-paper py-2 sm:grid-cols-2 lg:grid-cols-[minmax(18rem,1fr)_10rem_11rem_auto] lg:items-center"
       >
         <label className="relative flex-1">
           <span className="sr-only">Cari karyawan</span>
@@ -789,14 +797,14 @@ export default function EmployeesPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Cari nama, NIP, atau jabatan"
-            className="input min-h-11 w-full pl-9"
+            className="input min-h-11 w-full pl-9 lg:min-h-10"
           />
         </label>
         <select
           aria-label="Filter status karyawan"
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          className="input min-h-11"
+          className="input min-h-11 lg:min-h-10 lg:w-full"
         >
           <option value="">Semua status</option>
           {Object.keys(STATUS_STYLE)
@@ -812,7 +820,7 @@ export default function EmployeesPage() {
             aria-label="Filter jenis tenaga"
             value={typeFilter}
             onChange={(e) => setTypeFilter(e.target.value)}
-            className="input min-h-11"
+            className="input min-h-11 lg:min-h-10 lg:w-full"
           >
             <option value="">Semua jenis</option>
             {(!isCoordinator || scopeTypes.includes("TENAGA_BORONGAN")) && (
@@ -828,22 +836,29 @@ export default function EmployeesPage() {
         )}
         <button
           type="submit"
-          className="min-h-11 rounded-lg border border-white/20 bg-white px-4 text-sm font-semibold text-brand"
+          className="min-h-11 rounded-lg bg-brand px-4 text-sm font-semibold text-white hover:bg-brand-hover lg:min-h-10"
         >
           Terapkan
         </button>
       </form>
 
       {canManage && (
-        <XlsxImportPanel
-          resource="employees"
-          title="Impor Karyawan dari Excel"
-          onCommitted={() => load(1)}
-        />
+        <details className="mb-3 rounded-xl border border-border bg-paper px-4 py-3">
+          <summary className="cursor-pointer text-sm font-semibold text-brand">
+            Impor karyawan dari Excel
+          </summary>
+          <div className="mt-3 border-t border-border pt-3">
+            <XlsxImportPanel
+              resource="employees"
+              title="Impor Karyawan dari Excel"
+              onCommitted={() => load(1)}
+            />
+          </div>
+        </details>
       )}
 
       {canManage && selectedIds.length > 0 && (
-        <div className="mb-4 hidden flex-wrap items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm md:flex">
+        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-warning-border bg-warning-surface p-3 text-sm">
           <span>{selectedIds.length} karyawan dipilih</span>
           <input
             value={bulkReason}
@@ -878,16 +893,30 @@ export default function EmployeesPage() {
           ))}
         </div>
       ) : (
-        redesignedList && (
-          <div className="grid gap-3 md:hidden">
+        <div className="grid gap-3 md:hidden">
             {employees.map((employee) => {
               const attendance = todayAttendance[employee.id];
               return (
                 <article
                   key={employee.id}
-                  className="overflow-hidden rounded-xl bg-paper p-4 shadow-card"
+                  className="overflow-hidden rounded-xl bg-paper p-4 shadow-card border border-border"
                 >
                   <div className="flex items-start gap-3">
+                    {canManage && (
+                      <input
+                        type="checkbox"
+                        aria-label={`Pilih ${employee.name}`}
+                        checked={selectedIds.includes(employee.id)}
+                        onChange={(event) =>
+                          setSelectedIds((ids) =>
+                            event.target.checked
+                              ? [...ids, employee.id]
+                              : ids.filter((id) => id !== employee.id),
+                          )
+                        }
+                        className="mt-3 size-4 shrink-0 accent-brand"
+                      />
+                    )}
                     <EmployeeAvatar
                       name={employee.name}
                       photoUrl={employee.photoUrl}
@@ -918,7 +947,7 @@ export default function EmployeesPage() {
                       )}
                     </div>
                   </div>
-                  <div className={`mt-5 grid gap-2 border-t border-border pt-4 ${isCoordinator ? "grid-cols-2" : "grid-cols-1"}`}>
+                    <div className={`mt-5 grid gap-2 border-t border-border pt-4 ${isCoordinator ? "grid-cols-2" : "grid-cols-1"}`}>
                     <Link
                       href={`/employees/${employee.id}/360`}
                       className="inline-flex min-h-11 items-center justify-center rounded-xl bg-brand px-3 text-sm font-semibold text-white"
@@ -926,16 +955,103 @@ export default function EmployeesPage() {
                       <UserRound className="mr-2 size-4" />
                       Profil Lengkap
                     </Link>
-                    {isCoordinator && (
+                     {isCoordinator && (
                       <Link
                         href={`/attendance?employeeId=${employee.id}`}
                         className="inline-flex min-h-11 items-center justify-center rounded-xl border px-3 text-sm font-semibold text-slate-600"
                       >
                         Absensi
                       </Link>
-                    )}
-                  </div>
-                </article>
+                     )}
+                     {canManage && (
+                       <>
+                         <button
+                           type="button"
+                           onClick={() => toggleContracts(employee.id)}
+                           className="min-h-11 rounded-lg border border-border px-3 text-sm font-semibold text-foreground"
+                         >
+                           {expandedId === employee.id ? "Tutup" : "Kelola Kontrak"}
+                         </button>
+                         <button
+                           type="button"
+                           onClick={() => editEmployee(employee)}
+                           className="min-h-11 rounded-lg border border-border px-3 text-sm font-semibold text-foreground"
+                         >
+                           Edit
+                         </button>
+                         <button
+                           type="button"
+                           onClick={() =>
+                             setLifecycleTarget({
+                               employee,
+                               action:
+                                 employee.status === "INACTIVE"
+                                   ? "reactivate"
+                                   : "deactivate",
+                             })
+                           }
+                           className="min-h-11 rounded-lg border border-border px-3 text-sm font-semibold text-foreground"
+                         >
+                           {employee.status === "INACTIVE"
+                             ? "Aktifkan"
+                             : "Nonaktifkan"}
+                         </button>
+                         {!employee.user && (
+                           <Link
+                             href={`/users?employeeId=${encodeURIComponent(employee.id)}`}
+                             className="inline-flex min-h-11 items-center justify-center rounded-lg border border-border px-3 text-sm font-semibold text-foreground"
+                           >
+                             Buat Akun Login
+                           </Link>
+                         )}
+                         <button
+                           type="button"
+                           onClick={() => setForceDeleteTarget(employee)}
+                           className="min-h-11 rounded-lg border border-danger-border px-3 text-sm font-semibold text-danger"
+                         >
+                           Hapus Paksa
+                         </button>
+                       </>
+                     )}
+                   </div>
+                   {canManage && expandedId === employee.id && (
+                     <div className="mt-4 border-t border-border pt-4">
+                       <p className="text-caption font-semibold text-muted">
+                         RIWAYAT KONTRAK
+                       </p>
+                       {(contracts[employee.id] ?? []).length ? (
+                         <ul className="mt-2 divide-y divide-border text-sm">
+                           {(contracts[employee.id] ?? []).map((contract) => (
+                             <li key={contract.id} className="py-2 text-foreground">
+                               <span className="font-semibold">{contract.type}</span>{" "}
+                               · {new Date(contract.startDate).toLocaleDateString("id-ID")}
+                               {contract.endDate
+                                 ? ` - ${new Date(contract.endDate).toLocaleDateString("id-ID")}`
+                                 : " (tanpa batas)"}
+                               {" "}· {formatRupiah(contract.baseSalary)}/bulan
+                             </li>
+                           ))}
+                         </ul>
+                       ) : (
+                         <p className="mt-2 text-sm text-muted">Belum ada kontrak.</p>
+                       )}
+                       <form
+                         onSubmit={(event) => onAddContract(employee.id, event)}
+                         className="mt-3 grid gap-2"
+                       >
+                         <select value={contractForm.type} onChange={(event) => setContractForm({ ...contractForm, type: event.target.value })} className="input">
+                           <option value="PKWT">PKWT</option>
+                           <option value="PKWTT">PKWTT</option>
+                           <option value="OTHER">Lainnya</option>
+                         </select>
+                         <input type="number" min={0} required placeholder="Gaji pokok/bulan" value={contractForm.baseSalary} onChange={(event) => setContractForm({ ...contractForm, baseSalary: event.target.value })} className="input" />
+                         <input type="date" required value={contractForm.startDate} onChange={(event) => setContractForm({ ...contractForm, startDate: event.target.value })} className="input" />
+                         <input type="date" value={contractForm.endDate} onChange={(event) => setContractForm({ ...contractForm, endDate: event.target.value })} className="input" />
+                         <Button type="submit">+ Tambah Kontrak</Button>
+                       </form>
+                     </div>
+                   )}
+                 </article>
               );
             })}
             {employees.length === 0 && (
@@ -949,16 +1065,15 @@ export default function EmployeesPage() {
               />
             )}
           </div>
-        )
       )}
       <div
-         className={`${redesignedList ? "hidden md:block" : ""} overflow-x-auto overscroll-x-contain rounded-xl bg-paper shadow-sheet`}
+         className="hidden overflow-x-auto overscroll-x-contain rounded-xl border border-border bg-paper md:block"
       >
         <table className="w-full min-w-[980px] text-sm">
-           <thead className="bg-binder text-left text-white/75">
+           <thead className="bg-surface-subtle text-left text-caption font-semibold text-muted">
             <tr>
               {canManage && (
-                 <th scope="col" className="px-4 py-2">
+                 <th scope="col" className="px-3 py-2.5">
                   <input
                     type="checkbox"
                     aria-label="Pilih semua"
@@ -974,20 +1089,20 @@ export default function EmployeesPage() {
                   />
                 </th>
               )}
-              <th scope="col" className="px-4 py-2">Nama</th>
-              <th scope="col" className="px-4 py-2">Jenis</th>
-              <th scope="col" className="px-4 py-2">Status</th>
-              <th scope="col" className="px-4 py-2">Lokasi Kerja</th>
-              {canManage && <th scope="col" className="px-4 py-2">Tarif Harian</th>}
-              <th scope="col" className="px-4 py-2"><span className="sr-only">Tindakan</span></th>
+               <th scope="col" className="px-3 py-2.5">Nama</th>
+               <th scope="col" className="px-3 py-2.5">Jenis</th>
+               <th scope="col" className="px-3 py-2.5">Status</th>
+               <th scope="col" className="px-3 py-2.5">Lokasi Kerja</th>
+               {canManage && <th scope="col" className="px-3 py-2.5">Tarif Harian</th>}
+               <th scope="col" className="px-3 py-2.5"><span className="sr-only">Tindakan</span></th>
             </tr>
           </thead>
           <tbody>
             {employees.map((emp) => (
               <Fragment key={emp.id}>
-                 <tr className="border-b border-border transition-colors hover:bg-surface-subtle">
+                  <tr className="border-b border-border transition-colors hover:bg-surface-subtle/70">
                   {canManage && (
-                    <td className="px-4 py-2">
+                    <td className="px-3 py-2">
                       <input
                         type="checkbox"
                         aria-label={`Pilih ${emp.name}`}
@@ -1002,28 +1117,28 @@ export default function EmployeesPage() {
                       />
                     </td>
                   )}
-                  <td className="px-4 py-2">
+                  <td className="px-3 py-2">
                     <div className="flex items-center gap-3">
-                      <EmployeeAvatar name={emp.name} photoUrl={emp.photoUrl} />
+                      <EmployeeAvatar name={emp.name} photoUrl={emp.photoUrl} size="sm" className="size-9" />
                       <div className="min-w-0">
                         <p className="font-semibold text-navy">{emp.name}</p>
                         <p className="text-xs text-slate-500">{emp.employeeNumber ?? "NIP belum tersedia"}</p>
                       </div>
                     </div>
                   </td>
-                  <td className="px-4 py-2">
+                  <td className="px-3 py-2">
                     {TYPE_LABEL[emp.employmentType]}
                   </td>
-                  <td className="px-4 py-2">
+                  <td className="px-3 py-2">
                     <StatusBadge status={emp.status} />
                   </td>
-                  <td className="px-4 py-2">
+                  <td className="px-3 py-2">
                     {emp.placements[0]?.location?.name ?? "-"}
                   </td>
                   {canManage && (
-                    <td className="px-4 py-2">{formatRupiah(emp.dailyRate)}</td>
+                    <td className="px-3 py-2">{formatRupiah(emp.dailyRate)}</td>
                   )}
-                  <td className="px-4 py-2 text-right">
+                  <td className="whitespace-nowrap px-3 py-2 text-right">
                     <Link
                       href={`/employees/${emp.id}/360`}
                       className="inline-flex min-h-9 items-center rounded-lg bg-brand px-3 text-xs font-semibold text-white"
@@ -1031,32 +1146,19 @@ export default function EmployeesPage() {
                       Profil Lengkap
                     </Link>
                     {canManage && (
-                      <button
-                        onClick={() => toggleContracts(emp.id)}
-                        className="ml-2 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
-                      >
-                        {expandedId === emp.id ? "Tutup" : "Kelola Kontrak"}
-                      </button>
-                    )}
-                    {canManage && (
-                      <>
-                        <button
-                          onClick={() => editEmployee(emp)}
-                          className="ml-2 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                        >
-                          Edit
-                        </button>
-                        <button
-                           onClick={() => setLifecycleTarget({ employee: emp, action: emp.status === "INACTIVE" ? "reactivate" : "deactivate" })}
-                          className="ml-2 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                        >
-                          {emp.status === "INACTIVE"
-                            ? "Aktifkan"
-                            : "Nonaktifkan"}
-                        </button>
-                        {!emp.user && <Link href={`/users?employeeId=${encodeURIComponent(emp.id)}`} className="ml-2 inline-flex rounded-lg bg-navy px-3 py-2 text-xs font-semibold text-white">Buat Akun Login</Link>}
-                        <button onClick={() => setForceDeleteTarget(emp)} className="ml-2 rounded-lg bg-danger px-3 py-2 text-xs font-semibold text-white hover:bg-danger-hover">Hapus Paksa</button>
-                      </>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <span className="ml-2 inline-flex"><ActionMenuTrigger label={`Tindakan lain untuk ${emp.name}`} /></span>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onSelect={() => toggleContracts(emp.id)}>{expandedId === emp.id ? "Tutup Kontrak" : "Kelola Kontrak"}</DropdownMenuItem>
+                          <DropdownMenuItem onSelect={() => editEmployee(emp)}>Edit Karyawan</DropdownMenuItem>
+                          <DropdownMenuItem onSelect={() => setLifecycleTarget({ employee: emp, action: emp.status === "INACTIVE" ? "reactivate" : "deactivate" })}>{emp.status === "INACTIVE" ? "Aktifkan" : "Nonaktifkan"}</DropdownMenuItem>
+                          {!emp.user && <DropdownMenuItem asChild><Link href={`/users?employeeId=${encodeURIComponent(emp.id)}`}>Buat Akun Login</Link></DropdownMenuItem>}
+                          <DropdownMenuSeparator className="my-1 h-px bg-border" />
+                          <DropdownMenuItem danger onSelect={() => setForceDeleteTarget(emp)}>Hapus Paksa</DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     )}
                   </td>
                 </tr>

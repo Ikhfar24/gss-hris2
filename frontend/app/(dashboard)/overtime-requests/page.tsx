@@ -159,7 +159,7 @@ export default function OvertimeRequestsPage() {
   };
 
   return (
-    <DossierPage className={isEmployee ? 'max-w-5xl' : ''}>
+    <DossierPage className={`${isEmployee ? 'max-w-5xl ' : ''}space-y-5`}>
       {isEmployee && (
         <Link
           href="/requests"
@@ -169,14 +169,14 @@ export default function OvertimeRequestsPage() {
           Kembali ke Pengajuan
         </Link>
       )}
-      <ContextBand title="Pengajuan Lembur" description={isEmployee ? 'Catat waktu dan alasan lembur sesuai pekerjaan Anda.' : 'Tinjau pengajuan lembur sesuai cakupan kewenangan Anda.'} meta={<span>{isEmployee ? 'PRIBADI' : 'WORK QUEUE · LEMBUR'}</span>} />
+      <ContextBand className="mb-0 border border-border bg-paper px-4 py-4 text-foreground shadow-none sm:px-5 [&_h1]:text-brand [&_.text-white\/70]:text-muted [&_.text-white\/72]:text-muted" title="Pengajuan Lembur" description={isEmployee ? 'Catat waktu dan alasan lembur sesuai pekerjaan Anda.' : 'Tinjau pengajuan lembur sesuai cakupan kewenangan Anda.'} meta={<span>{isEmployee ? 'PRIBADI' : 'WORK QUEUE · LEMBUR'}</span>} />
       {error && <Alert variant="danger" title="Pengajuan lembur tidak dapat diproses" className="mb-4">{error}</Alert>}
       {canSubmit && (
         <form
           id="overtime-form"
           onSubmit={submit}
           aria-busy={submitting}
-          className="mb-6 grid max-w-xl gap-3 rounded-2xl border border-border bg-surface p-4 shadow-card"
+          className="grid max-w-3xl gap-4 rounded-xl border border-border bg-paper p-4 shadow-none sm:p-5"
         >
           <label className="text-sm font-semibold text-foreground">
             Tanggal
@@ -238,7 +238,7 @@ export default function OvertimeRequestsPage() {
         {rows.map((row) => (
           <article
             key={row.id}
-            className="overflow-hidden rounded-xl bg-paper p-4 shadow-card"
+            className="overflow-hidden rounded-xl border border-border bg-paper p-4 shadow-none"
           >
             <div className="flex items-start justify-between">
               <span className="grid size-11 place-items-center rounded-xl bg-info-surface text-info">
@@ -262,7 +262,7 @@ export default function OvertimeRequestsPage() {
         ))}
         {!rows.length && <EmptyState title="Belum ada pengajuan lembur" />}
       </div>
-        <DataRegion className="hidden md:block">
+        <DataRegion className="hidden border border-border shadow-none md:block [&_td]:py-2.5 [&_th]:py-2.5 [&_thead]:bg-surface-subtle [&_thead]:text-muted">
          <table className="min-w-[760px] text-sm">
            <thead>
             <tr>
