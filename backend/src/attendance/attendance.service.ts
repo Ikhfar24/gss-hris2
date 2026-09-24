@@ -97,6 +97,7 @@ export class AttendanceService {
       ? activePlacement.location
       : employee.temporaryAssignments.find((assignment) => assignment.locationId === locationId)?.location;
     if (!location) throw new NotFoundException('Lokasi penugasan sementara tidak ditemukan');
+    if (location.deletedAt || location.isActive === false) throw new BadRequestException('Lokasi kerja tidak lagi aktif');
     return { employee, location };
   }
 
@@ -456,17 +457,17 @@ export class AttendanceService {
         OR: [{ resignDate: null }, { resignDate: { gte: date } }],
         attendanceRequired: true,
         AND: [coordinatorScope, ...(query.employmentType ? [{ employmentType: query.employmentType }] : [])],
-        placements: { some: { status: { in: ['ACTIVE', 'SCHEDULED', 'ENDED'] }, startDate: { lte: date }, OR: [{ endDate: null }, { endDate: { gte: date } }] } },
+        placements: { some: { status: { in: ['ACTIVE', 'SCHEDULED', 'ENDED'] }, startDate: { lte: date }, OR: [{ endDate: null }, { endDate: { gte: date } }], location: { deletedAt: null } } },
       },
       select: {
         id: true, name: true, photoUrl: true, employmentType: true, jobTitle: true, status: true,
         placements: {
-          where: { status: { in: ['ACTIVE', 'SCHEDULED', 'ENDED'] }, startDate: { lte: date }, OR: [{ endDate: null }, { endDate: { gte: date } }] },
+          where: { status: { in: ['ACTIVE', 'SCHEDULED', 'ENDED'] }, startDate: { lte: date }, OR: [{ endDate: null }, { endDate: { gte: date } }], location: { deletedAt: null } },
           orderBy: { startDate: 'desc' }, take: 1,
           select: { id: true, startDate: true, endDate: true, locationId: true, location: { select: { id: true, name: true, address: true, checkInTime: true, checkOutTime: true, workDays: true } } },
         },
         temporaryAssignments: {
-          where: { status: 'APPROVED', startDate: { lte: date }, endDate: { gte: date } }, orderBy: { startDate: 'desc' },
+          where: { status: 'APPROVED', startDate: { lte: date }, endDate: { gte: date }, location: { deletedAt: null } }, orderBy: { startDate: 'desc' },
           select: { id: true, status: true, startDate: true, endDate: true, locationId: true, location: { select: { id: true, name: true, address: true, checkInTime: true, checkOutTime: true, workDays: true } } },
         },
         leaveRequests: {

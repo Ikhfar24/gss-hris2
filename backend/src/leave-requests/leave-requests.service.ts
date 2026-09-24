@@ -8,6 +8,8 @@ import { assertDateRange, dateRangesOverlap, startOfCalendarDay } from '../commo
 import { CreateLeaveRequestDto } from './dto/create-leave-request.dto';
 import { ReviewLeaveRequestDto } from './dto/review-leave-request.dto';
 import { CoordinatorScopeService } from '../coordinator-scopes/coordinator-scope.service';
+import { AdjustLeaveBalanceDto } from './dto/adjust-leave-balance.dto';
+import { InitializeLeaveBalanceDto } from './dto/initialize-leave-balance.dto';
 
 const INCLUDE = {
   employee: { select: { id: true, name: true, employmentType: true } },
@@ -43,6 +45,107 @@ export class LeaveRequestsService {
     if (!request) throw new NotFoundException('Pengajuan tidak ditemukan');
     if (actor) await this.assertCanAccess(request, actor);
     return this.present(request);
+  }
+
+  async findMyLeaveBalances(actor: AuthenticatedUser) {
+    return this.readLeaveBalances(await this.resolveOwnEmployeeId(actor.userId));
+  }
+
+  async findEmployeeLeaveBalances(employeeId: string, actor: AuthenticatedUser) {
+    this.assertLeaveBalanceAdmin(actor);
+    return this.readLeaveBalances(employeeId);
+  }
+
+  async initializeLeaveBalance(employeeId: string, dto: InitializeLeaveBalanceDto, actor: AuthenticatedUser) {
+    this.assertLeaveBalanceAdmin(actor);
+    const reason = dto.reason.trim();
+    if (reason.length < 3) throw new BadRequestException('Alasan inisialisasi saldo wajib diisi');
+    await this.prisma.$transaction(async (tx) => {
+      const employee = await tx.employee.findUnique({ where: { id: employeeId }, select: { id: true } });
+      if (!employee) throw new NotFoundException('Karyawan tidak ditemukan');
+      const existing = await tx.leaveBalance.findUnique({ where: { employeeId_year: { employeeId, year: dto.year } } });
+      if (existing) throw new BadRequestException(`Saldo cuti tahun ${dto.year} sudah ada`);
+
+      const balance = await tx.leaveBalance.create({
+        data: { employeeId, year: dto.year, entitlementDays: dto.entitlementDays, usedDays: 0, remainingDays: dto.entitlementDays },
+      });
+      await tx.leaveBalanceTransaction.create({
+        data: {
+          leaveBalanceId: balance.id,
+          type: 'ENTITLEMENT',
+          daysDelta: dto.entitlementDays,
+          balanceAfter: dto.entitlementDays,
+          reason,
+          createdById: actor.userId,
+        },
+      });
+      await tx.auditLog.create({
+        data: {
+          actorId: actor.userId,
+          actorRole: actor.role as Role,
+          action: 'LEAVE_BALANCE_INITIALIZE',
+          entity: 'LeaveBalance',
+          entityId: balance.id,
+          relatedEntityId: employeeId,
+          oldValue: { employeeId, year: dto.year, entitlementDays: null, usedDays: null, remainingDays: null },
+          newValue: { employeeId, year: dto.year, entitlementDays: dto.entitlementDays, usedDays: 0, remainingDays: dto.entitlementDays, delta: dto.entitlementDays },
+          reason,
+          source: 'leave-balances',
+        },
+      });
+    });
+    return this.readLeaveBalances(employeeId);
+  }
+
+  async adjustLeaveBalance(employeeId: string, dto: AdjustLeaveBalanceDto, actor: AuthenticatedUser) {
+    this.assertLeaveBalanceAdmin(actor);
+    const reason = dto.reason.trim();
+    if (reason.length < 3) throw new BadRequestException('Alasan penyesuaian saldo wajib diisi');
+    await this.prisma.$transaction(async (tx) => {
+      const balance = await tx.leaveBalance.findUnique({ where: { employeeId_year: { employeeId, year: dto.year } } });
+      if (!balance) throw new NotFoundException(`Saldo cuti tahun ${dto.year} tidak ditemukan`);
+      const entitlementDays = balance.entitlementDays + dto.delta;
+      const remainingDays = balance.remainingDays + dto.delta;
+      if (entitlementDays < balance.usedDays || remainingDays < 0) {
+        throw new BadRequestException('Penyesuaian saldo tidak boleh mengurangi hak cuti di bawah jumlah yang telah digunakan');
+      }
+
+      const changed = await tx.leaveBalance.updateMany({
+        where: {
+          id: balance.id,
+          entitlementDays: balance.entitlementDays,
+          usedDays: balance.usedDays,
+          remainingDays: balance.remainingDays,
+        },
+        data: { entitlementDays: { increment: dto.delta }, remainingDays: { increment: dto.delta } },
+      });
+      if (changed.count !== 1) throw new BadRequestException('Saldo cuti berubah, ulangi penyesuaian');
+      await tx.leaveBalanceTransaction.create({
+        data: {
+          leaveBalanceId: balance.id,
+          type: 'MANUAL_ADJUSTMENT',
+          daysDelta: dto.delta,
+          balanceAfter: remainingDays,
+          reason,
+          createdById: actor.userId,
+        },
+      });
+      await tx.auditLog.create({
+        data: {
+          actorId: actor.userId,
+          actorRole: actor.role as Role,
+          action: 'LEAVE_BALANCE_ADJUST',
+          entity: 'LeaveBalance',
+          entityId: balance.id,
+          relatedEntityId: employeeId,
+          oldValue: { employeeId, year: balance.year, entitlementDays: balance.entitlementDays, usedDays: balance.usedDays, remainingDays: balance.remainingDays },
+          newValue: { employeeId, year: balance.year, entitlementDays, usedDays: balance.usedDays, remainingDays, delta: dto.delta },
+          reason,
+          source: 'leave-balances',
+        },
+      });
+    });
+    return this.readLeaveBalances(employeeId);
   }
 
   async create(dto: CreateLeaveRequestDto, actor: AuthenticatedUser) {
@@ -206,8 +309,40 @@ export class LeaveRequestsService {
     const needed = this.daysByYear(days);
     for (const [year, count] of needed) {
       const balance = await db.leaveBalance.findUnique({ where: { employeeId_year: { employeeId, year } } });
-      if (!balance || balance.remainingDays < count) throw new BadRequestException('Saldo cuti belum diinisialisasi atau tidak mencukupi');
+      if (!balance) throw new BadRequestException('Saldo cuti Anda belum diatur oleh Admin HR. Silakan hubungi HR.');
+      if (balance.remainingDays < count) {
+        throw new BadRequestException(`Saldo cuti tidak mencukupi. Sisa saldo: ${balance.remainingDays} hari, pengajuan: ${count} hari.`);
+      }
     }
+  }
+
+  private assertLeaveBalanceAdmin(actor: AuthenticatedUser) {
+    if (actor.role !== Role.ADMIN_HR) throw new ForbiddenException('Hanya Admin HR yang dapat mengelola saldo cuti');
+  }
+
+  private async readLeaveBalances(employeeId: string) {
+    const employee = await this.prisma.employee.findUnique({
+      where: { id: employeeId },
+      select: { id: true, name: true, employeeNumber: true, email: true },
+    });
+    if (!employee) throw new NotFoundException('Karyawan tidak ditemukan');
+    const balances = await this.prisma.leaveBalance.findMany({
+      where: { employeeId },
+      include: { transactions: { orderBy: { createdAt: 'desc' } } },
+      orderBy: { year: 'desc' },
+    });
+    const actorIds = [...new Set(balances.flatMap((balance) => balance.transactions.map((entry) => entry.createdById).filter((id): id is string => Boolean(id))))];
+    const actors = actorIds.length
+      ? await this.prisma.user.findMany({ where: { id: { in: actorIds } }, select: { id: true, name: true, email: true, role: true } })
+      : [];
+    const actorsById = new Map(actors.map((user) => [user.id, user]));
+    return {
+      employee,
+      balances: balances.map((balance) => ({
+        ...balance,
+        transactions: balance.transactions.map((entry) => ({ ...entry, actor: entry.createdById ? actorsById.get(entry.createdById) ?? null : null })),
+      })),
+    };
   }
 
   private daysByYear(days: Date[]) {

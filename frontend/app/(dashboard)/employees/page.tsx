@@ -345,10 +345,10 @@ export default function EmployeesPage() {
           reason: editForm.reason.trim(),
         },
       });
-      await load();
       setEditing(null);
       setEditForm(null);
       setSuccess("Data master karyawan berhasil diperbarui.");
+      await load();
     } catch (err) {
       setError(
         err instanceof ApiError ? err.message : "Gagal memperbarui karyawan",
@@ -367,8 +367,8 @@ export default function EmployeesPage() {
         `/employees/${employee.id}${action === "delete" ? "" : `/${action}`}`,
         { method: action === "delete" ? "DELETE" : "PATCH", body: { reason } },
       );
-      await load();
       setLifecycleTarget(null);
+      await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Aksi lifecycle gagal");
     } finally {
@@ -395,6 +395,13 @@ export default function EmployeesPage() {
     } finally {
       setForceDeleting(false);
     }
+  }
+
+  function closeForceDelete() {
+    if (forceDeleting) return;
+    setForceDeleteTarget(null);
+    setForceDeleteReason("");
+    setForceDeleteConfirmation("");
   }
 
   async function toggleContracts(employeeId: string) {
@@ -1292,8 +1299,8 @@ export default function EmployeesPage() {
           </button>
         </div>
       </div>
-      <Dialog open={!!forceDeleteTarget} onOpenChange={(open) => { if (!open && !forceDeleting) { setForceDeleteTarget(null); setForceDeleteReason(""); setForceDeleteConfirmation(""); } }}>
-        <DialogContent>
+      <Dialog open={!!forceDeleteTarget} onOpenChange={(open) => { if (!open) closeForceDelete(); }}>
+        <DialogContent showClose={!forceDeleting} aria-busy={forceDeleting} onEscapeKeyDown={(event) => { if (forceDeleting) event.preventDefault(); }} onPointerDownOutside={(event) => { if (forceDeleting) event.preventDefault(); }}>
           <DialogTitle>Force Delete Employee</DialogTitle>
           <DialogDescription>Tindakan ini menghapus karyawan dari pengelolaan aktif, menonaktifkan akun login, dan menganonimkan identitas. Riwayat payroll, presensi, persetujuan, dan audit tetap dipertahankan.</DialogDescription>
           <div className="mt-5 rounded-xl border border-red-200 bg-red-50 p-4">
@@ -1303,7 +1310,7 @@ export default function EmployeesPage() {
           </div>
           <label className="mt-4 block text-sm font-semibold text-slate-700">Alasan wajib<textarea value={forceDeleteReason} onChange={(event) => setForceDeleteReason(event.target.value)} rows={3} className="mt-1 w-full rounded-xl border border-slate-300 p-3 font-normal" /></label>
           <label className="mt-4 block text-sm font-semibold text-slate-700">Ketik HAPUS untuk konfirmasi<input value={forceDeleteConfirmation} onChange={(event) => setForceDeleteConfirmation(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-300 p-3 font-normal" /></label>
-          <div className="mt-5 flex justify-end gap-2"><Button type="button" variant="secondary" disabled={forceDeleting} onClick={() => setForceDeleteTarget(null)}>Batal</Button><Button type="button" variant="danger" disabled={forceDeleting || forceDeleteReason.trim().length < 3 || forceDeleteConfirmation !== "HAPUS"} onClick={forceDeleteEmployee}>{forceDeleting ? "Menghapus..." : "Hapus Paksa"}</Button></div>
+          <div className="mt-5 flex justify-end gap-2"><Button type="button" variant="secondary" disabled={forceDeleting} onClick={closeForceDelete}>Batal</Button><Button type="button" variant="danger" disabled={forceDeleting || forceDeleteReason.trim().length < 3 || forceDeleteConfirmation !== "HAPUS"} onClick={forceDeleteEmployee}>{forceDeleting ? "Menghapus..." : "Hapus Paksa"}</Button></div>
         </DialogContent>
       </Dialog>
       <ActionDialog open={!!lifecycleTarget} title={lifecycleTarget?.action === "reactivate" ? "Aktifkan Karyawan" : lifecycleTarget?.action === "delete" ? "Hapus Aman Karyawan" : "Nonaktifkan Karyawan"} description={lifecycleTarget?.action === "delete" ? "Penghapusan akan ditolak jika karyawan memiliki riwayat terlindungi." : "Status karyawan akan diperbarui melalui lifecycle guard backend."} reasonLabel="Alasan tindakan" reasonRequired confirmLabel={lifecycleTarget?.action === "reactivate" ? "Aktifkan" : lifecycleTarget?.action === "delete" ? "Hapus" : "Nonaktifkan"} danger={lifecycleTarget?.action !== "reactivate"} busy={lifecycleBusy} onClose={() => setLifecycleTarget(null)} onConfirm={lifecycle} />

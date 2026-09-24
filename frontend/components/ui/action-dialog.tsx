@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "./button";
 import {
   Dialog,
@@ -34,9 +34,22 @@ export function ActionDialog({
   onConfirm: (reason: string) => void | Promise<void>;
 }) {
   const [reason, setReason] = useState("");
+  const submittingRef = useRef(false);
   useEffect(() => {
-    if (!open) setReason("");
+    if (!open) {
+      setReason("");
+      submittingRef.current = false;
+    }
   }, [open]);
+  async function confirm() {
+    if (busy || submittingRef.current) return;
+    submittingRef.current = true;
+    try {
+      await onConfirm(reason.trim());
+    } finally {
+      submittingRef.current = false;
+    }
+  }
   return (
     <Dialog
       open={open}
@@ -80,7 +93,7 @@ export function ActionDialog({
           <Button
             variant={danger ? "danger" : "primary"}
             disabled={busy || (reasonRequired && reason.trim().length < 3)}
-            onClick={() => onConfirm(reason.trim())}
+            onClick={() => void confirm()}
           >
             {busy ? "Memproses..." : confirmLabel}
           </Button>

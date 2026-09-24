@@ -22,6 +22,10 @@ export class HolidaysService {
     if (type !== 'LOCATION_SPECIFIC' && dto.locationId) {
       throw new BadRequestException('Lokasi hanya boleh diisi untuk hari libur khusus lokasi');
     }
+    if (dto.locationId) {
+      const location = await this.prisma.location.findFirst({ where: { id: dto.locationId, deletedAt: null, isActive: true }, select: { id: true } });
+      if (!location) throw new BadRequestException('Lokasi aktif tidak ditemukan');
+    }
     const holiday = await this.prisma.holiday.create({
       data: {
         date: new Date(dto.date),

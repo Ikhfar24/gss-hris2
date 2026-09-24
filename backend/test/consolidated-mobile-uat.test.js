@@ -85,9 +85,10 @@ test('consolidated UAT location configuration is data-driven, validated, editabl
     },
   };
   const service = new LocationsService(prisma, { record: async (entry) => audits.push(entry) });
-  await assert.rejects(() => service.create({ name: 'Incomplete' }, 'hr-1'), /koordinat geofence/);
-  await service.create({ name: 'Operational', address: 'Real address', latitude: -7.4253, longitude: 109.2397, radiusMeters: 150 }, 'hr-1');
-  await service.update('location-1', { radiusMeters: 200 }, 'hr-1');
+  const hr = { userId: 'hr-1', role: 'ADMIN_HR' };
+  await assert.rejects(() => service.create({ name: 'Incomplete' }, hr), /koordinat geofence/);
+  await service.create({ name: 'Operational', address: 'Real address', latitude: -7.4253, longitude: 109.2397, radiusMeters: 150 }, hr);
+  await service.update('location-1', { radiusMeters: 200 }, hr);
   assert.equal(audits[0].action, 'LOCATION_CREATE');
   assert.equal(audits[1].action, 'LOCATION_UPDATE');
   assert.equal(audits[1].oldValue.radiusMeters, 150);
@@ -129,7 +130,7 @@ test('consolidated UAT resolves checkout against the prior attendance day only f
   checkInAt.setHours(23, 0, 0, 0);
   const attendanceDate = new Date(checkInAt);
   attendanceDate.setHours(0, 0, 0, 0);
-  const location = { id: 'location-1', name: 'Night site', latitude: -7.4253, longitude: 109.2397, radiusMeters: 100, workDays: [attendanceDate.getDay()], checkInTime: '23:00', checkOutTime: '01:00' };
+  const location = { id: 'location-1', name: 'Night site', isActive: true, deletedAt: null, latitude: -7.4253, longitude: 109.2397, radiusMeters: 100, workDays: [attendanceDate.getDay()], checkInTime: '23:00', checkOutTime: '01:00' };
   const employee = { id: 'employee-1', attendanceRequired: true, attendanceMode: 'GEOFENCE', placements: [{ status: 'ACTIVE', startDate: new Date('2020-01-01'), endDate: null, locationId: location.id, location }], temporaryAssignments: [] };
   const existing = { id: 'attendance-1', employeeId: employee.id, date: attendanceDate, checkInAt, checkOutAt: null, checkInAttendanceMode: 'GEOFENCE', validationStatus: 'VALID', location };
   let lookup = 0;

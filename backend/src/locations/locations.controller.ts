@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Res, StreamableFile, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Res, StreamableFile, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -9,6 +9,7 @@ import { Role } from '../common/enums/role.enum';
 import { LocationsService } from './locations.service';
 import { CreateLocationDto } from './dto/create-location.dto';
 import { UpdateLocationDto } from './dto/update-location.dto';
+import { RequiredReasonDto } from '../common/dto/required-reason.dto';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('locations')
@@ -35,7 +36,7 @@ export class LocationsController {
     return this.service.previewImport(file);
   }
 
-  @Roles(Role.ADMIN_HR, Role.SYSTEM_ADMIN)
+  @Roles(Role.ADMIN_HR)
   @Post('import/commit')
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024 } }))
   importCommit(@UploadedFile() file: any, @CurrentUser() actor: AuthenticatedUser) {
@@ -48,15 +49,27 @@ export class LocationsController {
     return this.service.findOne(id);
   }
 
-  @Roles(Role.ADMIN_HR, Role.SYSTEM_ADMIN)
+  @Roles(Role.ADMIN_HR)
   @Post()
   create(@Body() dto: CreateLocationDto, @CurrentUser() actor: AuthenticatedUser) {
-    return this.service.create(dto, actor.userId);
+    return this.service.create(dto, actor);
   }
 
-  @Roles(Role.ADMIN_HR, Role.SYSTEM_ADMIN)
+  @Roles(Role.ADMIN_HR)
   @Patch(':id')
   update(@Param('id') id: string, @Body() dto: UpdateLocationDto, @CurrentUser() actor: AuthenticatedUser) {
-    return this.service.update(id, dto, actor.userId);
+    return this.service.update(id, dto, actor);
+  }
+
+  @Roles(Role.ADMIN_HR)
+  @Delete(':id')
+  remove(@Param('id') id: string, @Body() dto: RequiredReasonDto, @CurrentUser() actor: AuthenticatedUser) {
+    return this.service.remove(id, dto.reason, actor);
+  }
+
+  @Roles(Role.ADMIN_HR)
+  @Delete(':id/force-delete')
+  forceDelete(@Param('id') id: string, @Body() dto: RequiredReasonDto, @CurrentUser() actor: AuthenticatedUser) {
+    return this.service.forceDelete(id, dto.reason, actor);
   }
 }

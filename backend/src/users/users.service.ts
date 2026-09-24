@@ -177,6 +177,56 @@ export class UsersService {
     return { deleted: true };
   }
 
+  async forceDelete(id: string, reason: string, actor: AuthenticatedUser) {
+    if (actor.role !== Role.SYSTEM_ADMIN) {
+      throw new ForbiddenException('Hanya System Admin yang dapat menghapus paksa user');
+    }
+    if (id === actor.userId) {
+      throw new ForbiddenException('System Admin tidak dapat menghapus akun sendiri');
+    }
+    if (!reason.trim()) throw new BadRequestException('Alasan wajib diisi');
+
+    return this.prisma.$transaction(async (tx) => {
+      const user = await tx.user.findUnique({
+        where: { id },
+        select: {
+          id: true,
+          employeeId: true,
+          name: true,
+          email: true,
+          role: true,
+          isActive: true,
+          lastLoginAt: true,
+          createdAt: true,
+        },
+      });
+      if (!user) throw new NotFoundException('User tidak ditemukan');
+
+      await tx.coordinatorScope.deleteMany({ where: { coordinatorUserId: id } });
+      await tx.employee.updateMany({ where: { coordinatorId: id }, data: { coordinatorId: null } });
+      await tx.userTemporaryCredential.deleteMany({ where: { userId: id } });
+      await tx.auditLog.create({
+        data: {
+          actorId: actor.userId,
+          actorRole: Role.SYSTEM_ADMIN,
+          action: 'USER_FORCE_DELETE',
+          entity: 'User',
+          entityId: id,
+          oldValue: {
+            ...user,
+            lastLoginAt: user.lastLoginAt?.toISOString() ?? null,
+            createdAt: user.createdAt.toISOString(),
+          },
+          reason: reason.trim(),
+          source: 'USER_MANAGEMENT',
+          relatedEntityId: user.employeeId,
+        },
+      });
+      await tx.user.delete({ where: { id } });
+      return { deleted: true };
+    });
+  }
+
   private async assertEmployeeLinkAvailable(employeeId?: string, currentUserId?: string) {
     if (!employeeId) return;
     const employee = await this.prisma.employee.findFirst({ where: { id: employeeId, deletedAt: null }, select: { id: true, user: { select: { id: true } } } });

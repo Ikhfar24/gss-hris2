@@ -172,7 +172,7 @@ export class PayrollAdminService {
 
   private async assertCycleScopeExists(clientId?: string, locationId?: string) {
     const scope = clientId ? await this.prisma.client.findUnique({ where: { id: clientId } }) : await this.prisma.location.findUnique({ where: { id: locationId } });
-    if (!scope) throw new NotFoundException('Cakupan pengaturan siklus tidak ditemukan');
+    if (!scope || scope.deletedAt || !scope.isActive) throw new NotFoundException('Cakupan pengaturan siklus tidak ditemukan');
   }
 
   private date(value: string) {

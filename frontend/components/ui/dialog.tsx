@@ -11,6 +11,7 @@ export function DialogContent({
   children,
   style,
   showClose = true,
+  onCloseAutoFocus,
   ...props
 }: DialogPrimitive.DialogContentProps & { showClose?: boolean }) {
   const fullScreen =
@@ -23,13 +24,41 @@ export function DialogContent({
       };
   return (
     <DialogPrimitive.Portal>
-      <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-binder-deep/64 data-[state=open]:animate-in" />
+      <DialogPrimitive.Overlay
+        data-slot="dialog-overlay"
+        className="fixed inset-0 z-50 bg-binder-deep/64 data-[state=open]:animate-in"
+      />
       <DialogPrimitive.Content
+        data-slot="dialog-content"
         className={cn(
           "fixed inset-x-0 bottom-0 z-50 max-h-[calc(100dvh-env(safe-area-inset-top)-0.75rem)] w-full overscroll-contain overflow-x-hidden overflow-y-auto rounded-t-2xl border border-border bg-surface p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-lift sm:bottom-auto sm:left-1/2 sm:right-auto sm:top-1/2 sm:w-[calc(100%-2rem)] sm:max-w-md sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-xl sm:p-5",
           className,
         )}
         style={viewportStyle}
+        onCloseAutoFocus={(event) => {
+          onCloseAutoFocus?.(event);
+          if (event.defaultPrevented) return;
+          requestAnimationFrame(() => {
+            const active = document.activeElement;
+            if (
+              active instanceof HTMLElement &&
+              active !== document.body &&
+              active !== document.documentElement &&
+              document.contains(active) &&
+              !active.matches(":disabled, [hidden], [aria-hidden='true'], [inert]") &&
+              active.getClientRects().length > 0
+            ) {
+              return;
+            }
+            const main = document.getElementById("main-content");
+            if (!main) return;
+            main.setAttribute("tabindex", "-1");
+            main.focus({ preventScroll: true });
+            main.addEventListener("blur", () => main.removeAttribute("tabindex"), {
+              once: true,
+            });
+          });
+        }}
         {...props}
       >
         {children}

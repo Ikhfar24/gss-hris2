@@ -30,6 +30,7 @@ test('STAFF_OFFICE placement requests use mutation and Director approval', async
   let created;
   const prisma = {
     employee: { findUnique: async () => ({ id: 'employee-1', employmentType: 'STAFF_OFFICE', placements: [] }) },
+    location: { findFirst: async () => ({ id: 'location-1' }) },
     placementRequest: { create: async ({ data }) => { created = { id: 'request-1', ...data }; return created; } },
   };
   const service = new PlacementRequestsService(prisma, { record: async () => {} }, { assertEmployee: async () => {} });

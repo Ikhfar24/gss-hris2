@@ -316,6 +316,10 @@ function DirectorApprovals() {
       setSaving(false);
     }
   }
+  function openRunDecision(next: NonNullable<typeof decision>) {
+    setDetail(null);
+    setDecision(next);
+  }
   const pendingRuns = runs.filter(
     (run) => run.status === "PENDING_DIRECTOR_APPROVAL",
   );
@@ -494,7 +498,7 @@ function DirectorApprovals() {
                   variant="danger"
                   className="w-full sm:w-auto"
                   onClick={() =>
-                    setDecision({
+                    openRunDecision({
                       kind: "run",
                       id: detail.id,
                       action: "reject",
@@ -507,7 +511,7 @@ function DirectorApprovals() {
                 <Button
                   className="w-full sm:w-auto"
                   onClick={() =>
-                    setDecision({
+                    openRunDecision({
                       kind: "run",
                       id: detail.id,
                       action: "approve",
@@ -525,13 +529,18 @@ function DirectorApprovals() {
       <Dialog
         open={!!decision}
         onOpenChange={(open) => {
-          if (!open) {
+          if (!open && !saving) {
             setDecision(null);
             setNote("");
           }
         }}
       >
-        <DialogContent>
+        <DialogContent
+          showClose={!saving}
+          aria-busy={saving}
+          onEscapeKeyDown={(event) => { if (saving) event.preventDefault(); }}
+          onPointerDownOutside={(event) => { if (saving) event.preventDefault(); }}
+        >
           <DialogTitle>{decision?.title}</DialogTitle>
           <DialogDescription>
             Keputusan ini mengikuti tahap Direktur pada lifecycle payroll yang
@@ -550,7 +559,7 @@ function DirectorApprovals() {
             />
           </label>
           <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-            <Button variant="secondary" onClick={() => setDecision(null)}>
+            <Button variant="secondary" disabled={saving} onClick={() => setDecision(null)}>
               Batal
             </Button>
             <Button

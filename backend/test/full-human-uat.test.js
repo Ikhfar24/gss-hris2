@@ -28,14 +28,12 @@ async function uploadWithRows(template, rows) {
   return { buffer: Buffer.from(await workbook.xlsx.writeBuffer()), originalname: 'import.xlsx', mimetype: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' };
 }
 
-test('all XLSX endpoints are restricted to ADMIN_HR and SYSTEM_ADMIN', () => {
-  for (const [controller, methods] of [
-    [ClientsController, ['importTemplate', 'importPreview', 'importCommit']],
-    [LocationsController, ['importTemplate', 'importPreview', 'importCommit']],
-    [EmployeesController, ['importTemplate', 'importPreview', 'importCommit']],
-  ]) {
-    for (const method of methods) assert.deepEqual(Reflect.getMetadata(ROLES_KEY, controller.prototype[method]), ['ADMIN_HR', 'SYSTEM_ADMIN']);
+test('Client and Location import commits are ADMIN_HR-only while non-mutating import reads retain existing roles', () => {
+  for (const controller of [ClientsController, LocationsController]) {
+    for (const method of ['importTemplate', 'importPreview']) assert.deepEqual(Reflect.getMetadata(ROLES_KEY, controller.prototype[method]), ['ADMIN_HR', 'SYSTEM_ADMIN']);
+    assert.deepEqual(Reflect.getMetadata(ROLES_KEY, controller.prototype.importCommit), ['ADMIN_HR']);
   }
+  for (const method of ['importTemplate', 'importPreview', 'importCommit']) assert.deepEqual(Reflect.getMetadata(ROLES_KEY, EmployeesController.prototype[method]), ['ADMIN_HR', 'SYSTEM_ADMIN']);
 });
 
 test('shared XLSX parser rejects formulas and files over 5MB', async () => {
@@ -196,7 +194,7 @@ test('Staff Kantor and client detail UX are propagated without field-placement w
 
 test('holiday creation enforces type and location consistency', async () => {
   let created;
-  const service = new HolidaysService({ holiday: { create: async ({ data }) => { created = data; return { id: 'holiday-1', ...data }; } } }, { record: async () => {} });
+  const service = new HolidaysService({ location: { findFirst: async () => ({ id: 'location-1' }) }, holiday: { create: async ({ data }) => { created = data; return { id: 'holiday-1', ...data }; } } }, { record: async () => {} });
   await assert.rejects(() => service.create({ date: '2026-09-10', name: 'Libur cabang', type: 'LOCATION_SPECIFIC' }, 'hr-1'), /wajib memilih lokasi/);
   await assert.rejects(() => service.create({ date: '2026-09-10', name: 'Libur nasional', type: 'NATIONAL', locationId: 'location-1' }, 'hr-1'), /hanya boleh diisi/);
   await service.create({ date: '2026-09-10', name: 'Libur cabang', type: 'LOCATION_SPECIFIC', locationId: 'location-1' }, 'hr-1');
@@ -205,7 +203,7 @@ test('holiday creation enforces type and location consistency', async () => {
 });
 
 test('myToday exposes authoritative holiday context and exceptional check-in remains reviewable', async () => {
-  const location = { id: 'location-1', name: 'Kantor Pusat', latitude: -6.2, longitude: 106.8, radiusMeters: 250, workDays: [], checkInTime: '08:00', checkOutTime: '17:00', toleranceMin: 10 };
+  const location = { id: 'location-1', name: 'Kantor Pusat', isActive: true, deletedAt: null, latitude: -6.2, longitude: 106.8, radiusMeters: 250, workDays: [], checkInTime: '08:00', checkOutTime: '17:00', toleranceMin: 10 };
   const employee = { id: 'employee-1', attendanceRequired: true, attendanceMode: 'GEOFENCE', placements: [{ status: 'ACTIVE', startDate: new Date('2020-01-01'), endDate: null, locationId: location.id, location }], temporaryAssignments: [] };
   let persisted;
   const prisma = {
@@ -233,7 +231,7 @@ test('myToday exposes authoritative holiday context and exceptional check-in rem
 function attendanceFixture(overrides = {}) {
   const today = new Date();
   const day = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-  const location = { id: 'location-1', name: 'Kantor UAT', latitude: -6.2, longitude: 106.8, radiusMeters: 100, workDays: [day.getDay()], checkInTime: '23:59', checkOutTime: '23:59', toleranceMin: 0 };
+  const location = { id: 'location-1', name: 'Kantor UAT', isActive: true, deletedAt: null, latitude: -6.2, longitude: 106.8, radiusMeters: 100, workDays: [day.getDay()], checkInTime: '23:59', checkOutTime: '23:59', toleranceMin: 0 };
   const employee = { id: 'employee-1', attendanceRequired: true, attendanceMode: 'GEOFENCE', placements: [{ status: 'ACTIVE', startDate: new Date('2020-01-01'), endDate: null, locationId: location.id, location }], temporaryAssignments: [] };
   return { today: day, location, employee, ...overrides };
 }

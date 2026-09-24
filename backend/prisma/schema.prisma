@@ -159,6 +159,9 @@ model Client {
   contactPerson String?
   contactPhone  String?
   isActive      Boolean  @default(true)
+  deletedAt     DateTime?
+  deletedById   String?
+  deletionReason String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -166,6 +169,7 @@ model Client {
   payrollCycleSettings PayrollCycleSetting[]
   temporaryAssignments TemporaryAssignment[]
 
+  @@index([deletedAt])
   @@map("clients")
 }
 
@@ -187,6 +191,9 @@ model Location {
   clientId     String?
   client       Client?  @relation(fields: [clientId], references: [id])
   isActive     Boolean  @default(true)
+  deletedAt    DateTime?
+  deletedById  String?
+  deletionReason String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -198,6 +205,7 @@ model Location {
   payrollCycleSettings  PayrollCycleSetting[]
   temporaryAssignments  TemporaryAssignment[]
 
+  @@index([deletedAt])
   @@map("locations")
 }
 

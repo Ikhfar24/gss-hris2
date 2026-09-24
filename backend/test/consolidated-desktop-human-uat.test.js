@@ -86,3 +86,18 @@ test('Director monitoring omits temporary-credential lifecycle metadata', async 
   assert.equal(hrResult.data[0].temporaryCredential.available, true);
   assert.equal(hrResult.data[0].temporaryCredential.revealCount, 4);
 });
+
+test('desktop action dialogs use one modal layer and restore focus without body-style cleanup hacks', () => {
+  const dropdown = fs.readFileSync('../frontend/components/ui/dropdown-menu.tsx', 'utf8');
+  const dialog = fs.readFileSync('../frontend/components/ui/dialog.tsx', 'utf8');
+  const actionDialog = fs.readFileSync('../frontend/components/ui/action-dialog.tsx', 'utf8');
+  const payroll = fs.readFileSync('../frontend/app/(dashboard)/payroll/page.tsx', 'utf8');
+
+  assert.match(dropdown, /modal = false/);
+  assert.match(dropdown, /Root modal=\{modal\}/);
+  assert.match(dialog, /onCloseAutoFocus/);
+  assert.match(dialog, /getElementById\("main-content"\)/);
+  assert.match(actionDialog, /submittingRef\.current/);
+  assert.match(payroll, /function openRunDecision[\s\S]*setDetail\(null\);[\s\S]*setDecision\(next\);/);
+  assert.doesNotMatch(dialog, /document\.body\.style\.(pointerEvents|overflow)/);
+});

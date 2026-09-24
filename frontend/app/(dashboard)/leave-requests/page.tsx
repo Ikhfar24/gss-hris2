@@ -12,6 +12,7 @@ import { Alert, EmptyState } from '@/components/ui/feedback';
 import { ActionDialog } from '@/components/ui/action-dialog';
 import { Button } from '@/components/ui/button';
 import { ContextBand, DataRegion, DossierPage } from '@/components/ui/dossier';
+import { LeaveBalancePanel } from '@/components/leave/LeaveBalancePanel';
 
 interface EmployeeOption {
   id: string;
@@ -144,12 +145,15 @@ export default function LeaveRequestsPage() {
   }
 
   async function intervene(note: string) {
-    if (!intervention) return;
+    if (!intervention || submitting) return;
+    setSubmitting(true);
+    setError(null);
     try {
       await apiFetch(`/leave-requests/${intervention.id}/intervene`, { method: 'PATCH', token: getToken(), body: { approve: intervention.approve, note } });
       setIntervention(null);
       await load();
     } catch (err) { setError(err instanceof ApiError ? err.message : 'Gagal melakukan intervensi'); }
+    finally { setSubmitting(false); }
   }
 
   async function finalizeResignation(id: string) {
@@ -182,6 +186,8 @@ export default function LeaveRequestsPage() {
        <ContextBand className="mb-0 border border-border bg-paper px-4 py-4 text-foreground shadow-none sm:px-5 [&_h1]:text-brand [&_.text-white\/70]:text-muted [&_.text-white\/72]:text-muted" title="Cuti, Izin & Resign" description={isKaryawan ? 'Ajukan dan pantau status permohonan Anda.' : 'Tinjau permohonan sesuai cakupan dan tahap kewenangan Anda.'} meta={<span>{isKaryawan ? 'PRIBADI' : 'WORK QUEUE · PENGAJUAN'}</span>} actions={canCreate && <Button className="!border-brand !bg-brand !text-white" onClick={() => setShowForm((s) => !s)}>{showForm ? 'Batal' : '+ Ajukan'}</Button>} />
 
        {error && <Alert variant="danger" className="mb-4">{error}</Alert>}
+
+      {isEmployeeSelfService && <LeaveBalancePanel />}
 
       {showForm && (
          <form onSubmit={onCreate} aria-busy={submitting} className="grid max-w-3xl gap-4 rounded-xl border border-border bg-paper p-4 shadow-none sm:p-5">

@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import { validateSync } from 'class-validator';
 import { PrismaService } from '../prisma/prisma.service';
@@ -41,6 +41,7 @@ export class LocationsService {
 
   findAll() {
     return this.prisma.location.findMany({
+      where: { deletedAt: null },
       include: { client: { select: { id: true, referenceCode: true, name: true } } },
       orderBy: { name: 'asc' },
     });
@@ -51,16 +52,18 @@ export class LocationsService {
       where: { id },
       include: { client: { select: { id: true, referenceCode: true, name: true } } },
     });
-    if (!loc) throw new NotFoundException('Lokasi tidak ditemukan');
+    if (!loc || loc.deletedAt) throw new NotFoundException('Lokasi tidak ditemukan');
     return loc;
   }
 
-  async create(dto: CreateLocationDto, actorId: string) {
+  async create(dto: CreateLocationDto, actor: AuthenticatedUser) {
+    this.assertAdminHr(actor);
     this.assertUsableConfiguration({ ...dto, isActive: true, radiusMeters: dto.radiusMeters ?? 300 });
+    await this.assertClientAvailable(dto.clientId);
     const referenceCode = dto.referenceCode ? normalizeReferenceCode(dto.referenceCode) : generatedReferenceCode('LOC', dto.name);
     const loc = await this.prisma.location.create({ data: { ...dto, referenceCode } });
     await this.auditLog.record({
-      actorId,
+      actorId: actor.userId,
       action: 'LOCATION_CREATE',
       entity: 'Location',
       entityId: loc.id,
@@ -71,12 +74,14 @@ export class LocationsService {
 
   // This is *the* configurable-not-hard-coded surface from PRD section 5/12:
   // radius, jam kerja, toleransi, hari kerja all change here, not in code.
-  async update(id: string, dto: UpdateLocationDto, actorId: string) {
+  async update(id: string, dto: UpdateLocationDto, actor: AuthenticatedUser) {
+    this.assertAdminHr(actor);
     const before = await this.findOne(id);
     this.assertUsableConfiguration({ ...before, ...dto });
+    await this.assertClientAvailable(dto.clientId ?? undefined);
     const updated = await this.prisma.location.update({ where: { id }, data: { ...dto, referenceCode: dto.referenceCode === undefined ? undefined : normalizeReferenceCode(dto.referenceCode) } });
     await this.auditLog.record({
-      actorId,
+      actorId: actor.userId,
       action: 'LOCATION_UPDATE',
       entity: 'Location',
       entityId: id,
@@ -97,6 +102,7 @@ export class LocationsService {
   }
 
   async commitImport(file: XlsxUpload, actor: AuthenticatedUser) {
+    this.assertAdminHr(actor);
     const preview = await this.previewImport(file);
     if (!preview.valid) throw new BadRequestException({ message: 'Import lokasi gagal divalidasi', ...preview });
     const records = await this.prisma.$transaction(async (tx) => {
@@ -108,10 +114,52 @@ export class LocationsService {
     return { valid: true, created: records.length, records, errors: [] };
   }
 
+  async remove(id: string, reason: string, actor: AuthenticatedUser) {
+    this.assertAdminHr(actor);
+    this.assertReason(reason);
+    return this.prisma.$transaction(async (tx) => {
+      const location = await tx.location.findFirst({
+        where: { id, deletedAt: null },
+        include: { _count: { select: { placements: true, placementRequestsFrom: true, placementRequestsTo: true, attendances: true, holidays: true, payrollCycleSettings: true, temporaryAssignments: true } } },
+      });
+      if (!location) throw new NotFoundException('Lokasi tidak ditemukan');
+      if (Object.values(location._count).some((count) => count > 0)) {
+        throw new ConflictException('Lokasi masih memiliki relasi operasional atau riwayat. Gunakan Force Delete.');
+      }
+      const { _count, ...snapshot } = location;
+      await tx.auditLog.create({ data: { actorId: actor.userId, actorRole: Role.ADMIN_HR, action: 'LOCATION_DELETE_SAFE', entity: 'Location', entityId: id, oldValue: snapshot as any, reason: reason.trim(), source: 'LOCATION_MANAGEMENT', relatedEntityId: location.clientId } });
+      await tx.location.delete({ where: { id } });
+      return { deleted: true, strategy: 'PHYSICAL_PRISTINE_DELETE' };
+    });
+  }
+
+  async forceDelete(id: string, reason: string, actor: AuthenticatedUser) {
+    this.assertAdminHr(actor);
+    this.assertReason(reason);
+    return this.prisma.$transaction(async (tx) => {
+      const location = await tx.location.findFirst({
+        where: { id, deletedAt: null },
+        include: { _count: { select: { placements: true, placementRequestsFrom: true, placementRequestsTo: true, attendances: true, holidays: true, payrollCycleSettings: true, temporaryAssignments: true } } },
+      });
+      if (!location) throw new NotFoundException('Lokasi tidak ditemukan');
+
+      const deletedAt = new Date();
+      await tx.placement.updateMany({ where: { locationId: id, status: 'ACTIVE' }, data: { status: 'ENDED', endDate: deletedAt } });
+      await tx.placement.updateMany({ where: { locationId: id, status: 'SCHEDULED' }, data: { status: 'ENDED' } });
+      await tx.placementRequest.updateMany({ where: { OR: [{ originLocationId: id }, { destinationLocationId: id }], status: { in: ['PENDING_HR', 'PENDING_DIRECTOR'] } }, data: { status: 'CANCELLED' } });
+      await tx.temporaryAssignment.updateMany({ where: { locationId: id, status: { in: ['PENDING', 'APPROVED'] } }, data: { status: 'CANCELLED' } });
+      await tx.payrollCycleSetting.updateMany({ where: { locationId: id, isActive: true }, data: { isActive: false } });
+      await tx.location.update({ where: { id }, data: { isActive: false, deletedAt, deletedById: actor.userId, deletionReason: reason.trim() } });
+      const { _count, ...snapshot } = location;
+      await tx.auditLog.create({ data: { actorId: actor.userId, actorRole: Role.ADMIN_HR, action: 'LOCATION_FORCE_DELETE', entity: 'Location', entityId: id, oldValue: snapshot as any, newValue: { strategy: 'TOMBSTONE', deletedAt, dependencies: _count }, reason: reason.trim(), source: 'LOCATION_MANAGEMENT', relatedEntityId: location.clientId } });
+      return { deleted: true, strategy: 'TOMBSTONE' };
+    });
+  }
+
   private async validateImportRows(rows: ParsedXlsxRow<LocationXlsxRow>[]) {
     const clientReferences = [...new Set(rows.map(({ data }) => data.clientReference).filter((value): value is string => typeof value === 'string' && !!value))];
     const normalizedClientReferences = clientReferences.map(normalizeReferenceCode);
-    const clients = clientReferences.length ? await this.prisma.client.findMany({ where: { OR: [{ referenceCode: { in: normalizedClientReferences } }, { id: { in: clientReferences } }] }, select: { id: true, referenceCode: true } }) : [];
+    const clients = clientReferences.length ? await this.prisma.client.findMany({ where: { deletedAt: null, OR: [{ referenceCode: { in: normalizedClientReferences } }, { id: { in: clientReferences } }] }, select: { id: true, referenceCode: true } }) : [];
     const clientsByCode = new Map<string, string>(clients.flatMap((client) => typeof client.referenceCode === 'string' ? [[normalizeReferenceCode(client.referenceCode), client.id] as [string, string]] : []));
     const clientIds = new Set(clients.map((client) => client.id));
     for (const row of rows) {
@@ -172,6 +220,20 @@ export class LocationsService {
     if (config.isActive && (!hasLatitude || !hasLongitude)) {
       throw new BadRequestException('Lokasi aktif memerlukan koordinat geofence yang lengkap');
     }
+  }
+
+  private assertAdminHr(actor: AuthenticatedUser) {
+    if (actor.role !== Role.ADMIN_HR) throw new ForbiddenException('Hanya Admin HR yang dapat mengelola Lokasi');
+  }
+
+  private assertReason(reason: string) {
+    if (!reason.trim()) throw new BadRequestException('Alasan wajib diisi');
+  }
+
+  private async assertClientAvailable(clientId?: string) {
+    if (!clientId) return;
+    const client = await this.prisma.client.findFirst({ where: { id: clientId, deletedAt: null, isActive: true }, select: { id: true } });
+    if (!client) throw new BadRequestException('Client aktif tidak ditemukan');
   }
 }
 

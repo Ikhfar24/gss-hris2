@@ -5,7 +5,12 @@ import { MoreHorizontal } from "lucide-react";
 import * as React from "react";
 import { cn } from "@/lib/utils";
 
-export const DropdownMenu = DropdownMenuPrimitive.Root;
+export function DropdownMenu({
+  modal = false,
+  ...props
+}: DropdownMenuPrimitive.DropdownMenuProps) {
+  return <DropdownMenuPrimitive.Root modal={modal} {...props} />;
+}
 export const DropdownMenuTrigger = DropdownMenuPrimitive.Trigger;
 export const DropdownMenuGroup = DropdownMenuPrimitive.Group;
 export const DropdownMenuLabel = DropdownMenuPrimitive.Label;

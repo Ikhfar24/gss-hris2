@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import { validateSync } from 'class-validator';
 import { PrismaService } from '../prisma/prisma.service';
@@ -28,26 +28,27 @@ export class ClientsService {
   ) {}
 
   findAll() {
-    return this.prisma.client.findMany({ orderBy: { name: 'asc' } });
+    return this.prisma.client.findMany({ where: { deletedAt: null }, orderBy: { name: 'asc' } });
   }
 
   async findOne(id: string) {
     const client = await this.prisma.client.findUnique({
       where: { id },
       select: {
-        id: true, referenceCode: true, name: true, address: true, contactPerson: true, contactPhone: true, isActive: true,
+        id: true, referenceCode: true, name: true, address: true, contactPerson: true, contactPhone: true, isActive: true, deletedAt: true,
         locations: { select: { id: true, referenceCode: true, name: true, address: true, isActive: true }, orderBy: { name: 'asc' } },
       },
     });
-    if (!client) throw new NotFoundException('Client tidak ditemukan');
+    if (!client || client.deletedAt) throw new NotFoundException('Client tidak ditemukan');
     return client;
   }
 
-  async create(dto: CreateClientDto, actorId: string) {
+  async create(dto: CreateClientDto, actor: AuthenticatedUser) {
+    this.assertAdminHr(actor);
     const referenceCode = dto.referenceCode ? normalizeReferenceCode(dto.referenceCode) : generatedReferenceCode('CL', dto.name);
     const client = await this.prisma.client.create({ data: { ...dto, referenceCode } });
     await this.auditLog.record({
-      actorId,
+      actorId: actor.userId,
       action: 'CLIENT_CREATE',
       entity: 'Client',
       entityId: client.id,
@@ -56,12 +57,13 @@ export class ClientsService {
     return client;
   }
 
-  async update(id: string, dto: UpdateClientDto, actorId: string) {
+  async update(id: string, dto: UpdateClientDto, actor: AuthenticatedUser) {
+    this.assertAdminHr(actor);
     const before = await this.prisma.client.findUnique({ where: { id } });
-    if (!before) throw new NotFoundException('Client tidak ditemukan');
+    if (!before || before.deletedAt) throw new NotFoundException('Client tidak ditemukan');
     const updated = await this.prisma.client.update({ where: { id }, data: { ...dto, referenceCode: dto.referenceCode === undefined ? undefined : normalizeReferenceCode(dto.referenceCode) } });
     await this.auditLog.record({
-      actorId,
+      actorId: actor.userId,
       action: 'CLIENT_UPDATE',
       entity: 'Client',
       entityId: id,
@@ -81,6 +83,7 @@ export class ClientsService {
   }
 
   async commitImport(file: XlsxUpload, actor: AuthenticatedUser) {
+    this.assertAdminHr(actor);
     const preview = await this.previewImport(file);
     if (!preview.valid) throw new BadRequestException({ message: 'Import client gagal divalidasi', ...preview });
     const created = await this.prisma.$transaction(async (tx) => {
@@ -90,6 +93,43 @@ export class ClientsService {
       return records;
     });
     return { valid: true, created: created.length, records: created, errors: [] };
+  }
+
+  async remove(id: string, reason: string, actor: AuthenticatedUser) {
+    this.assertAdminHr(actor);
+    this.assertReason(reason);
+    return this.prisma.$transaction(async (tx) => {
+      const client = await tx.client.findFirst({
+        where: { id, deletedAt: null },
+        include: { _count: { select: { locations: true, payrollCycleSettings: true, temporaryAssignments: true } } },
+      });
+      if (!client) throw new NotFoundException('Client tidak ditemukan');
+      if (Object.values(client._count).some((count) => count > 0)) {
+        throw new ConflictException('Client masih memiliki relasi operasional atau riwayat. Gunakan Force Delete.');
+      }
+      const { _count, ...snapshot } = client;
+      await tx.auditLog.create({ data: { actorId: actor.userId, actorRole: Role.ADMIN_HR, action: 'CLIENT_DELETE_SAFE', entity: 'Client', entityId: id, oldValue: snapshot as any, reason: reason.trim(), source: 'CLIENT_MANAGEMENT' } });
+      await tx.client.delete({ where: { id } });
+      return { deleted: true, strategy: 'PHYSICAL_PRISTINE_DELETE' };
+    });
+  }
+
+  async forceDelete(id: string, reason: string, actor: AuthenticatedUser) {
+    this.assertAdminHr(actor);
+    this.assertReason(reason);
+    return this.prisma.$transaction(async (tx) => {
+      const client = await tx.client.findFirst({
+        where: { id, deletedAt: null },
+        include: { _count: { select: { locations: true, payrollCycleSettings: true, temporaryAssignments: true } } },
+      });
+      if (!client) throw new NotFoundException('Client tidak ditemukan');
+      await tx.payrollCycleSetting.updateMany({ where: { clientId: id, isActive: true }, data: { isActive: false } });
+      const deletedAt = new Date();
+      await tx.client.update({ where: { id }, data: { isActive: false, deletedAt, deletedById: actor.userId, deletionReason: reason.trim() } });
+      const { _count, ...snapshot } = client;
+      await tx.auditLog.create({ data: { actorId: actor.userId, actorRole: Role.ADMIN_HR, action: 'CLIENT_FORCE_DELETE', entity: 'Client', entityId: id, oldValue: snapshot as any, newValue: { strategy: 'TOMBSTONE', deletedAt, dependencies: _count }, reason: reason.trim(), source: 'CLIENT_MANAGEMENT' } });
+      return { deleted: true, strategy: 'TOMBSTONE' };
+    });
   }
 
   private async validateImportRows(rows: ParsedXlsxRow<CreateClientDto & Record<string, unknown>>[]) {
@@ -121,6 +161,14 @@ export class ClientsService {
     }
     const invalidCount = rows.filter((row) => row.errors.length > 0).length;
     return { valid: invalidCount === 0, totalRows: rows.length, validCount: rows.length - invalidCount, invalidCount, rows, errors: rows.filter((row) => row.errors.length).map(({ row, errors }) => ({ row, errors })) };
+  }
+
+  private assertAdminHr(actor: AuthenticatedUser) {
+    if (actor.role !== Role.ADMIN_HR) throw new ForbiddenException('Hanya Admin HR yang dapat mengelola Client');
+  }
+
+  private assertReason(reason: string) {
+    if (!reason.trim()) throw new BadRequestException('Alasan wajib diisi');
   }
 }
 

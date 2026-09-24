@@ -18,6 +18,7 @@ import {
 import { ContextBand, DataRegion, DossierPage, MobileRecord, RecordActions, RecordBody, RecordHeader, WorkSheet } from '@/components/ui/dossier';
 import { Alert, EmptyState } from '@/components/ui/feedback';
 import { Input, Label, Select, Textarea } from '@/components/ui/forms';
+import { ActionDialog } from '@/components/ui/action-dialog';
 
 type TemporaryStatus = { available: boolean; purpose?: string; createdAt?: string; lastRevealedAt?: string | null; revealCount?: number };
 type UserRow = { id: string; name: string; email: string; role: string; isActive: boolean; employeeId?: string | null; employee?: { name: string; employeeNumber: string | null } | null; temporaryCredential?: TemporaryStatus };
@@ -50,9 +51,11 @@ export default function UsersPage() {
   const [scopeForm, setScopeForm] = useState({ userId: '', employmentType: 'TENAGA_BORONGAN' as CoordinatorScope['employmentType'] });
   const [editing, setEditing] = useState<(UserRow & { reason: string }) | null>(null);
   const [lifecycleAction, setLifecycleAction] = useState<LifecycleAction | null>(null);
+  const [forceDeleteTarget, setForceDeleteTarget] = useState<UserRow | null>(null);
   const [credentialAction, setCredentialAction] = useState<CredentialAction | null>(null);
   const [credentialForm, setCredentialForm] = useState({ reason: '', currentPassword: '' });
   const [revealed, setRevealed] = useState<string | null>(null);
+  const [mutationBusy, setMutationBusy] = useState(false);
   const [credentialBusy, setCredentialBusy] = useState(false);
 
   async function load() {
@@ -89,26 +92,54 @@ export default function UsersPage() {
 
   async function saveEdit(event: FormEvent) {
     event.preventDefault();
-    if (!editing) return;
+    if (!editing || mutationBusy) return;
+    setMutationBusy(true);
+    setError(null);
     try {
       await apiFetch(`/users/${editing.id}`, { method: 'PATCH', body: { name: editing.name, email: editing.email, role: editing.role, employeeId: editing.employeeId, reason: editing.reason || undefined } });
       setEditing(null);
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Gagal memperbarui user');
+    } finally {
+      setMutationBusy(false);
     }
   }
 
   async function lifecycle(event: FormEvent) {
     event.preventDefault();
-    if (!lifecycleAction) return;
+    if (!lifecycleAction || mutationBusy) return;
     const { user, action, reason } = lifecycleAction;
+    setMutationBusy(true);
+    setError(null);
     try {
       await apiFetch(`/users/${user.id}${action === 'delete' ? '' : `/${action}`}`, { method: action === 'delete' ? 'DELETE' : 'PATCH', body: { reason } });
       setLifecycleAction(null);
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Aksi user gagal');
+    } finally {
+      setMutationBusy(false);
+    }
+  }
+
+  async function forceDelete(reason: string) {
+    if (!forceDeleteTarget || mutationBusy) return;
+    const targetId = forceDeleteTarget.id;
+    setMutationBusy(true);
+    setError(null);
+    try {
+      await apiFetch(`/users/${targetId}/force-delete`, { method: 'DELETE', body: { reason } });
+      setForceDeleteTarget(null);
+      setData((current) => ({
+        data: current.data.filter((user) => user.id !== targetId),
+        meta: { ...current.meta, total: Math.max(0, current.meta.total - 1) },
+      }));
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Gagal menghapus paksa user');
+    } finally {
+      setMutationBusy(false);
     }
   }
 
@@ -160,7 +191,7 @@ export default function UsersPage() {
     setCredentialAction({ user, mode });
   }
 
-  const actionProps = { canManageUsers, canManageCredential, onEdit: (user: UserRow) => setEditing({ ...user, reason: '' }), onLifecycle: (user: UserRow, action: LifecycleAction['action']) => setLifecycleAction({ user, action, reason: '' }), onCredential: openCredential };
+  const actionProps = { canManageUsers, canForceDelete: session.role === 'SYSTEM_ADMIN', currentUserId: session.id, canManageCredential, onEdit: (user: UserRow) => setEditing({ ...user, reason: '' }), onLifecycle: (user: UserRow, action: LifecycleAction['action']) => setLifecycleAction({ user, action, reason: '' }), onForceDelete: setForceDeleteTarget, onCredential: openCredential };
 
   return <DossierPage className="space-y-3">
     <ContextBand className="mb-0 rounded-none border-x-0 border-t-0 bg-transparent px-0 py-3 shadow-none" title="Manajemen User" description="Kelola identitas akun, akses, tautan karyawan, dan kredensial sementara." meta={<span>{session.role === 'SYSTEM_ADMIN' ? 'OTORITAS SISTEM' : 'OTORITAS ADMIN HR'}</span>} />
@@ -211,6 +242,8 @@ export default function UsersPage() {
 
     <Dialog open={!!lifecycleAction} onOpenChange={(open) => !open && setLifecycleAction(null)}><DialogContent><DialogTitle>{lifecycleAction?.action === 'delete' ? 'Hapus akun tanpa riwayat' : lifecycleAction?.action === 'deactivate' ? 'Nonaktifkan akun' : 'Aktifkan akun'}</DialogTitle><DialogDescription>{lifecycleAction?.action === 'delete' ? 'Penghapusan akan ditolak bila akun memiliki riwayat terlindungi. Gunakan nonaktifkan akun untuk mempertahankan histori.' : `Tindakan ini mengubah akses login ${lifecycleAction?.user.name ?? ''}.`}</DialogDescription><form onSubmit={lifecycle} className="mt-5 space-y-4"><div><Label>Alasan</Label><Textarea required minLength={3} value={lifecycleAction?.reason ?? ''} onChange={(event) => lifecycleAction && setLifecycleAction({ ...lifecycleAction, reason: event.target.value })} /></div><div className="flex justify-end gap-2"><Button type="button" variant="secondary" onClick={() => setLifecycleAction(null)}>Batal</Button><Button variant={lifecycleAction?.action === 'delete' ? 'danger' : 'primary'}>{lifecycleAction?.action === 'delete' ? 'Hapus Aman' : 'Konfirmasi'}</Button></div></form></DialogContent></Dialog>
 
+    <ActionDialog open={!!forceDeleteTarget} title="Force Delete User" description={`Hapus permanen akun ${forceDeleteTarget?.name ?? ''}. Riwayat bisnis tetap dipertahankan, tetapi akun tidak dapat digunakan kembali.`} reasonLabel="Alasan penghapusan" reasonRequired confirmLabel="Force Delete" danger busy={mutationBusy} onClose={() => setForceDeleteTarget(null)} onConfirm={forceDelete} />
+
     <Dialog open={!!credentialAction} onOpenChange={(open) => { if (!open) { setCredentialAction(null); setCredentialForm({ reason: '', currentPassword: '' }); setRevealed(null); } }}><DialogContent><DialogTitle>{credentialAction?.mode === 'reset' ? 'Reset password sementara' : 'Lihat kredensial sementara'}</DialogTitle><DialogDescription>Tindakan untuk {credentialAction?.user.name} ini sensitif, memerlukan reautentikasi, dan dicatat di audit log.</DialogDescription>{revealed ? <div className="mt-5"><Label>Password sementara</Label><div className="break-all rounded-xl border border-amber-200 bg-amber-50 p-4 font-mono text-lg font-bold text-navy">{revealed}</div><p className="mt-2 text-xs text-slate-500">Tampilkan hanya kepada pemilik akun melalui kanal tepercaya. Password sementara tetap dapat dilihat kembali oleh HR sampai pemilik akun berhasil menggantinya.</p><Button className="mt-4 w-full" type="button" onClick={() => navigator.clipboard.writeText(revealed)}>Salin password</Button></div> : <form onSubmit={submitCredential} className="mt-5 space-y-4"><div><Label>Alasan</Label><Textarea required minLength={3} value={credentialForm.reason} onChange={(event) => setCredentialForm({ ...credentialForm, reason: event.target.value })} /></div><div><Label>Password admin saat ini</Label><Input required minLength={8} type="password" autoComplete="current-password" value={credentialForm.currentPassword} onChange={(event) => setCredentialForm({ ...credentialForm, currentPassword: event.target.value })} /></div><Button disabled={credentialBusy} variant={credentialAction?.mode === 'reset' ? 'danger' : 'primary'} className="w-full">{credentialBusy ? 'Memverifikasi...' : credentialAction?.mode === 'reset' ? 'Reset password' : 'Lihat password sementara'}</Button></form>}</DialogContent></Dialog>
   </DossierPage>;
 }
@@ -218,9 +251,12 @@ export default function UsersPage() {
 type UserActionsProps = {
   user: UserRow;
   canManageUsers: boolean;
+  canForceDelete: boolean;
+  currentUserId: string;
   canManageCredential: (user: UserRow) => boolean;
   onEdit: (user: UserRow) => void;
   onLifecycle: (user: UserRow, action: LifecycleAction['action']) => void;
+  onForceDelete: (user: UserRow) => void;
   onCredential: (user: UserRow, mode: CredentialAction['mode']) => void;
 };
 
@@ -253,8 +289,8 @@ function CredentialState({ user }: { user: UserRow }) {
   return <div className="min-w-0"><StatusBadge status="PENDING" label="Tersedia" /><p className="mt-1 break-words text-caption text-muted [overflow-wrap:anywhere]">{purpose} · dilihat {credential.revealCount ?? 0}x</p>{credential.createdAt && <p className="mt-0.5 text-caption tabular-nums text-muted">Dibuat {new Date(credential.createdAt).toLocaleDateString('id-ID')}</p>}</div>;
 }
 
-function UserActions({ user, canManageUsers, canManageCredential, onEdit, onLifecycle, onCredential, mobile = false }: UserActionsProps & { mobile?: boolean }) {
+function UserActions({ user, canManageUsers, canForceDelete, currentUserId, canManageCredential, onEdit, onLifecycle, onForceDelete, onCredential, mobile = false }: UserActionsProps & { mobile?: boolean }) {
   if (!canManageUsers) return null;
   const credentialAllowed = canManageCredential(user);
-  return <div className={`flex items-center gap-2 ${mobile ? 'w-full' : 'justify-end'}`}><Button size="sm" variant="secondary" className={mobile ? 'flex-1' : undefined} onClick={() => onEdit(user)}>Kelola Akun</Button><DropdownMenu><DropdownMenuTrigger asChild><ActionMenuTrigger label={`Tindakan lain untuk ${user.name}`} /></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => onLifecycle(user, user.isActive ? 'deactivate' : 'reactivate')}>{user.isActive ? 'Nonaktifkan akun' : 'Aktifkan akun'}</DropdownMenuItem>{credentialAllowed && <DropdownMenuItem onSelect={() => onCredential(user, 'reset')}>Reset password</DropdownMenuItem>}{credentialAllowed && user.temporaryCredential?.available && <DropdownMenuItem onSelect={() => onCredential(user, 'reveal')}>Lihat password sementara</DropdownMenuItem>}<DropdownMenuSeparator className="my-1 h-px bg-border" /><DropdownMenuItem danger onSelect={() => onLifecycle(user, 'delete')}>Hapus aman</DropdownMenuItem></DropdownMenuContent></DropdownMenu></div>;
+  return <div className={`flex items-center gap-2 ${mobile ? 'w-full' : 'justify-end'}`}><Button size="sm" variant="secondary" className={mobile ? 'flex-1' : undefined} onClick={() => onEdit(user)}>Kelola Akun</Button><DropdownMenu><DropdownMenuTrigger asChild><ActionMenuTrigger label={`Tindakan lain untuk ${user.name}`} /></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => onLifecycle(user, user.isActive ? 'deactivate' : 'reactivate')}>{user.isActive ? 'Nonaktifkan akun' : 'Aktifkan akun'}</DropdownMenuItem>{credentialAllowed && <DropdownMenuItem onSelect={() => onCredential(user, 'reset')}>Reset password</DropdownMenuItem>}{credentialAllowed && user.temporaryCredential?.available && <DropdownMenuItem onSelect={() => onCredential(user, 'reveal')}>Lihat password sementara</DropdownMenuItem>}<DropdownMenuSeparator className="my-1 h-px bg-border" /><DropdownMenuItem danger onSelect={() => onLifecycle(user, 'delete')}>Hapus aman</DropdownMenuItem>{canForceDelete && user.id !== currentUserId && <DropdownMenuItem danger onSelect={() => onForceDelete(user)}>Force Delete</DropdownMenuItem>}</DropdownMenuContent></DropdownMenu></div>;
 }

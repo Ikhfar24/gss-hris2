@@ -115,7 +115,7 @@ export class TemporaryAssignmentsService {
       || startOfCalendarDay(origin.startDate) > startDate || (origin.endDate && startOfCalendarDay(origin.endDate) < endDate)) {
       throw new BadRequestException('Penempatan asal tidak valid untuk seluruh periode penugasan');
     }
-    if (!location?.isActive) throw new BadRequestException('Lokasi tujuan tidak aktif atau tidak ditemukan');
+    if (!location?.isActive || location.deletedAt) throw new BadRequestException('Lokasi tujuan tidak aktif atau tidak ditemukan');
     if (locationId === origin.locationId) throw new BadRequestException('Lokasi tujuan harus berbeda dari penempatan asal');
     if (clientId && location.clientId !== clientId) throw new BadRequestException('Klien tujuan tidak sesuai dengan lokasi tujuan');
     if (conflicts.some((item) => dateRangesOverlap(item.startDate, item.endDate, startDate, endDate))) {

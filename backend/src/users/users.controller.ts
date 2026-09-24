@@ -76,4 +76,10 @@ export class UsersController {
   remove(@Param('id') id: string, @Body() dto: LifecycleDto, @CurrentUser() actor: AuthenticatedUser) {
     return this.usersService.remove(id, dto.reason, actor);
   }
+
+  @Roles(Role.SYSTEM_ADMIN)
+  @Delete(':id/force-delete')
+  forceDelete(@Param('id') id: string, @Body() dto: LifecycleDto, @CurrentUser() actor: AuthenticatedUser) {
+    return this.usersService.forceDelete(id, dto.reason, actor);
+  }
 }

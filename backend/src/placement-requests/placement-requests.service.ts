@@ -72,6 +72,8 @@ export class PlacementRequestsService {
     });
     if (!employee) throw new NotFoundException('Karyawan tidak ditemukan');
     if (actor.role === Role.KOORDINATOR) await this.scopes.assertEmployee(actor.userId, employee);
+    const destination = await this.prisma.location.findFirst({ where: { id: dto.destinationLocationId, deletedAt: null, isActive: true }, select: { id: true } });
+    if (!destination) throw new BadRequestException('Lokasi tujuan tidak aktif atau tidak ditemukan');
 
     const currentPlacement = employee.placements[0];
     if (currentPlacement && currentPlacement.locationId === dto.destinationLocationId) {

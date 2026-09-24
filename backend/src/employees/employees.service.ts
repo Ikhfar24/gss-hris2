@@ -192,7 +192,7 @@ export class EmployeesService {
     const existingNik = new Set(existing.map((employee) => employee.nik).filter(Boolean));
     const existingEmployeeNumber = new Set(existing.map((employee) => employee.employeeNumber).filter(Boolean));
     const locationIds = [...new Set(dto.rows.map((row) => row.initialLocationId).filter((value): value is string => !!value))];
-    const locations = locationIds.length ? await this.prisma.location.findMany({ where: { id: { in: locationIds } }, select: { id: true } }) : [];
+    const locations = locationIds.length ? await this.prisma.location.findMany({ where: { id: { in: locationIds }, deletedAt: null, isActive: true }, select: { id: true } }) : [];
     const knownLocations = new Set(locations.map((location) => location.id));
 
     dto.rows.forEach((rawRow, index) => {
@@ -291,7 +291,7 @@ export class EmployeesService {
     const loginEmails = rows.map(({ data }) => data.loginEmail).filter((value): value is string => typeof value === 'string' && !!value).map((email) => email.toLowerCase());
     const [employees, locations, users] = await Promise.all([
       identities.length ? this.prisma.employee.findMany({ where: { OR: [{ nik: { in: identities } }, { employeeNumber: { in: identities } }] }, select: { nik: true, employeeNumber: true } }) : [],
-      locationReferences.length ? this.prisma.location.findMany({ where: { OR: [{ referenceCode: { in: normalizedLocationReferences } }, { id: { in: locationReferences } }] }, select: { id: true, referenceCode: true } }) : [],
+      locationReferences.length ? this.prisma.location.findMany({ where: { deletedAt: null, isActive: true, OR: [{ referenceCode: { in: normalizedLocationReferences } }, { id: { in: locationReferences } }] }, select: { id: true, referenceCode: true } }) : [],
       loginEmails.length ? this.prisma.user.findMany({ where: { email: { in: loginEmails, mode: 'insensitive' } }, select: { email: true } }) : [],
     ]);
     const existingNik = new Set(employees.map((employee) => employee.nik).filter((value): value is string => !!value));

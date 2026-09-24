@@ -10,10 +10,11 @@ import {
   Pencil,
   ShieldAlert,
 } from "lucide-react";
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { ApiError, apiFetch, uploadFile } from "@/lib/api";
 import { formatDate, formatTime } from "@/lib/format";
 import { EmployeeAvatar } from "@/components/employee/EmployeeAvatar";
+import { LeaveBalancePanel } from "@/components/leave/LeaveBalancePanel";
 import { Badge, StatusBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -35,6 +36,13 @@ interface ProfileData {
   overtimeRequests?: Record<string, any>[];
   profileChangeHistory?: Record<string, any>[];
 }
+
+const MAX_PROFILE_PHOTO_SIZE = 5 * 1024 * 1024;
+const PROFILE_PHOTO_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+]);
 
 export function CoordinatorEmployeeProfile({ data }: { data: ProfileData }) {
   const profile = data.profile;
@@ -91,6 +99,9 @@ export function AdminEmployeeProfile({
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [photo, setPhoto] = useState<File | null>(null);
+  const [photoPreviewUrl, setPhotoPreviewUrl] = useState<string | null>(null);
+  const [photoUploaded, setPhotoUploaded] = useState(false);
+  const photoInputRef = useRef<HTMLInputElement>(null);
   const [contract, setContract] = useState({
     type: "PKWT",
     startDate: "",
@@ -109,10 +120,51 @@ export function AdminEmployeeProfile({
     reason: "",
   });
 
+  useEffect(() => {
+    if (!photo) {
+      setPhotoPreviewUrl(null);
+      return;
+    }
+
+    const objectUrl = URL.createObjectURL(photo);
+    setPhotoPreviewUrl(objectUrl);
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [photo]);
+
+  function clearPendingPhoto() {
+    setPhoto(null);
+    setPhotoUploaded(false);
+    if (photoInputRef.current) photoInputRef.current.value = "";
+  }
+
+  function selectPhoto(file: File | undefined) {
+    setError(null);
+    setMessage(null);
+
+    if (!file) return;
+    if (!PROFILE_PHOTO_TYPES.has(file.type)) {
+      setError("Foto harus berformat JPEG, PNG, atau WebP.");
+      return;
+    }
+    if (file.size === 0) {
+      setError("File foto tidak boleh kosong.");
+      return;
+    }
+    if (file.size > MAX_PROFILE_PHOTO_SIZE) {
+      setError("Ukuran foto maksimal 5 MiB.");
+      return;
+    }
+
+    setPhoto(file);
+    setPhotoUploaded(false);
+  }
+
   async function saveEdit(event: FormEvent) {
     event.preventDefault();
     setBusy(true);
     setError(null);
+    let employeeSaved = false;
+    let uploaded = photoUploaded;
     try {
       await apiFetch(`/employees/${profile.id}`, {
         method: "PATCH",
@@ -126,14 +178,25 @@ export function AdminEmployeeProfile({
           jobTitle: form.jobTitle || undefined,
         },
       });
-      setEditOpen(false);
-      setMessage("Data master karyawan diperbarui.");
+      employeeSaved = true;
+      if (photo && !uploaded) {
+        await uploadFile(`/employees/${profile.id}/profile-photo`, photo);
+        uploaded = true;
+        setPhotoUploaded(true);
+      }
       await onReload();
+      clearPendingPhoto();
+      setEditOpen(false);
+      setMessage(photo ? "Data dan foto profil diperbarui." : "Data master karyawan diperbarui.");
     } catch (reason) {
       setError(
-        reason instanceof ApiError
-          ? reason.message
-          : "Gagal memperbarui karyawan",
+        employeeSaved || uploaded
+          ? uploaded
+            ? "Perubahan sudah tersimpan, tetapi profil gagal dimuat ulang. Klik Simpan lagi untuk memuat ulang tanpa mengunggah foto ulang."
+            : "Data karyawan tersimpan, tetapi foto gagal diunggah. Periksa file lalu klik Simpan lagi."
+          : reason instanceof ApiError
+            ? reason.message
+            : "Gagal memperbarui karyawan",
       );
     } finally {
       setBusy(false);
@@ -162,25 +225,6 @@ export function AdminEmployeeProfile({
     } catch (failure) {
       setError(
         failure instanceof ApiError ? failure.message : "Aksi lifecycle gagal",
-      );
-    } finally {
-      setBusy(false);
-    }
-  }
-  async function changePhoto() {
-    if (!photo) return;
-    setBusy(true);
-    setError(null);
-    try {
-      await uploadFile(`/employees/${profile.id}/profile-photo`, photo);
-      setPhoto(null);
-      setMessage("Foto profil diperbarui.");
-      await onReload();
-    } catch (failure) {
-      setError(
-        failure instanceof ApiError
-          ? failure.message
-          : "Gagal memperbarui foto",
       );
     } finally {
       setBusy(false);
@@ -219,7 +263,13 @@ export function AdminEmployeeProfile({
 
   return (
     <DossierPage className="max-w-6xl space-y-5">
-      <Identity profile={profile} eyebrow="ADMINISTRASI KARYAWAN" />
+      <Identity
+        profile={profile}
+        eyebrow="ADMINISTRASI KARYAWAN"
+        photoPreviewUrl={photoPreviewUrl}
+        photoPending={!!photo}
+        photoUploaded={photoUploaded}
+      />
       {message && <Alert variant="success">{message}</Alert>}
       {error && <Alert variant="danger">{error}</Alert>}
       <Card className="shadow-none">
@@ -228,21 +278,6 @@ export function AdminEmployeeProfile({
             <Pencil className="size-4" />
             Edit Data
           </Button>
-          <label className="inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-xl border px-4 text-sm font-semibold text-slate-700">
-            <Camera className="size-4" />
-            {profile.photoUrl ? "Ganti Foto" : "Unggah Foto"}
-            <input
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              className="sr-only"
-              onChange={(event) => setPhoto(event.target.files?.[0] ?? null)}
-            />
-          </label>
-          {photo && (
-            <Button variant="secondary" disabled={busy} onClick={changePhoto}>
-              Simpan Foto
-            </Button>
-          )}
           <Button
             variant="secondary"
             onClick={() =>
@@ -262,6 +297,12 @@ export function AdminEmployeeProfile({
           </Button>
           <Button asChild variant="secondary">
             <Link href="/placement-requests">Administrasi Penempatan</Link>
+          </Button>
+          <Button asChild variant="secondary">
+            <Link href="#leave-balance">
+              <CalendarDays className="size-4" />
+              Kelola Saldo Cuti
+            </Link>
           </Button>
           <details className="w-full rounded-xl border border-slate-200 md:hidden">
             <summary className="min-h-10 cursor-pointer px-4 py-2 text-sm font-semibold text-slate-600">
@@ -308,6 +349,7 @@ export function AdminEmployeeProfile({
         />
       </div>
       <PlacementCard placements={profile.placements} />
+      <LeaveBalancePanel employeeId={profile.id} canManage />
       <Card className="shadow-none">
         <CardHeader>
           <CardTitle>Kontrak</CardTitle>
@@ -391,14 +433,38 @@ export function AdminEmployeeProfile({
         </CardContent>
       </Card>
       <HistoryGrid data={data} />
-      <Dialog open={editOpen} onOpenChange={(open) => { if (!busy) setEditOpen(open); }}>
-        <DialogContent className="max-w-2xl" showClose={!busy} aria-busy={busy}>
+      <Dialog open={editOpen} onOpenChange={(open) => { if (!busy) { setEditOpen(open); if (!open && !photoUploaded) clearPendingPhoto(); } }}>
+        <DialogContent
+          className="max-w-2xl"
+          showClose={!busy}
+          aria-busy={busy}
+          onEscapeKeyDown={(event) => { if (busy) event.preventDefault(); }}
+          onPointerDownOutside={(event) => { if (busy) event.preventDefault(); }}
+        >
           <DialogTitle>Edit Data Karyawan</DialogTitle>
           <DialogDescription>
             Perubahan sensitif dan mode presensi memerlukan alasan serta dicatat
             dalam audit.
           </DialogDescription>
           <form onSubmit={saveEdit} className="mt-5 grid gap-3 sm:grid-cols-2">
+            <section className="flex min-w-0 flex-col gap-3 rounded-xl border border-border bg-surface-subtle p-3 sm:col-span-2 sm:flex-row sm:items-center" data-testid="profile-photo-editor">
+              <div className="relative w-fit shrink-0">
+                <EmployeeAvatar name={profile.name ?? "Karyawan"} photoUrl={photoPreviewUrl ?? profile.photoUrl} size="lg" className="size-20 border-border" />
+                {photo && <span className="absolute -bottom-2 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-amber-100 px-2 py-1 text-[10px] font-bold text-amber-900 ring-1 ring-amber-300">{photoUploaded ? "Sudah diunggah" : "Belum disimpan"}</span>}
+              </div>
+              <div className="min-w-0 flex-1" data-testid={photo ? "profile-photo-pending" : undefined}>
+                <p className="text-sm font-semibold text-brand">Foto profil</p>
+                <p className="mt-1 text-caption text-muted">JPEG, PNG, atau WebP. Maksimal 5 MiB. Foto baru diunggah saat Simpan Perubahan.</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <label className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border border-border bg-paper px-4 text-sm font-semibold text-foreground">
+                    <Camera className="size-4" />
+                    {photo ? "Ganti Pilihan" : profile.photoUrl ? "Ganti Foto" : "Pilih Foto"}
+                    <input ref={photoInputRef} type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" data-testid="profile-photo-input" onChange={(event) => { selectPhoto(event.currentTarget.files?.[0]); event.currentTarget.value = ""; }} />
+                  </label>
+                  {photo && !photoUploaded && <Button type="button" variant="secondary" disabled={busy} onClick={clearPendingPhoto} data-testid="profile-photo-revert">Kembalikan Foto Lama</Button>}
+                </div>
+              </div>
+            </section>
             {(
               [
                 "name",
@@ -471,11 +537,12 @@ export function AdminEmployeeProfile({
               <Button
                 type="button"
                 variant="secondary"
-                onClick={() => setEditOpen(false)}
+                disabled={busy}
+                onClick={() => { setEditOpen(false); if (!photoUploaded) clearPendingPhoto(); }}
               >
                 Batal
               </Button>
-              <Button disabled={busy}>
+              <Button disabled={busy} data-testid="profile-photo-save">
                 {busy ? "Menyimpan..." : "Simpan Perubahan"}
               </Button>
             </div>
@@ -483,7 +550,12 @@ export function AdminEmployeeProfile({
         </DialogContent>
       </Dialog>
       <Dialog open={!!action} onOpenChange={(open) => !open && !busy && setAction(null)}>
-        <DialogContent showClose={!busy} aria-busy={busy}>
+        <DialogContent
+          showClose={!busy}
+          aria-busy={busy}
+          onEscapeKeyDown={(event) => { if (busy) event.preventDefault(); }}
+          onPointerDownOutside={(event) => { if (busy) event.preventDefault(); }}
+        >
           <DialogTitle>
             {action === "delete"
               ? "Hapus Aman Karyawan"
@@ -522,18 +594,34 @@ export function AdminEmployeeProfile({
 function Identity({
   profile,
   eyebrow,
+  photoPreviewUrl,
+  photoPending = false,
+  photoUploaded = false,
 }: {
   profile: Record<string, any>;
   eyebrow: string;
+  photoPreviewUrl?: string | null;
+  photoPending?: boolean;
+  photoUploaded?: boolean;
 }) {
   return (
     <header className="flex flex-col gap-4 border-b border-border bg-paper px-4 py-4 sm:flex-row sm:items-center">
-      <EmployeeAvatar
-        name={profile.name ?? "Karyawan"}
-        photoUrl={profile.photoUrl}
-        size="lg"
-        className="size-16 border-border sm:size-20"
-      />
+      <div
+        className="relative w-fit shrink-0"
+        data-testid={photoPending ? "profile-photo-preview" : undefined}
+      >
+        <EmployeeAvatar
+          name={profile.name ?? "Karyawan"}
+          photoUrl={photoPreviewUrl ?? profile.photoUrl}
+          size="lg"
+          className="size-16 border-border sm:size-20"
+        />
+        {photoPending && (
+          <span className="absolute -bottom-2 left-1/2 min-h-6 -translate-x-1/2 whitespace-nowrap rounded-full bg-amber-100 px-2 py-1 text-[10px] font-bold leading-4 text-amber-900 shadow-sm ring-1 ring-amber-300">
+            {photoUploaded ? "Sudah diunggah" : "Belum disimpan"}
+          </span>
+        )}
+      </div>
       <div className="min-w-0 flex-1">
         <p className="text-caption font-semibold text-muted">{eyebrow}</p>
         <h1 className="mt-1 break-words text-page-title text-brand [overflow-wrap:anywhere]">
