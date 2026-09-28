@@ -12,8 +12,6 @@ export function DropdownMenu({
   return <DropdownMenuPrimitive.Root modal={modal} {...props} />;
 }
 export const DropdownMenuTrigger = DropdownMenuPrimitive.Trigger;
-export const DropdownMenuGroup = DropdownMenuPrimitive.Group;
-export const DropdownMenuLabel = DropdownMenuPrimitive.Label;
 export const DropdownMenuSeparator = DropdownMenuPrimitive.Separator;
 
 export function DropdownMenuContent({

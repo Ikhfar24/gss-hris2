@@ -1,6 +1,4 @@
-// Papaiz HRIS - Phase 1: Foundation
-// Covers: User, Role (RBAC), Company Settings, Audit Log
-// Later phases (Employee, Placement, Attendance, Leave, Payroll) extend this schema.
+// Papaiz HRIS application schema.
 
 generator client {
   provider = "prisma-client-js"
@@ -12,7 +10,7 @@ datasource db {
 }
 
 // --- RBAC -------------------------------------------------------------
-// Fixed role set per PRD section 6/9. Kept as enum for Phase 1 simplicity;
+// Fixed role set per PRD section 6/9.
 // a fully data-driven permission table can be layered on top later without
 // breaking this model (see Open Question: Komisaris & System Admin access).
 enum Role {
@@ -153,7 +151,7 @@ enum PlacementRequestStatus {
 
 model Client {
   id            String   @id @default(uuid())
-  referenceCode String   @unique
+  referenceCode String
   name          String
   address       String?
   contactPerson String?
@@ -178,7 +176,7 @@ model Client {
 // toleransi) so HR can change them without code, per BR-008.
 model Location {
   id           String   @id @default(uuid())
-  referenceCode String   @unique
+  referenceCode String
   name         String
   address      String?
   latitude     Float?

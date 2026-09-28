@@ -14,6 +14,7 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import { ApiError, apiFetch, uploadFile } from "@/lib/api";
 import { formatDate, formatTime } from "@/lib/format";
 import { EmployeeAvatar } from "@/components/employee/EmployeeAvatar";
+import { useSession } from "@/components/providers/SessionProvider";
 import { LeaveBalancePanel } from "@/components/leave/LeaveBalancePanel";
 import { Badge, StatusBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -90,6 +91,7 @@ export function AdminEmployeeProfile({
   onReload: () => Promise<void>;
 }) {
   const profile = data.profile;
+  const { session, refresh } = useSession();
   const [editOpen, setEditOpen] = useState(false);
   const [action, setAction] = useState<
     "deactivate" | "reactivate" | "delete" | null
@@ -185,6 +187,7 @@ export function AdminEmployeeProfile({
         setPhotoUploaded(true);
       }
       await onReload();
+      if (session.employee?.id === profile.id) await refresh();
       clearPendingPhoto();
       setEditOpen(false);
       setMessage(photo ? "Data dan foto profil diperbarui." : "Data master karyawan diperbarui.");

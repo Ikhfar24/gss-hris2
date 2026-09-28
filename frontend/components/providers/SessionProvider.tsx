@@ -1,13 +1,13 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { apiFetch, ApiError } from '@/lib/api';
 import { clearSession } from '@/lib/auth';
 import { isSession, type Session } from '@/lib/session';
 import { Button } from '../ui/button';
 
-interface SessionContextValue { session: Session; refresh: () => void }
+interface SessionContextValue { session: Session; refresh: () => Promise<void> }
 const SessionContext = createContext<SessionContextValue | null>(null);
 
 export function SessionProvider({ children, fallback }: { children: React.ReactNode; fallback: React.ReactNode }) {
@@ -17,34 +17,37 @@ export function SessionProvider({ children, fallback }: { children: React.ReactN
   const returnTo = `${pathname}${searchParams.size ? `?${searchParams.toString()}` : ''}`;
   const [session, setSession] = useState<Session | null>(null);
   const [failed, setFailed] = useState(false);
-  const [attempt, setAttempt] = useState(0);
-
-  useEffect(() => {
-    let active = true;
+  const loadSession = useCallback(async (isActive: () => boolean = () => true) => {
     setFailed(false);
-    apiFetch<unknown>('/auth/me').then((value) => {
-      if (!active) return;
+    try {
+      const value = await apiFetch<unknown>('/auth/me');
+      if (!isActive()) return;
       if (!isSession(value)) {
         clearSession();
         router.replace(`/login?next=${encodeURIComponent(returnTo)}`);
         return;
       }
       setSession(value);
-    }).catch((error) => {
-      if (!active) return;
+    } catch (error) {
+      if (!isActive()) return;
       if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
         clearSession();
         router.replace(`/login?next=${encodeURIComponent(returnTo)}`);
       } else {
         setFailed(true);
       }
-    });
-    return () => { active = false; };
-  }, [attempt, returnTo, router]);
+    }
+  }, [returnTo, router]);
 
-  if (failed) return <SessionFailure retry={() => setAttempt((value) => value + 1)} />;
+  useEffect(() => {
+    let active = true;
+    void loadSession(() => active);
+    return () => { active = false; };
+  }, [loadSession]);
+
+  if (failed) return <SessionFailure retry={() => void loadSession()} />;
   if (!session) return <>{fallback}</>;
-  return <SessionContext.Provider value={{ session, refresh: () => setAttempt((value) => value + 1) }}>{children}</SessionContext.Provider>;
+  return <SessionContext.Provider value={{ session, refresh: loadSession }}>{children}</SessionContext.Provider>;
 }
 
 export function useSession() {

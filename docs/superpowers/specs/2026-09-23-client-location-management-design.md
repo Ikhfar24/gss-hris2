@@ -24,7 +24,7 @@ Force deletion is an audited tombstone. It sets the record inactive and deleted 
 - cancels pending or approved temporary assignments targeting the Location;
 - disables Location-scoped payroll cycle settings.
 
-Operational Client and Location queries exclude tombstones. Historical joins continue resolving them. New assignments, imports, payroll scopes, and attendance eligibility cannot select tombstoned records. Reference codes remain reserved.
+Operational Client and Location queries exclude tombstones. Historical joins continue resolving them. New assignments, imports, payroll scopes, and attendance eligibility cannot select tombstoned records. Names and reference codes are unique among non-tombstoned records but may be reused after force deletion; tombstones remain unchanged under their original identity.
 
 ## API
 

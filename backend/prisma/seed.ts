@@ -31,7 +31,7 @@ async function main() {
         role: Role.SYSTEM_ADMIN,
       },
     });
-    console.log(`Created default admin user: ${adminEmail} / ChangeMe123! (CHANGE THIS)`);
+    console.log(`Created default admin user: ${adminEmail}`);
   }
 
   // Test accounts for each reviewer role, so the placement approval chain
@@ -169,7 +169,7 @@ async function main() {
         employeeId: borongan.id,
       },
     });
-    console.log(`Created test account: ${karyawanEmail} / Karyawan12345!`);
+    console.log(`Created test account: ${karyawanEmail}`);
   } else if (existingKaryawan.employeeId !== borongan.id) {
     await prisma.user.update({ where: { id: existingKaryawan.id }, data: { employeeId: borongan.id } });
   }

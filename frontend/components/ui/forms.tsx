@@ -9,5 +9,3 @@ export const Textarea = React.forwardRef<HTMLTextAreaElement, React.TextareaHTML
 Textarea.displayName = 'Textarea';
 export const Label = React.forwardRef<HTMLLabelElement, React.LabelHTMLAttributes<HTMLLabelElement>>(({ className, ...props }, ref) => <label ref={ref} className={cn('mb-1.5 block text-xs font-semibold text-foreground', className)} {...props} />);
 Label.displayName = 'Label';
-export function FieldDescription({ className, ...props }: React.HTMLAttributes<HTMLParagraphElement>) { return <p className={cn('mt-1 text-caption text-muted', className)} {...props} />; }
-export function FieldError({ className, ...props }: React.HTMLAttributes<HTMLParagraphElement>) { return <p role="alert" className={cn('mt-1 text-caption font-medium text-danger', className)} {...props} />; }

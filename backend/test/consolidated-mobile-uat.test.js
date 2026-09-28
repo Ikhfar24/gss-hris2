@@ -79,6 +79,7 @@ test('consolidated UAT location configuration is data-driven, validated, editabl
   let created;
   const prisma = {
     location: {
+      findFirst: async () => null,
       create: async ({ data }) => { created = { id: 'location-1', isActive: true, ...data }; return created; },
       findUnique: async () => created,
       update: async ({ data }) => ({ ...created, ...data }),

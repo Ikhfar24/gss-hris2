@@ -38,6 +38,10 @@ import { Skeleton } from "./ui/skeleton";
 import { LoadingState } from "./ui/feedback";
 import AttendancePage from "@/app/(dashboard)/attendance/page";
 import { AttendancePresentationProvider } from "./attendance/AttendancePresentationContext";
+import {
+  CurrentUserAvatar,
+  useCurrentUserIdentity,
+} from "./employee/CurrentUserIdentity";
 
 const roleLabels = {
   KARYAWAN: "Karyawan",
@@ -393,12 +397,7 @@ function AccountDialog({
   onLogout: () => void;
 }) {
   const { session } = useSession();
-  const initials = (session.employee?.name ?? session.email)
-    .split(/\s+/)
-    .map((part) => part[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
+  const identity = useCurrentUserIdentity();
   return (
     <Dialog>
       <DialogTrigger asChild>
@@ -410,18 +409,17 @@ function AccountDialog({
             inverse && "text-white hover:bg-white/10",
           )}
         >
-          <span
+          <CurrentUserAvatar
+            size="sm"
             className={cn(
-              "grid size-9 shrink-0 place-items-center rounded-lg bg-brand/10 text-xs font-bold text-brand",
-              inverse && "border border-white/10 bg-white/10 text-white",
+              "size-9 border-border bg-brand/10 text-brand",
+              inverse && "border-white/10 bg-white/10 text-white",
             )}
-          >
-            {initials}
-          </span>
+          />
           {!compact && (
             <span className="min-w-0 flex-1">
               <span className="block truncate text-sm font-semibold">
-                {session.employee?.name ?? session.email}
+                {identity.name}
               </span>
               <span
                 className={cn(
@@ -446,12 +444,13 @@ function AccountDialog({
           Informasi sesi yang terverifikasi oleh server.
         </DialogDescription>
         <div className="mt-5 flex items-center gap-3 border-y border-border py-4">
-          <span className="grid size-12 place-items-center rounded-lg bg-brand text-sm font-bold text-white">
-            {initials}
-          </span>
+          <CurrentUserAvatar
+            size="sm"
+            className="size-12 border-border bg-brand text-sm text-white"
+          />
           <div className="min-w-0">
             <p className="truncate font-semibold">
-              {session.employee?.name ?? session.email}
+              {identity.name}
             </p>
             <p className="truncate text-body text-muted">{session.email}</p>
           </div>

@@ -70,11 +70,13 @@ test('Phase 3 ADMIN_HR actions use dialogs and preserve exclusive photo mutation
 
 test('Phase 3 attendance review uses accessible detail and decision dialogs', () => {
   const attendance = frontend('app/(dashboard)/attendance/page.tsx');
-  assert.match(attendance, /AttendanceDetailView/);
-  assert.match(attendance, /submitReview/);
-  assert.match(attendance, /Konfirmasi Keputusan/);
-  assert.doesNotMatch(attendance, /window\.prompt\(decision/);
-  assert.match(attendance, /validationStatus.*rowParams\.set/s);
+  const monitor = frontend('components/attendance/PeopleAttendanceMonitoring.tsx');
+  assert.match(attendance, /<PeopleAttendanceMonitoring\s+role=\{role\}\s+context=\{authorityView\}\s*\/>/);
+  assert.match(monitor, /<AttendanceDetailView\s+attendance=\{detail\}\s*\/>/);
+  assert.match(monitor, /async function review\(decision: 'APPROVED' \| 'REJECTED'\)/);
+  assert.match(monitor, /apiFetch\(`\/attendance\/\$\{detail\.id\}\/review`,\s*\{\s*method: 'POST',\s*body: \{\s*decision,\s*note:/s);
+  assert.doesNotMatch(monitor, /window\.prompt/);
+  assert.match(monitor, /searchParams\.get\('validationStatus'\) === 'NEEDS_REVIEW' \? 'NEEDS_REVIEW' : 'ALL'/);
 });
 
 test('Phase 3 keeps Company Settings restricted in centralized navigation', () => {

@@ -5,10 +5,7 @@ import { ExportFormat, ExportQueryDto } from './dto/export-query.dto';
 import { AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { Role } from '../common/enums/role.enum';
 import { CoordinatorScopeService } from '../coordinator-scopes/coordinator-scope.service';
-
-function startOfDay(d: Date): Date {
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
-}
+import { startOfCalendarDay as startOfDay } from '../common/domain/date-range';
 
 const LATENESS_LABEL: Record<string, string> = { ON_TIME: 'Tepat waktu', LATE: 'Terlambat', NOT_APPLICABLE: '-' };
 const LEAVE_TYPE_LABEL: Record<string, string> = {

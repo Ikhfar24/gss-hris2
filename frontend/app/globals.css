@@ -117,15 +117,6 @@
   }
   /* prettier-ignore */
   .mobile-nav-clearance { padding-bottom: calc(7rem + env(safe-area-inset-bottom)); }
-  .dossier-rule {
-    @apply border-t border-rule;
-  }
-  .dossier-index {
-    @apply relative before:absolute before:left-0 before:top-0 before:h-full before:w-1 before:bg-accent;
-  }
-  .dossier-sheet {
-    @apply rounded-xl border border-border bg-paper shadow-card;
-  }
   .dossier-label {
     @apply text-caption font-semibold text-muted;
   }

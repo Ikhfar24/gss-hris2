@@ -10,7 +10,7 @@ import {
   MapPin,
 } from "lucide-react";
 import { useSession } from "@/components/providers/SessionProvider";
-import { EmployeeAvatar } from "@/components/employee/EmployeeAvatar";
+import { CurrentUserAvatar } from "@/components/employee/CurrentUserIdentity";
 import { ContextBand, DossierPage } from "@/components/ui/dossier";
 import { Alert } from "@/components/ui/feedback";
 import { employmentTypeLabel } from "@/lib/employment";
@@ -85,9 +85,7 @@ export default function EmployeeProfilePage() {
   return (
     <DossierPage className="mx-auto max-w-5xl space-y-4">
       <header className="flex min-w-0 items-center gap-4 rounded-xl bg-brand p-4 text-white shadow-card sm:p-5">
-        <EmployeeAvatar
-          name={employee.name}
-          photoUrl={employee.photoUrl}
+        <CurrentUserAvatar
           size="lg"
           className="size-16 border-white/20 bg-white/10 text-white"
         />

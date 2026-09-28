@@ -5,10 +5,7 @@ import { Role } from '../common/enums/role.enum';
 import { CoordinatorScopeService } from '../coordinator-scopes/coordinator-scope.service';
 import { EmploymentType, Prisma } from '@prisma/client';
 import { approvedFullDayAbsenceWhere } from '../common/domain/approved-full-day-absence';
-
-function startOfDay(d: Date): Date {
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
-}
+import { startOfCalendarDay as startOfDay } from '../common/domain/date-range';
 
 export interface AttentionCard {
   key: string;

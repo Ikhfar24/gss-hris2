@@ -5,6 +5,5 @@ import { PlacementsController } from './placements.controller';
 @Module({
   providers: [PlacementsService],
   controllers: [PlacementsController],
-  exports: [PlacementsService],
 })
 export class PlacementsModule {}

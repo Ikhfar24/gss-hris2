@@ -18,9 +18,8 @@ import { ForceDeleteEmployeeDto } from './dto/force-delete-employee.dto';
 export class EmployeesController {
   constructor(private service: EmployeesService) {}
 
-  // Koordinator/Direktur read for monitoring (§9.2/§9.6); Karyawan's own
-  // profile is served separately (not implemented here — Phase 4/5 concern
-  // once self-service "my profile" endpoints are scoped).
+  // Koordinator/Direktur read for monitoring (§9.2/§9.6); self-service
+  // profile routes are declared separately below.
   @Roles(Role.ADMIN_HR, Role.SYSTEM_ADMIN, Role.KOORDINATOR, Role.DIREKTUR, Role.KOMISARIS)
   @Get()
   findAll(@CurrentUser() actor: AuthenticatedUser, @Query() query: any) {

@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { AuthenticatedUser } from '../common/decorators/current-user.decorator';
-import { validatePayrollCycleDays } from '../common/domain/payroll-foundation';
+import { canCreatePayrollRevision, validatePayrollCycleDays } from '../common/domain/payroll-foundation';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreatePayrollCycleSettingDto, CreatePayrollPeriodDto, CreatePayrollRevisionDto, RevisionActionDto, UpdatePayrollCycleSettingDto } from './dto/payroll-admin.dto';
 
@@ -101,7 +101,7 @@ export class PayrollAdminService {
     if (!dto.items.length) throw new BadRequestException('Revisi payroll harus memiliki minimal satu item');
     const run = await this.prisma.payrollRun.findUnique({ where: { id: payrollRunId }, include: { slips: { select: { id: true, netPay: true } } } });
     if (!run) throw new NotFoundException('Payroll run tidak ditemukan');
-    if (run.status !== 'FINALIZED') throw new BadRequestException('Revisi hanya dapat dibuat untuk payroll run yang finalized');
+    if (!canCreatePayrollRevision(run.status)) throw new BadRequestException('Revisi hanya dapat dibuat untuk payroll run yang finalized');
     const slips = new Map(run.slips.map((slip) => [slip.id, slip]));
     if (new Set(dto.items.map((item) => item.payrollSlipId)).size !== dto.items.length) throw new BadRequestException('Satu slip hanya dapat direvisi sekali dalam satu revisi');
     for (const item of dto.items) if (!slips.has(item.payrollSlipId)) throw new BadRequestException('Item revisi harus merujuk ke slip dalam payroll run ini');

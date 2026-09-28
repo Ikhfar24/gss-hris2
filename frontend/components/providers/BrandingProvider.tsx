@@ -3,7 +3,7 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
 
-export interface Branding {
+interface Branding {
   companyName: string;
   appName: string;
   logoUrl: string | null;

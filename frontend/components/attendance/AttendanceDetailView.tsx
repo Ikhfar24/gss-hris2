@@ -7,7 +7,7 @@ import { attendanceStatus, latenessLabel, validationLabels } from '@/lib/attenda
 import { formatDateTime, formatFullDate, formatTime } from '@/lib/format';
 import { protectedMediaUrl } from '@/lib/api';
 import AttendanceMap from '@/components/AttendanceMap';
-import { Badge, StatusBadge } from '@/components/ui/badge';
+import { StatusBadge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 export function AttendanceDetailView({ attendance }: { attendance: AttendanceRecord }) {

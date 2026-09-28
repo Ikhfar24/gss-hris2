@@ -15,10 +15,7 @@ import { ReviewAttendanceDto } from './dto/review-attendance.dto';
 import { CoordinatorScopeService } from '../coordinator-scopes/coordinator-scope.service';
 import { QueryAttendanceMonitoringDto } from './dto/query-attendance-monitoring.dto';
 import { approvedFullDayAbsenceWhere } from '../common/domain/approved-full-day-absence';
-
-function startOfDay(d: Date): Date {
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
-}
+import { startOfCalendarDay as startOfDay } from '../common/domain/date-range';
 
 const INCLUDE = {
   employee: { select: { id: true, name: true, employmentType: true } },

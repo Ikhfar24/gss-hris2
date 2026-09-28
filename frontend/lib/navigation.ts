@@ -3,7 +3,7 @@ import { BarChart3, Bell, Building2, CalendarDays, CircleUserRound, ClipboardChe
 import type { Role, Session } from './session';
 
 export interface NavigationItem { label: string; href: string; icon: LucideIcon; roles: readonly Role[]; requiresAttendance?: boolean; requiresEmployee?: boolean }
-export interface NavigationGroup { label: string; items: NavigationItem[] }
+interface NavigationGroup { label: string; items: NavigationItem[] }
 const all: Role[] = ['KARYAWAN', 'KOORDINATOR', 'ADMIN_HR', 'KEUANGAN', 'MARKETING', 'DIREKTUR', 'KOMISARIS', 'SYSTEM_ADMIN'];
 const ops: Role[] = ['KOORDINATOR', 'ADMIN_HR', 'SYSTEM_ADMIN'];
 

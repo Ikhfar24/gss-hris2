@@ -203,21 +203,6 @@ export function DataRegion({
   );
 }
 
-export function FilterRail({
-  className,
-  ...props
-}: React.HTMLAttributes<HTMLDivElement>) {
-  return (
-    <div
-      className={cn(
-        "mb-4 flex min-w-0 flex-col gap-3 rounded-xl border border-border bg-paper px-4 py-3 shadow-control sm:flex-row sm:flex-wrap sm:items-end [&_label]:text-muted",
-        className,
-      )}
-      {...props}
-    />
-  );
-}
-
 export function IndexTabs({
   children,
   className,

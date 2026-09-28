@@ -50,14 +50,12 @@ test('UAT Fix Pack 03 exposes the Coordinator overtime route and role-aware prof
   const overtimePage = fs.readFileSync('../frontend/app/(dashboard)/overtime-requests/page.tsx', 'utf8');
   const layout = fs.readFileSync('../frontend/app/(dashboard)/layout.tsx', 'utf8');
   const navigation = fs.readFileSync('../frontend/lib/navigation.ts', 'utf8');
-  const roleGate = fs.readFileSync('../frontend/components/RoleGate.tsx', 'utf8');
   const dashboard = fs.readFileSync('../frontend/app/(dashboard)/dashboard/page.tsx', 'utf8');
   const placement = fs.readFileSync('../frontend/app/(dashboard)/placement-requests/page.tsx', 'utf8');
   assert.match(overtimePage, /role === 'KARYAWAN' \|\| role === 'KOORDINATOR'/);
   assert.match(navigation, /label: 'Perubahan Profil'.*roles: \['KARYAWAN', 'ADMIN_HR', 'SYSTEM_ADMIN'\]/);
   assert.doesNotMatch(navigation, /label: 'Perubahan Profil'.*'KOORDINATOR'.*'KEUANGAN'.*'MARKETING'/);
   assert.match(layout, /<SessionProvider fallback=\{<AppShellSkeleton \/>\}>/);
-  assert.doesNotMatch(roleGate, /getUser/);
   assert.match(dashboard, /const \{ session \} = useSession\(\)/);
   assert.match(dashboard, /ManagementHome role=\{session\.role\}/);
   assert.doesNotMatch(dashboard, /useState<SessionUser \| null>\(\(\) => getUser\(\)\)/);

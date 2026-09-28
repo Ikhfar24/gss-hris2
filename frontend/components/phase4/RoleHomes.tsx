@@ -7,7 +7,6 @@ import {
   BarChart3,
   Building2,
   CalendarDays,
-  Clock3,
   Fingerprint,
   MapPin,
   Settings,
@@ -23,7 +22,7 @@ import { approvedAbsenceLabel, attendanceStatus } from "@/lib/attendance";
 import { formatFullDate, formatTime, formatDate } from "@/lib/format";
 import { canAttend } from "@/lib/navigation";
 import { useSession } from "@/components/providers/SessionProvider";
-import { EmployeeAvatar } from "@/components/employee/EmployeeAvatar";
+import { CurrentUserAvatar } from "@/components/employee/CurrentUserIdentity";
 import { MobileIdentityHeader } from "@/components/employee/MobileIdentityHeader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -476,9 +475,7 @@ function IdentityZone({ eyebrow }: { eyebrow: string }) {
         </>
       }
       actions={
-        <EmployeeAvatar
-          name={employee?.name ?? session.email}
-          photoUrl={employee?.photoUrl}
+        <CurrentUserAvatar
           size="lg"
           className="size-20 border-white/20"
         />

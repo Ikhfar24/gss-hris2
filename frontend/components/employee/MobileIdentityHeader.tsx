@@ -4,7 +4,7 @@ import { MapPin } from "lucide-react";
 import { useSession } from "@/components/providers/SessionProvider";
 import { employmentTypeLabel } from "@/lib/employment";
 import { cn } from "@/lib/utils";
-import { EmployeeAvatar } from "./EmployeeAvatar";
+import { CurrentUserAvatar } from "./CurrentUserIdentity";
 
 export function MobileIdentityHeader({ className }: { className?: string }) {
   const { session } = useSession();
@@ -36,9 +36,7 @@ export function MobileIdentityHeader({ className }: { className?: string }) {
           <span className="truncate">{placement}</span>
         </p>
       </div>
-      <EmployeeAvatar
-        name={employee.name}
-        photoUrl={employee.photoUrl}
+      <CurrentUserAvatar
         size="lg"
         className="size-16 border-paper bg-brand text-white sm:size-[4.5rem]"
       />

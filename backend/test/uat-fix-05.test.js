@@ -104,7 +104,9 @@ test('UAT Fix Pack 05 includes photo metadata in an already-authorized Coordinat
 test('UAT Fix Pack 05 keeps placeholder, deterministic HR controls, and Profile Change Request policy', () => {
   const profile = fs.readFileSync('../frontend/app/(dashboard)/employees/[id]/360/page.tsx', 'utf8');
   const managementProfile = fs.readFileSync('../frontend/components/management/ManagementEmployeeProfile.tsx', 'utf8');
-  assert.match(profile, /Foto profil belum tersedia/);
+  const avatar = fs.readFileSync('../frontend/components/employee/EmployeeAvatar.tsx', 'utf8');
+  assert.match(profile, /EmployeeAvatar/);
+  assert.match(avatar, /Foto profil \$\{name\} belum tersedia/);
   assert.match(profile, /session\.role === 'ADMIN_HR'/);
   assert.match(managementProfile, /uploadFile\(`\/employees\/\$\{profile\.id\}\/profile-photo`/);
   assert.doesNotMatch(managementProfile, /SYSTEM_ADMIN/);

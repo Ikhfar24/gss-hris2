@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import { validateSync } from 'class-validator';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { AuthenticatedUser } from '../common/decorators/current-user.decorator';
@@ -61,7 +62,14 @@ export class LocationsService {
     this.assertUsableConfiguration({ ...dto, isActive: true, radiusMeters: dto.radiusMeters ?? 300 });
     await this.assertClientAvailable(dto.clientId);
     const referenceCode = dto.referenceCode ? normalizeReferenceCode(dto.referenceCode) : generatedReferenceCode('LOC', dto.name);
-    const loc = await this.prisma.location.create({ data: { ...dto, referenceCode } });
+    const name = dto.name.trim();
+    await this.assertActiveIdentityAvailable(name, referenceCode, dto.clientId ?? null);
+    let loc;
+    try {
+      loc = await this.prisma.location.create({ data: { ...dto, name, referenceCode } });
+    } catch (error) {
+      throwIdentityConflict(error, 'Lokasi');
+    }
     await this.auditLog.record({
       actorId: actor.userId,
       action: 'LOCATION_CREATE',
@@ -79,7 +87,16 @@ export class LocationsService {
     const before = await this.findOne(id);
     this.assertUsableConfiguration({ ...before, ...dto });
     await this.assertClientAvailable(dto.clientId ?? undefined);
-    const updated = await this.prisma.location.update({ where: { id }, data: { ...dto, referenceCode: dto.referenceCode === undefined ? undefined : normalizeReferenceCode(dto.referenceCode) } });
+    const name = dto.name === undefined ? before.name : dto.name.trim();
+    const referenceCode = dto.referenceCode === undefined ? before.referenceCode : normalizeReferenceCode(dto.referenceCode);
+    const clientId = dto.clientId === undefined ? before.clientId : dto.clientId;
+    await this.assertActiveIdentityAvailable(name, referenceCode, clientId ?? null, id);
+    let updated;
+    try {
+      updated = await this.prisma.location.update({ where: { id }, data: { ...dto, name, referenceCode } });
+    } catch (error) {
+      throwIdentityConflict(error, 'Lokasi');
+    }
     await this.auditLog.record({
       actorId: actor.userId,
       action: 'LOCATION_UPDATE',
@@ -105,12 +122,17 @@ export class LocationsService {
     this.assertAdminHr(actor);
     const preview = await this.previewImport(file);
     if (!preview.valid) throw new BadRequestException({ message: 'Import lokasi gagal divalidasi', ...preview });
-    const records = await this.prisma.$transaction(async (tx) => {
-      const result: { id: string; referenceCode: string; name: string; clientId: string | null }[] = [];
-      for (const row of preview.rows) result.push(await tx.location.create({ data: row.data as CreateLocationDto, select: { id: true, referenceCode: true, name: true, clientId: true } }));
-      await tx.auditLog.create({ data: { actorId: actor.userId, actorRole: actor.role as Role, action: 'LOCATION_IMPORT', entity: 'Location', newValue: { rowCount: result.length }, source: 'LOCATION_IMPORT' } });
-      return result;
-    });
+    let records;
+    try {
+      records = await this.prisma.$transaction(async (tx) => {
+        const result: { id: string; referenceCode: string; name: string; clientId: string | null }[] = [];
+        for (const row of preview.rows) result.push(await tx.location.create({ data: row.data as CreateLocationDto, select: { id: true, referenceCode: true, name: true, clientId: true } }));
+        await tx.auditLog.create({ data: { actorId: actor.userId, actorRole: actor.role as Role, action: 'LOCATION_IMPORT', entity: 'Location', newValue: { rowCount: result.length }, source: 'LOCATION_IMPORT' } });
+        return result;
+      });
+    } catch (error) {
+      throwIdentityConflict(error, 'Lokasi');
+    }
     return { valid: true, created: records.length, records, errors: [] };
   }
 
@@ -171,7 +193,7 @@ export class LocationsService {
     }
     const names = rows.map(({ data }) => data.name).filter((name): name is string => typeof name === 'string' && !!name.trim());
     const referenceCodes = rows.map(({ data }) => data.referenceCode).filter((value): value is string => typeof value === 'string' && !!value);
-    const locations = names.length || referenceCodes.length ? await this.prisma.location.findMany({ where: { OR: [
+    const locations = names.length || referenceCodes.length ? await this.prisma.location.findMany({ where: { deletedAt: null, OR: [
       ...(names.length ? [{ name: { in: names, mode: 'insensitive' as const } }] : []),
       ...(referenceCodes.length ? [{ referenceCode: { in: referenceCodes } }] : []),
     ] }, select: { name: true, clientId: true, referenceCode: true } }) : [];
@@ -196,6 +218,7 @@ export class LocationsService {
       if (dto.checkInTime && !validTime(dto.checkInTime)) row.errors.push('checkInTime harus berformat HH:mm');
       if (dto.checkOutTime && !validTime(dto.checkOutTime)) row.errors.push('checkOutTime harus berformat HH:mm');
       if (dto.workDays && (dto.workDays.length === 0 || new Set(dto.workDays).size !== dto.workDays.length)) row.errors.push('workDays tidak boleh kosong atau duplikat');
+      if (dto.name) dto.name = dto.name.trim();
       row.data = dto as CreateLocationDto & Record<string, unknown>;
     }
     const invalidCount = rows.filter((row) => row.errors.length > 0).length;
@@ -235,6 +258,27 @@ export class LocationsService {
     const client = await this.prisma.client.findFirst({ where: { id: clientId, deletedAt: null, isActive: true }, select: { id: true } });
     if (!client) throw new BadRequestException('Client aktif tidak ditemukan');
   }
+
+  private async assertActiveIdentityAvailable(name: string, referenceCode: string, clientId: string | null, excludeId?: string) {
+    const existing = await this.prisma.location.findFirst({
+      where: {
+        deletedAt: null,
+        ...(excludeId ? { id: { not: excludeId } } : {}),
+        OR: [{ referenceCode }, { name: { equals: name, mode: 'insensitive' }, clientId }],
+      },
+      select: { name: true, referenceCode: true },
+    });
+    if (!existing) return;
+    if (normalizeReferenceCode(existing.referenceCode) === referenceCode) throw new ConflictException('referenceCode lokasi sudah digunakan');
+    throw new ConflictException('lokasi duplikat untuk client yang sama');
+  }
+}
+
+function throwIdentityConflict(error: unknown, entity: 'Lokasi'): never {
+  if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+    throw new ConflictException(`Nama atau referenceCode ${entity} sudah digunakan oleh data aktif`);
+  }
+  throw error;
 }
 
 function validTime(value: string) {

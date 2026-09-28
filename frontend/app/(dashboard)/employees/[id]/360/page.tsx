@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { apiFetch, ApiError, protectedMediaUrl } from "@/lib/api";
+import { apiFetch, ApiError } from "@/lib/api";
 import { useSession } from "@/components/providers/SessionProvider";
+import { EmployeeAvatar } from "@/components/employee/EmployeeAvatar";
 import { EmployeeFullProfile } from "@/components/employee/EmployeeFullProfile";
 import {
   AdminEmployeeProfile,
@@ -134,12 +135,10 @@ export default function Employee360Page() {
   const { session } = useSession();
   const [data, setData] = useState<Employee360 | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [photoFailed, setPhotoFailed] = useState(false);
 
   async function load() {
     try {
       setData(await apiFetch<Employee360>(`/employees/${params.id}/360`));
-      setPhotoFailed(false);
     } catch (err) {
       setError(
         err instanceof ApiError ? err.message : "Gagal memuat Profil Lengkap",
@@ -181,13 +180,6 @@ export default function Employee360Page() {
   if (session.role === 'ADMIN_HR') return <AdminEmployeeProfile data={data} onReload={load} />;
 
   const profile = data.profile;
-  const initials =
-    String(profile.name ?? "?")
-      .split(/\s+/)
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((part) => part[0]?.toUpperCase())
-      .join("") || "?";
   return (
     <DossierPage className="max-w-6xl">
       <Link href="/employees" className="text-sm underline">
@@ -215,21 +207,12 @@ export default function Employee360Page() {
               </span>
             </div>
           </div>
-          {profile.photoUrl && !photoFailed ? (
-            <img
-              src={protectedMediaUrl(String(profile.photoUrl))}
-              alt={`Foto profil ${profile.name}`}
-              onError={() => setPhotoFailed(true)}
-              className="h-16 w-16 rounded-lg border border-border object-cover sm:h-20 sm:w-20"
-            />
-          ) : (
-            <div
-              aria-label="Foto profil belum tersedia"
-              className="flex h-16 w-16 items-center justify-center rounded-lg border border-border bg-surface-subtle text-xl font-semibold text-brand sm:h-20 sm:w-20"
-            >
-              {initials}
-            </div>
-          )}
+          <EmployeeAvatar
+            name={String(profile.name ?? "Karyawan")}
+            photoUrl={profile.photoUrl ? String(profile.photoUrl) : null}
+            size="lg"
+            className="size-16 border-border sm:size-20"
+          />
         </div>
       </section>
       <Tabs defaultValue="work" className="mt-3">

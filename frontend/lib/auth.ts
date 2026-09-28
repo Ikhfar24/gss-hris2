@@ -17,12 +17,6 @@ function setCookie(name: string, value: string, days = 1) {
   document.cookie = `${name}=${encodeURIComponent(value)}; expires=${expires}; path=/; SameSite=Lax`;
 }
 
-function getCookie(name: string): string | null {
-  if (typeof document === 'undefined') return null; // SSR/prerender: no cookie jar
-  const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
-  return match ? decodeURIComponent(match[2]) : null;
-}
-
 function deleteCookie(name: string) {
   if (typeof document === 'undefined') return;
   document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`;
@@ -35,18 +29,6 @@ export function saveSession(user: SessionUser) {
 export function getToken(): string | null {
   // Access tokens are HttpOnly cookies and intentionally unavailable to JS.
   return null;
-}
-
-export function getUser(): SessionUser | null {
-  const raw = getCookie(USER_COOKIE);
-  if (!raw) return null;
-  try {
-    const value = JSON.parse(raw) as Partial<SessionUser>;
-    if (typeof value.id !== 'string' || typeof value.email !== 'string' || typeof value.role !== 'string') return null;
-    return value as SessionUser;
-  } catch {
-    return null;
-  }
 }
 
 export function clearSession() {

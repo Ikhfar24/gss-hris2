@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import { validateSync } from 'class-validator';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { AuthenticatedUser } from '../common/decorators/current-user.decorator';
@@ -46,7 +47,14 @@ export class ClientsService {
   async create(dto: CreateClientDto, actor: AuthenticatedUser) {
     this.assertAdminHr(actor);
     const referenceCode = dto.referenceCode ? normalizeReferenceCode(dto.referenceCode) : generatedReferenceCode('CL', dto.name);
-    const client = await this.prisma.client.create({ data: { ...dto, referenceCode } });
+    const name = dto.name.trim();
+    await this.assertActiveIdentityAvailable(name, referenceCode);
+    let client;
+    try {
+      client = await this.prisma.client.create({ data: { ...dto, name, referenceCode } });
+    } catch (error) {
+      throwIdentityConflict(error, 'Client');
+    }
     await this.auditLog.record({
       actorId: actor.userId,
       action: 'CLIENT_CREATE',
@@ -61,7 +69,15 @@ export class ClientsService {
     this.assertAdminHr(actor);
     const before = await this.prisma.client.findUnique({ where: { id } });
     if (!before || before.deletedAt) throw new NotFoundException('Client tidak ditemukan');
-    const updated = await this.prisma.client.update({ where: { id }, data: { ...dto, referenceCode: dto.referenceCode === undefined ? undefined : normalizeReferenceCode(dto.referenceCode) } });
+    const name = dto.name === undefined ? before.name : dto.name.trim();
+    const referenceCode = dto.referenceCode === undefined ? before.referenceCode : normalizeReferenceCode(dto.referenceCode);
+    await this.assertActiveIdentityAvailable(name, referenceCode, id);
+    let updated;
+    try {
+      updated = await this.prisma.client.update({ where: { id }, data: { ...dto, name, referenceCode } });
+    } catch (error) {
+      throwIdentityConflict(error, 'Client');
+    }
     await this.auditLog.record({
       actorId: actor.userId,
       action: 'CLIENT_UPDATE',
@@ -86,12 +102,17 @@ export class ClientsService {
     this.assertAdminHr(actor);
     const preview = await this.previewImport(file);
     if (!preview.valid) throw new BadRequestException({ message: 'Import client gagal divalidasi', ...preview });
-    const created = await this.prisma.$transaction(async (tx) => {
-      const records: { id: string; referenceCode: string; name: string }[] = [];
-      for (const row of preview.rows) records.push(await tx.client.create({ data: row.data as CreateClientDto, select: { id: true, referenceCode: true, name: true } }));
-      await tx.auditLog.create({ data: { actorId: actor.userId, actorRole: actor.role as Role, action: 'CLIENT_IMPORT', entity: 'Client', newValue: { rowCount: records.length }, source: 'CLIENT_IMPORT' } });
-      return records;
-    });
+    let created;
+    try {
+      created = await this.prisma.$transaction(async (tx) => {
+        const records: { id: string; referenceCode: string; name: string }[] = [];
+        for (const row of preview.rows) records.push(await tx.client.create({ data: row.data as CreateClientDto, select: { id: true, referenceCode: true, name: true } }));
+        await tx.auditLog.create({ data: { actorId: actor.userId, actorRole: actor.role as Role, action: 'CLIENT_IMPORT', entity: 'Client', newValue: { rowCount: records.length }, source: 'CLIENT_IMPORT' } });
+        return records;
+      });
+    } catch (error) {
+      throwIdentityConflict(error, 'Client');
+    }
     return { valid: true, created: created.length, records: created, errors: [] };
   }
 
@@ -139,7 +160,7 @@ export class ClientsService {
     }
     const names = rows.map(({ data }) => data.name).filter((name): name is string => typeof name === 'string' && !!name.trim());
     const referenceCodes = rows.map(({ data }) => data.referenceCode).filter((code): code is string => typeof code === 'string' && !!code);
-    const existing = names.length || referenceCodes.length ? await this.prisma.client.findMany({ where: { OR: [
+    const existing = names.length || referenceCodes.length ? await this.prisma.client.findMany({ where: { deletedAt: null, OR: [
       ...(names.length ? [{ name: { in: names, mode: 'insensitive' as const } }] : []),
       ...(referenceCodes.length ? [{ referenceCode: { in: referenceCodes } }] : []),
     ] }, select: { name: true, referenceCode: true } }) : [];
@@ -157,6 +178,7 @@ export class ClientsService {
       const referenceCode = dto.referenceCode && normalizeReferenceCode(dto.referenceCode);
       if (referenceCode && (seenCodes.has(referenceCode) || existingCodes.has(referenceCode))) row.errors.push('referenceCode client sudah digunakan');
       if (referenceCode) seenCodes.add(referenceCode);
+      if (dto.name) dto.name = dto.name.trim();
       row.data = dto as CreateClientDto & Record<string, unknown>;
     }
     const invalidCount = rows.filter((row) => row.errors.length > 0).length;
@@ -170,6 +192,27 @@ export class ClientsService {
   private assertReason(reason: string) {
     if (!reason.trim()) throw new BadRequestException('Alasan wajib diisi');
   }
+
+  private async assertActiveIdentityAvailable(name: string, referenceCode: string, excludeId?: string) {
+    const existing = await this.prisma.client.findFirst({
+      where: {
+        deletedAt: null,
+        ...(excludeId ? { id: { not: excludeId } } : {}),
+        OR: [{ referenceCode }, { name: { equals: name, mode: 'insensitive' } }],
+      },
+      select: { name: true, referenceCode: true },
+    });
+    if (!existing) return;
+    if (normalizeReferenceCode(existing.referenceCode) === referenceCode) throw new ConflictException('referenceCode client sudah digunakan');
+    throw new ConflictException('name client duplikat');
+  }
+}
+
+function throwIdentityConflict(error: unknown, entity: 'Client'): never {
+  if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+    throw new ConflictException(`Nama atau referenceCode ${entity} sudah digunakan oleh data aktif`);
+  }
+  throw error;
 }
 
 function validationMessages(value: object): string[] {
