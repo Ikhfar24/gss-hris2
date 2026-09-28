@@ -4,14 +4,14 @@ import { FormEvent, useState } from 'react';
 import { KeyRound, Mail, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { apiFetch, ApiError } from '@/lib/api';
-import { saveSession, type SessionUser } from '@/lib/auth';
 import { useSession } from '@/components/providers/SessionProvider';
+import type { Session } from '@/lib/session';
 import { Alert } from '@/components/ui/feedback';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input, Label } from '@/components/ui/forms';
 
-interface AccountResponse { user: SessionUser }
+interface AccountResponse { user: Pick<Session, 'id' | 'email' | 'role' | 'mustChangePassword'> }
 
 export default function AccountPage() {
   const { session, refresh } = useSession();
@@ -26,7 +26,7 @@ export default function AccountPage() {
     setBusy('password'); setError(null);
     try {
       const response = await apiFetch<AccountResponse>('/auth/account/password', { method: 'PATCH', body: { currentPassword: passwords.currentPassword, newPassword: passwords.newPassword } });
-      saveSession(response.user); setPasswords({ currentPassword: '', newPassword: '', confirmation: '' }); refresh(); toast.success('Password berhasil diperbarui');
+      setPasswords({ currentPassword: '', newPassword: '', confirmation: '' }); await refresh(); toast.success('Password berhasil diperbarui');
     } catch (value) { setError(value instanceof ApiError ? value.message : 'Gagal memperbarui password'); }
     finally { setBusy(null); }
   }
@@ -35,7 +35,7 @@ export default function AccountPage() {
     event.preventDefault(); setBusy('email'); setError(null);
     try {
       const response = await apiFetch<AccountResponse>('/auth/account/email', { method: 'PATCH', body: email });
-      saveSession(response.user); setEmail({ currentPassword: '', email: response.user.email }); refresh(); toast.success('Email login berhasil diperbarui');
+      setEmail({ currentPassword: '', email: response.user.email }); await refresh(); toast.success('Email login berhasil diperbarui');
     } catch (value) { setError(value instanceof ApiError ? value.message : 'Gagal memperbarui email'); }
     finally { setBusy(null); }
   }

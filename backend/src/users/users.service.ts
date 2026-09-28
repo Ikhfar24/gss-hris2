@@ -151,6 +151,9 @@ export class UsersService {
     this.assertCredentialTarget(id, target.role as Role, actor);
     await this.reauthenticate(actor.userId, currentPassword);
     if (!target.temporaryCredential) throw new NotFoundException('Kredensial sementara tidak tersedia atau sudah digunakan');
+    if (this.temporaryCredentials.isExpired(target.temporaryCredential.createdAt)) {
+      throw new NotFoundException('Kredensial sementara sudah kedaluwarsa');
+    }
     const password = this.temporaryCredentials.decrypt(target.temporaryCredential);
     await this.prisma.$transaction(async (tx) => {
       const updated = await tx.userTemporaryCredential.update({ where: { userId: id }, data: { lastRevealedAt: new Date(), revealCount: { increment: 1 } }, select: { revealCount: true } });

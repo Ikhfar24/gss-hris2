@@ -14,14 +14,21 @@ export interface StoredTemporaryCredential {
 export class TemporaryCredentialService {
   private readonly key: Buffer;
   readonly keyVersion: string;
+  readonly ttlMs: number;
 
   constructor(config: ConfigService) {
     const encodedKey = config.get<string>('TEMP_CREDENTIAL_ENCRYPTION_KEY');
     this.keyVersion = config.get<string>('TEMP_CREDENTIAL_KEY_VERSION')?.trim() ?? '';
+    const ttlHours = Number(config.get<string>('TEMP_CREDENTIAL_TTL_HOURS') ?? 24);
+    this.ttlMs = Number.isFinite(ttlHours) && ttlHours > 0 ? ttlHours * 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
     this.key = encodedKey ? Buffer.from(encodedKey, 'base64') : Buffer.alloc(0);
     if (this.key.length !== 32 || !this.keyVersion) {
       throw new Error('TEMP_CREDENTIAL_ENCRYPTION_KEY harus base64 32 byte dan TEMP_CREDENTIAL_KEY_VERSION wajib diatur.');
     }
+  }
+
+  isExpired(createdAt: Date, now = new Date()): boolean {
+    return createdAt.getTime() + this.ttlMs <= now.getTime();
   }
 
   generatePassword(): string {

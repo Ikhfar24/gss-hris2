@@ -14,7 +14,7 @@ test('UI Phase 1 defines the approved visual tokens and a single icon language',
   assert.match(globals, /--grey: #f0f0f0/);
   assert.match(tailwind, /brand-rgb/);
   assert.ok(pkg.dependencies['lucide-react']);
-  assert.equal(pkg.dependencies.next, '^14.2.13');
+  assert.equal(pkg.dependencies.next, '15.5.24');
   assert.equal(pkg.dependencies.react, '^18.3.1');
 });
 

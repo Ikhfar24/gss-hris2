@@ -60,10 +60,12 @@ test('UAT Fix Pack 05 allows only Admin HR to call the profile-photo mutation ro
 test('UAT Fix Pack 05 uploads and replaces a valid protected profile photo with redacted audit metadata', async () => {
   const fixture = photoService();
   const urls = [];
+  const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0xff, 0xd9]);
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82]);
   try {
-    await fixture.service.updateProfilePhoto('employee-photo', { mimetype: 'image/jpeg', buffer: Buffer.from([0xff, 0xd8, 0xff, 0x00]) }, hr);
+    await fixture.service.updateProfilePhoto('employee-photo', { mimetype: 'image/jpeg', buffer: jpeg }, hr);
     urls.push(fixture.current());
-    await fixture.service.updateProfilePhoto('employee-photo', { mimetype: 'image/png', buffer: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]) }, hr);
+    await fixture.service.updateProfilePhoto('employee-photo', { mimetype: 'image/png', buffer: png }, hr);
     urls.push(fixture.current());
     assert.match(urls[0], /^\/api\/v1\/media\/profile-photos\/employee-photo\//);
     assert.notEqual(urls[0], urls[1]);
@@ -77,6 +79,9 @@ test('UAT Fix Pack 05 uploads and replaces a valid protected profile photo with 
 test('UAT Fix Pack 05 rejects invalid, non-image, and oversized profile uploads', () => {
   assert.throws(() => saveImageBuffer(Buffer.from('%PDF-file'), 'application/pdf', 'profile-photos/employee-photo'), /File gambar tidak valid/);
   assert.throws(() => saveImageBuffer(Buffer.from('not-an-image'), 'image/jpeg', 'profile-photos/employee-photo'), /File gambar tidak valid/);
+  assert.throws(() => saveImageBuffer(Buffer.from([0xff, 0xd8, 0xff, 0xe0]), 'image/jpeg', 'profile-photos/employee-photo'), /File gambar tidak valid/);
+  assert.throws(() => saveImageBuffer(Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0xff, 0xd9, 0x00]), 'image/jpeg', 'profile-photos/employee-photo'), /File gambar tidak valid/);
+  assert.throws(() => saveImageBuffer(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), 'image/png', 'profile-photos/employee-photo'), /File gambar tidak valid/);
   assert.throws(() => saveImageBuffer(Buffer.alloc(5 * 1024 * 1024 + 1), 'image/png', 'profile-photos/employee-photo'), /melebihi 5 MB/);
 });
 

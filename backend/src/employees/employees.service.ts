@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, HttpException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { EmployeeStatusDto, UpdateEmployeeDto } from './dto/update-employee.dto';
@@ -347,7 +347,7 @@ export class EmployeesService {
           await this.updateWithClient(tx, id, { status: EmployeeStatusDto.INACTIVE, reason: dto.reason }, actor);
           outcomes.push({ employeeId: id, success: true });
         } catch (error) {
-          outcomes.push({ employeeId: id, success: false, error: error instanceof Error ? error.message : 'Gagal menonaktifkan karyawan' });
+          outcomes.push({ employeeId: id, success: false, error: error instanceof HttpException ? error.message : 'Gagal menonaktifkan karyawan' });
         }
       }
       return outcomes;

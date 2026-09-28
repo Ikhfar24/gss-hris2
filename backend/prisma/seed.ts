@@ -4,6 +4,10 @@ import * as bcrypt from 'bcrypt';
 const prisma = new PrismaClient();
 
 async function main() {
+  if (process.env.NODE_ENV === 'production' || process.env.ALLOW_INSECURE_DEVELOPMENT_SEED !== 'true') {
+    throw new Error('Development seed dinonaktifkan. Gunakan ALLOW_INSECURE_DEVELOPMENT_SEED=true hanya pada lingkungan lokal/demo.');
+  }
+
   // Default company settings
   const existingSettings = await prisma.companySettings.findFirst();
   if (!existingSettings) {
@@ -29,6 +33,7 @@ async function main() {
         email: adminEmail,
         passwordHash,
         role: Role.SYSTEM_ADMIN,
+        mustChangePassword: true,
       },
     });
     console.log(`Created default admin user: ${adminEmail}`);
@@ -48,7 +53,7 @@ async function main() {
     const passwordHash = await bcrypt.hash(acc.password, 10);
     const user = await prisma.user.upsert({
       where: { email: acc.email },
-      update: { name: acc.name, passwordHash, role: acc.role, isActive: true },
+      update: {},
       create: { name: acc.name, email: acc.email, passwordHash, role: acc.role },
       select: { id: true },
     });

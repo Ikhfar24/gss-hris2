@@ -1,9 +1,11 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { AuthenticatedUser } from '../common/decorators/current-user.decorator';
@@ -122,19 +124,20 @@ export class PlacementRequestsService {
         ? 'PENDING_DIRECTOR'
         : 'APPROVED';
 
-    const updated = await this.prisma.placementRequest.update({
-      where: { id },
-      data: {
-        status: nextStatus,
-        hrReviewedById: actor.userId,
-        hrReviewedAt: new Date(),
-        hrNote: dto.note ?? null,
-      },
-      include: INCLUDE,
-    });
-
-    if (nextStatus === 'APPROVED') {
-      await this.finalizePlacement(updated);
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        const claimed = await tx.placementRequest.updateMany({
+          where: { id, status: 'PENDING_HR' },
+          data: { status: nextStatus, hrReviewedById: actor.userId, hrReviewedAt: new Date(), hrNote: dto.note ?? null },
+        });
+        if (claimed.count !== 1) throw new ConflictException('Status pengajuan berubah selama proses review');
+        if (nextStatus === 'APPROVED') await this.finalizePlacement(request, tx);
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034') {
+        throw new ConflictException('Data penempatan berubah bersamaan; muat ulang lalu coba lagi');
+      }
+      throw error;
     }
 
     await this.auditLog.record({
@@ -162,19 +165,20 @@ export class PlacementRequestsService {
 
     const nextStatus = dto.approve ? 'APPROVED' : 'REJECTED';
 
-    const updated = await this.prisma.placementRequest.update({
-      where: { id },
-      data: {
-        status: nextStatus,
-        directorReviewedById: actor.userId,
-        directorReviewedAt: new Date(),
-        directorNote: dto.note ?? null,
-      },
-      include: INCLUDE,
-    });
-
-    if (nextStatus === 'APPROVED') {
-      await this.finalizePlacement(updated);
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        const claimed = await tx.placementRequest.updateMany({
+          where: { id, status: 'PENDING_DIRECTOR' },
+          data: { status: nextStatus, directorReviewedById: actor.userId, directorReviewedAt: new Date(), directorNote: dto.note ?? null },
+        });
+        if (claimed.count !== 1) throw new ConflictException('Status pengajuan berubah selama proses approval');
+        if (nextStatus === 'APPROVED') await this.finalizePlacement(request, tx);
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034') {
+        throw new ConflictException('Data penempatan berubah bersamaan; muat ulang lalu coba lagi');
+      }
+      throw error;
     }
 
     await this.auditLog.record({
@@ -201,11 +205,11 @@ export class PlacementRequestsService {
       throw new BadRequestException(`Pengajuan berstatus ${request.status}, tidak dapat dibatalkan`);
     }
 
-    const updated = await this.prisma.placementRequest.update({
-      where: { id },
+    const cancelled = await this.prisma.placementRequest.updateMany({
+      where: { id, status: { in: ['PENDING_HR', 'PENDING_DIRECTOR'] } },
       data: { status: 'CANCELLED' },
-      include: INCLUDE,
     });
+    if (cancelled.count !== 1) throw new ConflictException('Status pengajuan berubah selama proses pembatalan');
 
     await this.auditLog.record({
       actorId: actor.userId,
@@ -216,7 +220,7 @@ export class PlacementRequestsService {
       newValue: { status: 'CANCELLED' },
     });
 
-    return updated;
+    return this.findOne(id);
   }
 
   // BR-001/BR-002/BR-006/BR-007: end the previous active placement (never
@@ -227,8 +231,8 @@ export class PlacementRequestsService {
     destinationLocationId: string;
     startDate: Date;
     endDate?: Date | null;
-  }) {
-    await this.prisma.$transaction(async (tx) => {
+  }, transactionClient?: Prisma.TransactionClient) {
+    const finalize = async (tx: Prisma.TransactionClient) => {
       // A scheduled record becomes historical/active only when its effective
       // date arrives; creating it must never close today's active placement.
       await this.activateDuePlacements(tx, request.employeeId, startOfCalendarDay(new Date()));
@@ -283,7 +287,9 @@ export class PlacementRequestsService {
           sourceRequestId: request.id,
         },
       });
-    });
+    };
+    if (transactionClient) return finalize(transactionClient);
+    return this.prisma.$transaction(finalize, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   }
 
   private async activateDuePlacements(tx: any, employeeId: string, today: Date) {

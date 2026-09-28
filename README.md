@@ -215,11 +215,12 @@ cp .env.example .env      # sesuaikan JWT_SECRET dsb
 npm install
 npx prisma generate
 npx prisma migrate dev --name init
-npm run seed               # buat company settings default + user admin@papaiz.corp
+$env:ALLOW_INSECURE_DEVELOPMENT_SEED="true" # PowerShell; lokal/demo saja
+npm run seed               # buat data demo, ditolak otomatis pada production
 npm run start:dev          # http://localhost:4000/api/v1
 ```
 
-Akun default hasil seed (**ganti password setelah login pertama**):
+Akun berikut hanya untuk seed lokal/demo. Jangan aktifkan seed ini pada staging atau production. System Admin wajib mengganti password setelah login pertama.
 
 | Role | Email | Password |
 |---|---|---|

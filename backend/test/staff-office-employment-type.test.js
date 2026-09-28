@@ -31,14 +31,17 @@ test('STAFF_OFFICE placement requests use mutation and Director approval', async
   const prisma = {
     employee: { findUnique: async () => ({ id: 'employee-1', employmentType: 'STAFF_OFFICE', placements: [] }) },
     location: { findFirst: async () => ({ id: 'location-1' }) },
-    placementRequest: { create: async ({ data }) => { created = { id: 'request-1', ...data }; return created; } },
+    placementRequest: {
+      create: async ({ data }) => { created = { id: 'request-1', ...data }; return created; },
+      updateMany: async () => ({ count: 1 }),
+    },
   };
+  prisma.$transaction = async (work) => work(prisma);
   const service = new PlacementRequestsService(prisma, { record: async () => {} }, { assertEmployee: async () => {} });
   await service.create({ employeeId: 'employee-1', destinationLocationId: 'location-1', startDate: '2026-09-11', reason: 'Pindah' }, { userId: 'hr-1', role: 'ADMIN_HR' });
   assert.equal(created.type, 'MUTATION');
 
   service.findOne = async () => ({ id: 'request-1', status: 'PENDING_HR', type: 'MUTATION' });
-  prisma.placementRequest.update = async ({ data }) => ({ id: 'request-1', type: 'MUTATION', ...data });
   await service.hrReview('request-1', { approve: true }, { userId: 'hr-1', role: 'ADMIN_HR' });
   assert.equal(created.type, 'MUTATION');
 });

@@ -12,7 +12,6 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { apiFetch, ApiError } from "@/lib/api";
-import { saveSession } from "@/lib/auth";
 import { isInternalPath } from "@/lib/utils";
 import { AppLogo } from "@/components/AppLogo";
 import { Alert, LoadingState } from "@/components/ui/feedback";
@@ -55,7 +54,6 @@ function LoginForm() {
         method: "POST",
         body: { email, password },
       });
-      saveSession(response.user);
       toast.success("Selamat datang kembali");
       const next = params.get("next");
       router.replace(

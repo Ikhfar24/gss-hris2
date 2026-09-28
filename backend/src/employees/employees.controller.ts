@@ -1,5 +1,6 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Res, StreamableFile, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { Throttle } from '@nestjs/throttler';
 import type { Response } from 'express';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
@@ -65,15 +66,17 @@ export class EmployeesController {
   }
 
   @Roles(Role.ADMIN_HR, Role.SYSTEM_ADMIN)
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   @Post('import/preview')
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024 } }))
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024, files: 1, fields: 0, parts: 1, fieldNameSize: 100 } }))
   importPreview(@UploadedFile() file: any) {
     return this.service.previewXlsxImport(file);
   }
 
   @Roles(Role.ADMIN_HR, Role.SYSTEM_ADMIN)
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   @Post('import/commit')
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024 } }))
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024, files: 1, fields: 0, parts: 1, fieldNameSize: 100 } }))
   importCommit(@UploadedFile() file: any, @CurrentUser() actor: AuthenticatedUser) {
     return this.service.commitXlsxImport(file, actor);
   }
@@ -109,8 +112,9 @@ export class EmployeesController {
   }
 
   @Roles(Role.ADMIN_HR)
+  @Throttle({ default: { limit: 20, ttl: 60000 } })
   @Post(':id/profile-photo')
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024 } }))
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024, files: 1, fields: 0, parts: 1, fieldNameSize: 100 } }))
   updateProfilePhoto(@Param('id') id: string, @UploadedFile() file: { buffer: Buffer; mimetype: string } | undefined, @CurrentUser() actor: AuthenticatedUser) {
     return this.service.updateProfilePhoto(id, file, actor);
   }

@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Optional, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
@@ -7,6 +7,7 @@ import { AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { Role } from '../common/enums/role.enum';
 import { Prisma } from '@prisma/client';
 import { ChangeEmailDto, ChangePasswordDto } from './dto/account.dto';
+import { TemporaryCredentialService } from '../temporary-credentials/temporary-credential.service';
 
 @Injectable()
 export class AuthService {
@@ -14,16 +15,22 @@ export class AuthService {
     private prisma: PrismaService,
     private jwt: JwtService,
     private auditLog: AuditLogService,
+    @Optional() private temporaryCredentials?: TemporaryCredentialService,
   ) {}
 
   async validateUser(email: string, password: string) {
-    const user = await this.prisma.user.findFirst({ where: { email: { equals: this.normalizeEmail(email), mode: 'insensitive' } } });
+    const user = await this.prisma.user.findFirst({
+      where: { email: { equals: this.normalizeEmail(email), mode: 'insensitive' } },
+      include: { temporaryCredential: { select: { createdAt: true } } },
+    });
     if (!user || !user.isActive) return null;
+    if (user.mustChangePassword && user.temporaryCredential && this.temporaryCredentials?.isExpired(user.temporaryCredential.createdAt)) return null;
 
     const passwordMatches = await bcrypt.compare(password, user.passwordHash);
     if (!passwordMatches) return null;
 
-    const { passwordHash, ...safeUser } = user;
+    const { passwordHash, temporaryCredential: _temporaryCredential, ...safeUser } = user;
+    void _temporaryCredential;
     return safeUser;
   }
 
@@ -148,11 +155,23 @@ export class AuthService {
   private normalizeEmail(email: string) { return email.trim().toLowerCase(); }
 
   async logout(userId: string) {
-    await this.auditLog.record({
-      actorId: userId,
-      action: 'AUTH_LOGOUT',
-      entity: 'User',
-      entityId: userId,
+    await this.prisma.$transaction(async (tx) => {
+      const user = await tx.user.update({
+        where: { id: userId },
+        data: { sessionVersion: { increment: 1 } },
+        select: { role: true, sessionVersion: true },
+      });
+      await tx.auditLog.create({
+        data: {
+          actorId: userId,
+          actorRole: user.role,
+          action: 'AUTH_LOGOUT',
+          entity: 'User',
+          entityId: userId,
+          source: 'ACCOUNT_SELF_SERVICE',
+          newValue: { sessionVersion: user.sessionVersion },
+        },
+      });
     });
   }
 }

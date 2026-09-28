@@ -9,6 +9,7 @@ function credentialService() {
   const values = {
     TEMP_CREDENTIAL_ENCRYPTION_KEY: randomBytes(32).toString('base64'),
     TEMP_CREDENTIAL_KEY_VERSION: 'test-v1',
+    TEMP_CREDENTIAL_TTL_HOURS: '24',
   };
   return new TemporaryCredentialService({ get: (key) => values[key] });
 }
@@ -32,6 +33,13 @@ test('generated temporary password includes each required character class', () =
   assert.match(password, /[a-z]/);
   assert.match(password, /[0-9]/);
   assert.match(password, /[!@#$%]/);
+});
+
+test('temporary credentials expire after the configured lifetime', () => {
+  const service = credentialService();
+  const createdAt = new Date('2026-09-28T00:00:00.000Z');
+  assert.equal(service.isExpired(createdAt, new Date('2026-09-28T23:59:59.999Z')), false);
+  assert.equal(service.isExpired(createdAt, new Date('2026-09-29T00:00:00.000Z')), true);
 });
 
 test('transaction helper persists encryption fields and never plaintext', async () => {

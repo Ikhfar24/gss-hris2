@@ -180,10 +180,19 @@ export class PayrollService {
     });
   }
 
+  private async lockDraftRun(tx: any, runId: string) {
+    const locked = await tx.payrollRun.updateMany({
+      where: { id: runId, status: 'DRAFT' },
+      data: { updatedAt: new Date() },
+    });
+    if (locked.count !== 1) throw new BadRequestException('Hanya payroll DRAFT yang dapat diubah');
+  }
+
   async addLineItem(slipId: string, dto: CreateLineItemDto, actor: AuthenticatedUser) {
     this.finance(actor);
-    await this.editableSlip(slipId);
+    const slip = await this.editableSlip(slipId);
     const result = await this.prisma.$transaction(async (tx) => {
+      await this.lockDraftRun(tx, slip.payrollRunId);
       await tx.payrollLineItem.create({
         data: { payrollSlipId: slipId, type: dto.type, label: dto.label, amount: dto.amount, note: dto.reason, createdById: actor.userId },
       });
@@ -195,8 +204,9 @@ export class PayrollService {
 
   async removeLineItem(slipId: string, itemId: string, dto: ReasonDto, actor: AuthenticatedUser) {
     this.finance(actor);
-    await this.editableSlip(slipId);
+    const slip = await this.editableSlip(slipId);
     const result = await this.prisma.$transaction(async (tx) => {
+      await this.lockDraftRun(tx, slip.payrollRunId);
       const item = await tx.payrollLineItem.findUnique({ where: { id: itemId } });
       if (!item || item.payrollSlipId !== slipId) throw new NotFoundException('Item tidak ditemukan');
       await tx.payrollLineItem.delete({ where: { id: itemId } });

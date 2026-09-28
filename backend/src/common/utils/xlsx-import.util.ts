@@ -1,9 +1,14 @@
 import { BadRequestException } from '@nestjs/common';
 import * as ExcelJS from 'exceljs';
+import { fromBuffer, Entry } from 'yauzl';
 
 export const XLSX_MAX_FILE_SIZE = 5 * 1024 * 1024;
 export const XLSX_MAX_ROWS = 2000;
 export const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+const XLSX_MAX_ARCHIVE_ENTRIES = 100;
+const XLSX_MAX_EXPANDED_SIZE = 25 * 1024 * 1024;
+const XLSX_MAX_ENTRY_SIZE = 10 * 1024 * 1024;
+const XLSX_MAX_COMPRESSION_RATIO = 100;
 
 export type XlsxValueType = 'string' | 'number' | 'integer' | 'boolean' | 'date' | 'integerArray';
 
@@ -124,6 +129,7 @@ function typeLabel(type: XlsxValueType): string {
 
 export async function parseImportXlsx<T extends Record<string, unknown>>(file: XlsxUpload, columns: XlsxImportColumn[], legacyColumnSets: XlsxImportColumn[][] = []): Promise<ParsedXlsxRow<T>[]> {
   assertSafeXlsxUpload(file);
+  await assertSafeXlsxArchive(file.buffer);
   const workbook = new ExcelJS.Workbook();
   try {
     await workbook.xlsx.load(Buffer.from(file.buffer) as any);
@@ -183,6 +189,73 @@ export async function parseImportXlsx<T extends Record<string, unknown>>(file: X
   if (parsed.length > XLSX_MAX_ROWS) throw new BadRequestException(`Jumlah baris XLSX maksimal ${XLSX_MAX_ROWS}`);
   if (parsed.length === 0) throw new BadRequestException('File XLSX tidak memiliki baris data');
   return parsed;
+}
+
+async function assertSafeXlsxArchive(buffer: Buffer): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    fromBuffer(buffer, { lazyEntries: true, validateEntrySizes: true }, (openError, archive) => {
+      if (openError || !archive) {
+        reject(new BadRequestException('File XLSX tidak valid atau rusak'));
+        return;
+      }
+
+      let entryCount = 0;
+      let expandedSize = 0;
+      let hasContentTypes = false;
+      let hasWorkbook = false;
+      let settled = false;
+
+      const fail = (message = 'File XLSX tidak valid atau rusak') => {
+        if (settled) return;
+        settled = true;
+        archive.close();
+        reject(new BadRequestException(message));
+      };
+
+      archive.on('error', () => fail());
+      archive.on('entry', (entry: Entry) => {
+        entryCount += 1;
+        expandedSize += entry.uncompressedSize;
+        const normalizedName = entry.fileName.replace(/\\/g, '/').toLowerCase();
+        const compressionRatio = entry.compressedSize === 0
+          ? (entry.uncompressedSize === 0 ? 1 : Number.POSITIVE_INFINITY)
+          : entry.uncompressedSize / entry.compressedSize;
+
+        if (entryCount > XLSX_MAX_ARCHIVE_ENTRIES
+          || expandedSize > XLSX_MAX_EXPANDED_SIZE
+          || entry.uncompressedSize > XLSX_MAX_ENTRY_SIZE
+          || compressionRatio > XLSX_MAX_COMPRESSION_RATIO) {
+          fail('File XLSX terlalu kompleks atau ukuran ekstraknya terlalu besar');
+          return;
+        }
+        if ((entry.generalPurposeBitFlag & 0x1) !== 0) {
+          fail('File XLSX terenkripsi tidak didukung');
+          return;
+        }
+        if (normalizedName.includes('vbaproject.bin')
+          || normalizedName.includes('/activex/')
+          || normalizedName.includes('/embeddings/')
+          || normalizedName.includes('/oleobjects/')) {
+          fail('File XLSX tidak boleh memuat macro atau objek tertanam');
+          return;
+        }
+        if (normalizedName === '[content_types].xml') hasContentTypes = true;
+        if (normalizedName === 'xl/workbook.xml') hasWorkbook = true;
+        archive.readEntry();
+      });
+      archive.on('end', () => {
+        if (settled) return;
+        settled = true;
+        if (!hasContentTypes || !hasWorkbook) {
+          reject(new BadRequestException('File XLSX tidak valid atau rusak'));
+          return;
+        }
+        resolve();
+      });
+
+      archive.readEntry();
+    });
+  });
 }
 
 function headersMatch(actualHeaders: string[], columns: XlsxImportColumn[]): boolean {
