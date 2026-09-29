@@ -224,8 +224,6 @@ Akun berikut hanya untuk seed lokal/demo. Jangan aktifkan seed ini pada staging 
 
 | Role | Email | Password |
 |---|---|---|
-| System Admin | admin@papaiz.corp | ChangeMe123! |
-| Admin/HR | hr@papaiz.corp | HR12345678! |
 | Koordinator | koordinator@papaiz.corp | Koor12345678! |
 | Direktur | direktur@papaiz.corp | Direktur12345678! |
 | Keuangan | keuangan@papaiz.corp | Keuangan12345! |
