@@ -38,10 +38,6 @@ export function AppLogo({
             onError={() => setFailedUrl(branding.logoUrl)}
             className="size-8 object-contain"
           />
-          <span
-            aria-hidden
-            className="absolute inset-y-0 left-0 w-1 bg-accent"
-          />
         </span>
       ) : (
         <span
@@ -52,10 +48,6 @@ export function AppLogo({
               : "border-brand bg-brand text-white",
           )}
         >
-          <span
-            aria-hidden
-            className="absolute inset-y-0 left-0 w-1 bg-accent"
-          />
           {initials}
         </span>
       )}
