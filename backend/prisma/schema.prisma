@@ -378,6 +378,8 @@ model AuditLog {
   actorId         String?
   actor           User?    @relation("AuditLogActor", fields: [actorId], references: [id])
   actorRole       Role?
+  actorName       String?
+  actorEmail      String?
   action          String // e.g. "USER_CREATE", "USER_ROLE_CHANGE", "COMPANY_SETTINGS_UPDATE"
   entity          String // e.g. "User", "CompanySettings"
   entityId        String?

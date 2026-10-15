@@ -5,6 +5,8 @@ import { Role } from '../common/enums/role.enum';
 export interface AuditLogEntry {
   actorId?: string | null;
   actorRole?: Role | string | null;
+  actorName?: string | null;
+  actorEmail?: string | null;
   action: string;
   entity: string;
   entityId?: string | null;
@@ -25,6 +27,8 @@ export class AuditLogService {
       data: {
         actorId: entry.actorId ?? null,
         actorRole: entry.actorRole as Role | undefined,
+        actorName: entry.actorName ?? null,
+        actorEmail: entry.actorEmail ?? null,
         action: entry.action,
         entity: entry.entity,
         entityId: entry.entityId ?? null,
@@ -34,6 +38,43 @@ export class AuditLogService {
         source: entry.source ?? null,
         relatedEntityId: entry.relatedEntityId ?? null,
       },
+    });
+  }
+
+  /**
+   * Log audit entry.
+   * Supports both entry object signature and individual parameters.
+   */
+  async log(
+    entryOrAction: AuditLogEntry | string,
+    entity?: string,
+    entityId?: string | null,
+    actorId?: string | null,
+    actorRole?: Role | string | null,
+    actorName?: string | null,
+    actorEmail?: string | null,
+    oldValue?: unknown,
+    newValue?: unknown,
+    reason?: string | null,
+    source?: string | null,
+    relatedEntityId?: string | null,
+  ): Promise<void> {
+    if (typeof entryOrAction === 'object' && entryOrAction !== null) {
+      return this.record(entryOrAction);
+    }
+    return this.record({
+      action: entryOrAction,
+      entity: entity!,
+      entityId,
+      actorId,
+      actorRole,
+      actorName,
+      actorEmail,
+      oldValue,
+      newValue,
+      reason,
+      source,
+      relatedEntityId,
     });
   }
 
