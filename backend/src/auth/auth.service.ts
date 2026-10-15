@@ -19,15 +19,64 @@ export class AuthService {
   ) {}
 
   async validateUser(email: string, password: string) {
+    const normalizedEmail = this.normalizeEmail(email);
     const user = await this.prisma.user.findFirst({
-      where: { email: { equals: this.normalizeEmail(email), mode: 'insensitive' } },
+      where: { email: { equals: normalizedEmail, mode: 'insensitive' } },
       include: { temporaryCredential: { select: { createdAt: true } } },
     });
-    if (!user || !user.isActive) return null;
-    if (user.mustChangePassword && user.temporaryCredential && this.temporaryCredentials?.isExpired(user.temporaryCredential.createdAt)) return null;
+    if (!user) {
+      await this.auditLog?.record?.({
+        action: 'AUTH_LOGIN_FAILED',
+        entity: 'User',
+        source: 'AUTH_LOCAL',
+        reason: `Akun tidak ditemukan untuk email: ${normalizedEmail}`,
+      });
+      return null;
+    }
+    if (!user.isActive) {
+      await this.auditLog?.record?.({
+        actorId: user.id,
+        actorName: user.name,
+        actorEmail: user.email,
+        actorRole: user.role,
+        action: 'AUTH_LOGIN_FAILED',
+        entity: 'User',
+        entityId: user.id,
+        source: 'AUTH_LOCAL',
+        reason: 'Akun nonaktif',
+      });
+      return null;
+    }
+    if (user.mustChangePassword && user.temporaryCredential && this.temporaryCredentials?.isExpired(user.temporaryCredential.createdAt)) {
+      await this.auditLog?.record?.({
+        actorId: user.id,
+        actorName: user.name,
+        actorEmail: user.email,
+        actorRole: user.role,
+        action: 'AUTH_LOGIN_FAILED',
+        entity: 'User',
+        entityId: user.id,
+        source: 'AUTH_LOCAL',
+        reason: 'Kredensial sementara kedaluwarsa',
+      });
+      return null;
+    }
 
     const passwordMatches = await bcrypt.compare(password, user.passwordHash);
-    if (!passwordMatches) return null;
+    if (!passwordMatches) {
+      await this.auditLog?.record?.({
+        actorId: user.id,
+        actorName: user.name,
+        actorEmail: user.email,
+        actorRole: user.role,
+        action: 'AUTH_LOGIN_FAILED',
+        entity: 'User',
+        entityId: user.id,
+        source: 'AUTH_LOCAL',
+        reason: 'Password tidak sesuai',
+      });
+      return null;
+    }
 
     const { passwordHash, temporaryCredential: _temporaryCredential, ...safeUser } = user;
     void _temporaryCredential;
@@ -90,19 +139,110 @@ export class AuthService {
     return { id: user.id, email: user.email, role: user.role, employee, coordinatorScopeTypes, ...(user.mustChangePassword !== undefined ? { mustChangePassword: user.mustChangePassword } : {}) };
   }
 
-  async login(user: { id: string; email: string; role: string; mustChangePassword: boolean; sessionVersion: number }) {
+  async generateRefreshToken(userId: string, sessionVersion?: number): Promise<string> {
+    let version = sessionVersion;
+    if (version === undefined) {
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { sessionVersion: true },
+      });
+      if (!user) {
+        throw new UnauthorizedException('Pengguna tidak ditemukan');
+      }
+      version = user.sessionVersion;
+    }
+
+    const payload = {
+      sub: userId,
+      type: 'refresh',
+      sessionVersion: version,
+    };
+
+    return this.jwt.sign(payload, { expiresIn: '7d' });
+  }
+
+  async login(user: { id: string; name?: string; email: string; role: string; mustChangePassword: boolean; sessionVersion: number }) {
     const payload = { sub: user.id, email: user.email, role: user.role, mustChangePassword: user.mustChangePassword, sessionVersion: user.sessionVersion };
     const accessToken = this.jwt.sign(payload);
+    const refreshToken = await this.generateRefreshToken(user.id, user.sessionVersion);
 
     await this.prisma.$transaction(async (tx) => {
       await tx.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
-      await tx.auditLog.create({ data: { actorId: user.id, action: 'AUTH_LOGIN', entity: 'User', entityId: user.id } });
+      await tx.auditLog.create({
+        data: {
+          actorId: user.id,
+          actorName: (user as any).name ?? null,
+          actorEmail: user.email,
+          actorRole: user.role as Role,
+          action: 'AUTH_LOGIN',
+          entity: 'User',
+          entityId: user.id,
+        },
+      });
     });
 
     return {
       accessToken,
+      refreshToken,
       maxAgeMs: 8 * 60 * 60 * 1000,
+      refreshMaxAgeMs: 7 * 24 * 60 * 60 * 1000,
       user: { id: user.id, email: user.email, role: user.role, mustChangePassword: user.mustChangePassword },
+    };
+  }
+
+  async refreshAccessToken(refreshToken: string) {
+    let payload: { sub?: string; type?: string; sessionVersion?: number };
+    try {
+      payload = this.jwt.verify(refreshToken);
+    } catch {
+      throw new UnauthorizedException('Token refresh tidak valid atau kedaluwarsa');
+    }
+
+    if (!payload || payload.type !== 'refresh' || !payload.sub) {
+      throw new UnauthorizedException('Token refresh tidak valid');
+    }
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: payload.sub },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        isActive: true,
+        mustChangePassword: true,
+        sessionVersion: true,
+      },
+    });
+
+    if (!user || !user.isActive) {
+      throw new UnauthorizedException('Sesi tidak lagi aktif');
+    }
+
+    if (user.sessionVersion !== payload.sessionVersion) {
+      throw new UnauthorizedException('Sesi telah kedaluwarsa atau diperbarui');
+    }
+
+    const newAccessToken = this.jwt.sign({
+      sub: user.id,
+      email: user.email,
+      role: user.role,
+      mustChangePassword: user.mustChangePassword,
+      sessionVersion: user.sessionVersion,
+    });
+
+    const newRefreshToken = await this.generateRefreshToken(user.id, user.sessionVersion);
+
+    return {
+      accessToken: newAccessToken,
+      refreshToken: newRefreshToken,
+      maxAgeMs: 8 * 60 * 60 * 1000,
+      refreshMaxAgeMs: 7 * 24 * 60 * 60 * 1000,
+      user: {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+        mustChangePassword: user.mustChangePassword,
+      },
     };
   }
 
@@ -113,7 +253,7 @@ export class AuthService {
     const updated = await this.prisma.$transaction(async (tx) => {
       const value = await tx.user.update({ where: { id: actor.userId }, data: { passwordHash, mustChangePassword: false, passwordChangedAt: new Date(), sessionVersion: { increment: 1 } }, select: { id: true, email: true, role: true, mustChangePassword: true, sessionVersion: true } });
       await tx.userTemporaryCredential.deleteMany({ where: { userId: actor.userId } });
-      await tx.auditLog.create({ data: { actorId: actor.userId, actorRole: user.role, action: 'AUTH_PASSWORD_CHANGE', entity: 'User', entityId: actor.userId, source: 'ACCOUNT_SELF_SERVICE', newValue: { mustChangePassword: false, sessionVersion: value.sessionVersion } } });
+      await tx.auditLog.create({ data: { actorId: actor.userId, actorName: user.name, actorEmail: user.email, actorRole: user.role, action: 'AUTH_PASSWORD_CHANGE', entity: 'User', entityId: actor.userId, source: 'ACCOUNT_SELF_SERVICE', newValue: { mustChangePassword: false, sessionVersion: value.sessionVersion } } });
       return value;
     });
     return this.issueSession(updated);
@@ -128,7 +268,7 @@ export class AuthService {
     try {
       const updated = await this.prisma.$transaction(async (tx) => {
         const value = await tx.user.update({ where: { id: actor.userId }, data: { email, sessionVersion: { increment: 1 } }, select: { id: true, email: true, role: true, mustChangePassword: true, sessionVersion: true } });
-        await tx.auditLog.create({ data: { actorId: actor.userId, actorRole: user.role, action: 'AUTH_EMAIL_CHANGE', entity: 'User', entityId: actor.userId, source: 'ACCOUNT_SELF_SERVICE', oldValue: { email: user.email }, newValue: { email, sessionVersion: value.sessionVersion } } });
+        await tx.auditLog.create({ data: { actorId: actor.userId, actorName: user.name, actorEmail: user.email, actorRole: user.role, action: 'AUTH_EMAIL_CHANGE', entity: 'User', entityId: actor.userId, source: 'ACCOUNT_SELF_SERVICE', oldValue: { email: user.email }, newValue: { email, sessionVersion: value.sessionVersion } } });
         return value;
       });
       return this.issueSession(updated);
@@ -139,15 +279,18 @@ export class AuthService {
   }
 
   private async userForReauthentication(userId: string, password: string) {
-    const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { id: true, email: true, passwordHash: true, role: true, isActive: true } });
+    const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { id: true, name: true, email: true, passwordHash: true, role: true, isActive: true } });
     if (!user?.isActive || !(await bcrypt.compare(password, user.passwordHash))) throw new UnauthorizedException('Password saat ini tidak valid');
     return user;
   }
 
-  private issueSession(user: { id: string; email: string; role: string; mustChangePassword: boolean; sessionVersion: number }) {
+  private async issueSession(user: { id: string; email: string; role: string; mustChangePassword: boolean; sessionVersion: number }) {
+    const refreshToken = await this.generateRefreshToken(user.id, user.sessionVersion);
     return {
       accessToken: this.jwt.sign({ sub: user.id, email: user.email, role: user.role, mustChangePassword: user.mustChangePassword, sessionVersion: user.sessionVersion }),
+      refreshToken,
       maxAgeMs: 8 * 60 * 60 * 1000,
+      refreshMaxAgeMs: 7 * 24 * 60 * 60 * 1000,
       user: { id: user.id, email: user.email, role: user.role, mustChangePassword: user.mustChangePassword },
     };
   }
@@ -159,11 +302,13 @@ export class AuthService {
       const user = await tx.user.update({
         where: { id: userId },
         data: { sessionVersion: { increment: 1 } },
-        select: { role: true, sessionVersion: true },
+        select: { name: true, email: true, role: true, sessionVersion: true },
       });
       await tx.auditLog.create({
         data: {
           actorId: userId,
+          actorName: user.name,
+          actorEmail: user.email,
           actorRole: user.role,
           action: 'AUTH_LOGOUT',
           entity: 'User',

@@ -8,6 +8,7 @@ export interface JwtPayload {
   sub: string;
   email: string;
   role: string;
+  type?: string;
   mustChangePassword?: boolean;
   sessionVersion?: number;
 }
@@ -32,16 +33,22 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(payload: JwtPayload) {
+    if (payload.type === 'refresh') {
+      throw new UnauthorizedException('Token refresh tidak dapat digunakan sebagai token akses');
+    }
     // Token claims are never authoritative for current access. This closes
     // the window where a deactivated user or demoted admin keeps old rights.
     const user = await this.prisma.user.findUnique({
       where: { id: payload.sub },
-      select: { id: true, email: true, role: true, isActive: true, mustChangePassword: true, sessionVersion: true },
+      select: { id: true, name: true, email: true, role: true, isActive: true, mustChangePassword: true, sessionVersion: true },
     });
     if (!user || !user.isActive) throw new UnauthorizedException('Sesi tidak lagi aktif');
     if (user.sessionVersion !== payload.sessionVersion) throw new UnauthorizedException('Sesi telah diperbarui');
     return {
-      userId: user.id, email: user.email, role: user.role,
+      userId: user.id,
+      email: user.email,
+      role: user.role,
+      ...(user.name !== undefined ? { name: user.name } : {}),
       ...(user.mustChangePassword !== undefined ? { mustChangePassword: user.mustChangePassword } : {}),
       ...(user.sessionVersion !== undefined ? { sessionVersion: user.sessionVersion } : {}),
     };
