@@ -144,7 +144,7 @@ Kode ini memakai default MVP berikut — **bukan keputusan final**:
 
 | Hal | Default saat ini | Yang perlu dikonfirmasi |
 |---|---|---|
-| Siapa yang boleh export laporan | Admin/HR, System Admin, Direktur, **dan Koordinator** (semua export, belum di-scope ke tim Koordinator sendiri seperti dashboard) | Apakah Koordinator harus dibatasi hanya bisa export data timnya sendiri? |
+| Siapa yang boleh export laporan | Admin/HR, System Admin, Direktur, **dan Koordinator**; data Koordinator dibatasi ke timnya sendiri | Apakah Komisaris juga perlu akses export? |
 | Layout PDF | Tabel polos (font, garis, teks) — cukup untuk kebutuhan "export minimal" §16, belum ada kop surat/logo perusahaan | Perlu PDF bermerek (pakai logo dari Company Settings) untuk laporan resmi? |
 | Rekap payroll & slip gaji | **Belum ada** — PRD §16 menyebutkannya, tapi itu bergantung pada formula payroll yang menurut §15 "belum ditentukan dan akan dibahas pada fase berikutnya" | Menunggu Phase 6 |
 

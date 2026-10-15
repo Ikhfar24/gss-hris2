@@ -8,3 +8,10 @@ build/
 uploads/
 *.log
 .DS_Store
+# Artefak lokal: hasil screenshot UAT, knowledge graph, dan build info.
+# Jangan commit — bisa mengandung data PII dan membengkakkan repo.
+screenshots/
+backend/screenshots/
+graphify-out/
+.impeccable/review/
+*.tsbuildinfo

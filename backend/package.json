@@ -12,6 +12,7 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
     "seed": "ts-node prisma/seed.ts",
+    "test": "nest build && node --test",
     "test:critical": "nest build && node --test test/critical.test.js",
     "test:batch2": "nest build && node --test test/batch2.test.js",
     "test:batch3": "nest build && node --test test/batch3.test.js",
@@ -72,6 +73,7 @@
     "@types/yauzl": "2.10.3",
     "jszip": "3.10.1",
     "prisma": "^5.19.1",
+    "puppeteer-core": "^25.13.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.5.4"
   },
