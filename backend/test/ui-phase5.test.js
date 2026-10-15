@@ -19,7 +19,7 @@ test('Phase 5 Coordinator can cancel only their own pending overtime request', a
   const prisma = {
     overtimeRequest: {
       findUnique: async () => ({ id: 'overtime-1', employeeId: 'employee-1', requestedById: 'coordinator-1', status: 'PENDING', reason: 'Stock count', employee: { employmentType: 'TENAGA_BORONGAN' } }),
-      update: async (query) => { update = query; return { id: 'overtime-1', status: 'CANCELLED' }; },
+      updateMany: async (query) => { update = query; return { count: 1 }; },
     },
     user: { findUnique: async () => ({ employeeId: 'employee-1' }) },
   };

@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { Role } from '../common/enums/role.enum';
@@ -41,16 +41,25 @@ export class EmployeeProfileChangeRequestsService {
       const payload = request.requestedChanges as any;
       const changes = this.validateChanges(payload?.proposed);
       const note = dto.reviewNote ?? null;
-      if (dto.decision === ProfileChangeDecisionDto.REJECTED) {
-        const rejected = await tx.employeeProfileChangeRequest.update({ where: { id }, data: { status: 'REJECTED', reviewedById: actor.userId, reviewedAt: new Date(), reviewNote: note } });
+      const approved = dto.decision !== ProfileChangeDecisionDto.REJECTED;
+      // Klaim atomik dulu: hanya satu reviewer yang menang bila review ganda bersamaan.
+      const claimed = await tx.employeeProfileChangeRequest.updateMany({
+        where: { id, status: 'PENDING' },
+        data: {
+          status: approved ? 'APPROVED' : 'REJECTED',
+          reviewedById: actor.userId, reviewedAt: new Date(), reviewNote: note,
+          ...(approved ? { appliedChanges: changes } : {}),
+        },
+      });
+      if (claimed.count !== 1) throw new ConflictException('Pengajuan berubah selama proses review');
+      if (!approved) {
         await tx.auditLog.create({ data: { actorId: actor.userId, actorRole: actor.role as Role, action: 'EMPLOYEE_PROFILE_CHANGE_REQUEST_REJECT', entity: 'EmployeeProfileChangeRequest', entityId: id, oldValue: { status: 'PENDING' }, newValue: { status: 'REJECTED' }, reason: note, source: 'PROFILE_CHANGE', relatedEntityId: request.employeeId } });
-        return rejected;
+        return tx.employeeProfileChangeRequest.findUniqueOrThrow({ where: { id } });
       }
       const employee = await tx.employee.update({ where: { id: request.employeeId }, data: changes });
-      const approved = await tx.employeeProfileChangeRequest.update({ where: { id }, data: { status: 'APPROVED', reviewedById: actor.userId, reviewedAt: new Date(), reviewNote: note, appliedChanges: changes } });
       const fields = Object.keys(changes);
       await tx.auditLog.create({ data: { actorId: actor.userId, actorRole: actor.role as Role, action: 'EMPLOYEE_PROFILE_CHANGE_REQUEST_APPROVE', entity: 'EmployeeProfileChangeRequest', entityId: id, oldValue: { status: 'PENDING', fields }, newValue: { status: 'APPROVED', fields }, reason: note, source: 'PROFILE_CHANGE', relatedEntityId: employee.id } });
-      return approved;
+      return tx.employeeProfileChangeRequest.findUniqueOrThrow({ where: { id } });
     });
   }
 

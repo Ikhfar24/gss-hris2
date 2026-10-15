@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { assertDateRange, dateRangesOverlap, startOfCalendarDay } from '../common/domain/date-range';
@@ -64,9 +64,11 @@ export class TemporaryAssignmentsService {
     const locationId = dto.locationId ?? current.locationId;
     const clientId = dto.clientId === undefined ? current.clientId : dto.clientId;
     await this.assertValidDetails(current.employeeId, current.originPlacementId, locationId, clientId, dates.startDate, dates.endDate, id);
-    const updated = await this.prisma.temporaryAssignment.update({
-      where: { id }, data: { ...dto, ...dates, clientId: clientId ?? null }, include: INCLUDE,
+    const claimed = await this.prisma.temporaryAssignment.updateMany({
+      where: { id, status: 'PENDING' }, data: { ...dto, ...dates, clientId: clientId ?? null },
     });
+    if (claimed.count !== 1) throw new ConflictException('Status penugasan berubah selama proses pembaruan');
+    const updated = await this.findOne(id);
     await this.audit('UPDATE', id, actor, current, updated, dto.reason ?? current.reason);
     return updated;
   }
@@ -75,9 +77,12 @@ export class TemporaryAssignmentsService {
     const current = await this.findOne(id);
     if (current.status !== 'PENDING') throw new BadRequestException('Penugasan tidak dapat direview');
     if (dto.approve) await this.assertValidDetails(current.employeeId, current.originPlacementId, current.locationId, current.clientId, current.startDate, current.endDate, id);
-    const updated = await this.prisma.temporaryAssignment.update({
-      where: { id }, data: { status: dto.approve ? 'APPROVED' : 'REJECTED', approvedById: actor.userId, approvedAt: new Date(), approvalNote: dto.note ?? null }, include: INCLUDE,
+    const claimed = await this.prisma.temporaryAssignment.updateMany({
+      where: { id, status: 'PENDING' },
+      data: { status: dto.approve ? 'APPROVED' : 'REJECTED', approvedById: actor.userId, approvedAt: new Date(), approvalNote: dto.note ?? null },
     });
+    if (claimed.count !== 1) throw new ConflictException('Status penugasan berubah selama proses review');
+    const updated = await this.findOne(id);
     await this.audit('REVIEW', id, actor, current, updated, dto.note ?? current.reason);
     return updated;
   }
@@ -86,7 +91,11 @@ export class TemporaryAssignmentsService {
     const current = await this.findOne(id, actor);
     this.assertManageOrOwn(current.createdById, actor);
     if (!['PENDING', 'APPROVED'].includes(current.status)) throw new BadRequestException('Penugasan tidak dapat dibatalkan');
-    const updated = await this.prisma.temporaryAssignment.update({ where: { id }, data: { status: 'CANCELLED' }, include: INCLUDE });
+    const claimed = await this.prisma.temporaryAssignment.updateMany({
+      where: { id, status: { in: BLOCKING_STATUSES } }, data: { status: 'CANCELLED' },
+    });
+    if (claimed.count !== 1) throw new ConflictException('Status penugasan berubah selama proses pembatalan');
+    const updated = await this.findOne(id);
     await this.audit('CANCEL', id, actor, current, updated, dto.reason ?? current.reason);
     return updated;
   }
@@ -95,7 +104,11 @@ export class TemporaryAssignmentsService {
     const current = await this.findOne(id);
     if (current.status !== 'APPROVED') throw new BadRequestException('Hanya penugasan disetujui yang dapat diselesaikan');
     if (startOfCalendarDay(current.endDate) > startOfCalendarDay(new Date())) throw new BadRequestException('Penugasan belum mencapai tanggal selesai');
-    const updated = await this.prisma.temporaryAssignment.update({ where: { id }, data: { status: 'COMPLETED', completedAt: new Date() }, include: INCLUDE });
+    const claimed = await this.prisma.temporaryAssignment.updateMany({
+      where: { id, status: 'APPROVED' }, data: { status: 'COMPLETED', completedAt: new Date() },
+    });
+    if (claimed.count !== 1) throw new ConflictException('Status penugasan berubah selama proses penyelesaian');
+    const updated = await this.findOne(id);
     await this.audit('COMPLETE', id, actor, current, updated, dto.reason ?? current.reason);
     return updated;
   }

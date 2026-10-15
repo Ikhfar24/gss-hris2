@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { Role } from '../common/enums/role.enum';
@@ -240,10 +240,13 @@ export class PayrollService {
     this.finance(actor);
     const run = await this.prisma.payrollRun.findUnique({ where: { id: runId } });
     if (!run || run.status !== 'DRAFT') throw new BadRequestException('Payroll tidak dapat direview');
-    const updated = await this.prisma.payrollRun.update({
-      where: { id: runId },
+    // Klaim atomik: pemenang tunggal bila dua Keuangan mereview bersamaan.
+    const claimed = await this.prisma.payrollRun.updateMany({
+      where: { id: runId, status: 'DRAFT' },
       data: { financeReviewedById: actor.userId, financeReviewedAt: new Date() },
     });
+    if (claimed.count !== 1) throw new BadRequestException('Payroll tidak dapat direview');
+    const updated = await this.prisma.payrollRun.findUniqueOrThrow({ where: { id: runId } });
     await this.audit(actor, 'PAYROLL_RUN_REVIEW', 'PayrollRun', runId, 'Finance review complete');
     return updated;
   }
@@ -252,7 +255,13 @@ export class PayrollService {
     this.finance(actor);
     const run = await this.prisma.payrollRun.findUnique({ where: { id: runId } });
     if (!run?.financeReviewedAt || run.status !== 'DRAFT') throw new BadRequestException('Payroll harus direview Keuangan sebelum dikirim');
-    const updated = await this.prisma.payrollRun.update({ where: { id: runId }, data: { status: 'PENDING_DIRECTOR_APPROVAL' } });
+    // financeReviewedAt tidak pernah dihapus setelah diisi, klaim status cukup.
+    const claimed = await this.prisma.payrollRun.updateMany({
+      where: { id: runId, status: 'DRAFT' },
+      data: { status: 'PENDING_DIRECTOR_APPROVAL' },
+    });
+    if (claimed.count !== 1) throw new BadRequestException('Payroll harus direview Keuangan sebelum dikirim');
+    const updated = await this.prisma.payrollRun.findUniqueOrThrow({ where: { id: runId } });
     await this.audit(actor, 'PAYROLL_RUN_SUBMIT', 'PayrollRun', runId, dto.reason);
     return updated;
   }
@@ -261,13 +270,16 @@ export class PayrollService {
     this.director(actor);
     const run = await this.prisma.payrollRun.findUnique({ where: { id: runId } });
     if (!run || run.status !== 'PENDING_DIRECTOR_APPROVAL') throw new BadRequestException('Payroll tidak menunggu persetujuan Direktur');
+    // Mencegah double-approve / approve-vs-reject bersamaan (klik ganda, dua tab).
     const now = new Date();
-    const updated = await this.prisma.payrollRun.update({
-      where: { id: runId },
+    const claimed = await this.prisma.payrollRun.updateMany({
+      where: { id: runId, status: 'PENDING_DIRECTOR_APPROVAL' },
       data: approve
         ? { status: 'FINALIZED', directorApprovedById: actor.userId, directorApprovedAt: now, finalizedById: actor.userId, finalizedAt: now }
         : { status: 'DRAFT' },
     });
+    if (claimed.count !== 1) throw new ConflictException('Status payroll berubah selama proses keputusan');
+    const updated = await this.prisma.payrollRun.findUniqueOrThrow({ where: { id: runId } });
     await this.audit(actor, approve ? 'PAYROLL_RUN_APPROVE_FINALIZE' : 'PAYROLL_RUN_REJECT', 'PayrollRun', runId, dto.reason);
     return updated;
   }

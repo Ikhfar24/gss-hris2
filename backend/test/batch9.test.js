@@ -56,7 +56,7 @@ test('final payroll locks line items and revisions preserve the finalized origin
       aggregate: async () => ({ _max: { revisionNumber: 0 } }),
       create: async ({ data }) => Object.assign(revision, data),
       findUnique: async () => revision,
-      update: async ({ data }) => Object.assign(revision, data),
+      updateMany: async ({ data }) => { Object.assign(revision, data); return { count: 1 }; },
     },
     payrollSlip: { update: async () => { slipUpdated = true; } },
   }, auditLog);

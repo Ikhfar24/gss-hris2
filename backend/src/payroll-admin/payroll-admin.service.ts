@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { canCreatePayrollRevision, validatePayrollCycleDays } from '../common/domain/payroll-foundation';
@@ -69,7 +69,9 @@ export class PayrollAdminService {
     const current = await this.period(id);
     if (current.status !== 'OPEN') throw new BadRequestException('Periode payroll sudah ditutup');
     if (current.payrollRun && current.payrollRun.status !== 'FINALIZED') throw new BadRequestException('Payroll run harus finalized sebelum periode ditutup');
-    const period = await this.prisma.payrollPeriod.update({ where: { id }, data: { status: 'CLOSED' } });
+    const claimed = await this.prisma.payrollPeriod.updateMany({ where: { id, status: 'OPEN' }, data: { status: 'CLOSED' } });
+    if (claimed.count !== 1) throw new ConflictException('Status periode berubah selama proses penutupan');
+    const period = await this.period(id);
     await this.audit('PERIOD_CLOSE', 'PayrollPeriod', id, actor, current, period);
     return period;
   }
@@ -78,7 +80,10 @@ export class PayrollAdminService {
     const current = await this.period(id);
     if (current.status !== 'CLOSED') throw new BadRequestException('Periode payroll belum ditutup');
     if (current.payrollRun) throw new BadRequestException('Periode dengan payroll run tidak dapat dibuka kembali');
-    const period = await this.prisma.payrollPeriod.update({ where: { id }, data: { status: 'OPEN' } });
+    // Periode CLOSED tidak bisa disentuh createRun, jadi klaim status cukup menutup balapan reopen ganda.
+    const claimed = await this.prisma.payrollPeriod.updateMany({ where: { id, status: 'CLOSED' }, data: { status: 'OPEN' } });
+    if (claimed.count !== 1) throw new ConflictException('Status periode berubah selama proses pembukaan');
+    const period = await this.period(id);
     await this.audit('PERIOD_REOPEN', 'PayrollPeriod', id, actor, current, period);
     return period;
   }
@@ -125,7 +130,9 @@ export class PayrollAdminService {
   async submitRevision(id: string, actor: AuthenticatedUser) {
     const current = await this.getRevision(id);
     if (current.status !== 'DRAFT') throw new BadRequestException('Hanya revisi draft yang dapat diajukan');
-    const revision = await this.prisma.payrollRevision.update({ where: { id }, data: { status: 'PENDING_DIRECTOR_APPROVAL' }, include: REVISION_INCLUDE });
+    const claimed = await this.prisma.payrollRevision.updateMany({ where: { id, status: 'DRAFT' }, data: { status: 'PENDING_DIRECTOR_APPROVAL' } });
+    if (claimed.count !== 1) throw new ConflictException('Status revisi berubah selama proses pengajuan');
+    const revision = await this.getRevision(id);
     await this.audit('REVISION_SUBMIT', 'PayrollRevision', id, actor, current, revision, current.reason, current.payrollRunId);
     return revision;
   }
@@ -141,7 +148,9 @@ export class PayrollAdminService {
   async finalizeRevision(id: string, actor: AuthenticatedUser) {
     const current = await this.getRevision(id);
     if (current.status !== 'APPROVED') throw new BadRequestException('Hanya revisi yang disetujui direktur yang dapat difinalisasi');
-    const revision = await this.prisma.payrollRevision.update({ where: { id }, data: { status: 'FINALIZED', finalizedById: actor.userId, finalizedAt: new Date() }, include: REVISION_INCLUDE });
+    const claimed = await this.prisma.payrollRevision.updateMany({ where: { id, status: 'APPROVED' }, data: { status: 'FINALIZED', finalizedById: actor.userId, finalizedAt: new Date() } });
+    if (claimed.count !== 1) throw new ConflictException('Status revisi berubah selama proses finalisasi');
+    const revision = await this.getRevision(id);
     await this.audit('REVISION_FINALIZE', 'PayrollRevision', id, actor, current, revision, current.reason, current.payrollRunId);
     return revision;
   }
@@ -149,9 +158,12 @@ export class PayrollAdminService {
   private async directorDecision(id: string, status: 'APPROVED' | 'REJECTED', dto: RevisionActionDto, actor: AuthenticatedUser) {
     const current = await this.getRevision(id);
     if (current.status !== 'PENDING_DIRECTOR_APPROVAL') throw new BadRequestException('Revisi tidak menunggu keputusan direktur');
-    const revision = await this.prisma.payrollRevision.update({
-      where: { id }, data: { status, directorApprovedById: actor.userId, directorApprovedAt: new Date(), approvalNote: dto.note }, include: REVISION_INCLUDE,
+    const claimed = await this.prisma.payrollRevision.updateMany({
+      where: { id, status: 'PENDING_DIRECTOR_APPROVAL' },
+      data: { status, directorApprovedById: actor.userId, directorApprovedAt: new Date(), approvalNote: dto.note },
     });
+    if (claimed.count !== 1) throw new ConflictException('Status revisi berubah selama proses keputusan');
+    const revision = await this.getRevision(id);
     await this.audit(`REVISION_${status}`, 'PayrollRevision', id, actor, current, revision, dto.note, current.payrollRunId);
     return revision;
   }

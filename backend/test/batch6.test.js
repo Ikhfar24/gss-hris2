@@ -114,7 +114,8 @@ test('review, submit, and Director finalization lock the payroll snapshot agains
   const service = new PayrollService({
     payrollRun: {
       findUnique: async () => run,
-      update: async ({ data }) => Object.assign(run, data),
+      updateMany: async ({ data }) => { Object.assign(run, data); return { count: 1 }; },
+      findUniqueOrThrow: async () => run,
     },
     payrollSlip: { findUnique: async () => ({ id: 'slip-1', payrollRun: run }) },
     $transaction: async () => { transactionCalled = true; },
@@ -161,7 +162,7 @@ test('revisions preserve finalized originals, require a reason, and move through
       aggregate: async () => ({ _max: { revisionNumber: 2 } }),
       create: async ({ data }) => { revisionCreate = data; Object.assign(revision, data); return revision; },
       findUnique: async () => revision,
-      update: async ({ data }) => Object.assign(revision, data),
+      updateMany: async ({ data }) => { Object.assign(revision, data); return { count: 1 }; },
     },
     payrollSlip: { update: async () => { slipUpdated = true; } },
   }, auditLog);

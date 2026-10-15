@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { startOfCalendarDay } from '../common/domain/date-range';
@@ -80,11 +80,12 @@ export class OvertimeRequestsService {
 
     if (dto.approve) await this.assertActiveEmployment(request.employeeId);
     const status = dto.approve ? 'APPROVED' : 'REJECTED';
-    const updated = await this.prisma.overtimeRequest.update({
-      where: { id },
+    const claimed = await this.prisma.overtimeRequest.updateMany({
+      where: { id, status: 'PENDING' },
       data: { status, reviewedById: actor.userId, reviewedAt: new Date(), reviewNote: dto.note ?? null },
-      include: INCLUDE,
     });
+    if (claimed.count !== 1) throw new ConflictException('Status pengajuan berubah selama proses review');
+    const updated = await this.getRequest(id);
     await this.record(actor, 'OVERTIME_REQUEST_REVIEW', id, request, updated, dto.note ?? request.reason);
     return updated;
   }
@@ -97,9 +98,11 @@ export class OvertimeRequestsService {
     }
     if (request.status !== 'PENDING') throw new BadRequestException(`Pengajuan berstatus ${request.status}, tidak dapat dibatalkan`);
 
-    const updated = await this.prisma.overtimeRequest.update({
-      where: { id }, data: { status: 'CANCELLED' }, include: INCLUDE,
+    const claimed = await this.prisma.overtimeRequest.updateMany({
+      where: { id, status: 'PENDING' }, data: { status: 'CANCELLED' },
     });
+    if (claimed.count !== 1) throw new ConflictException('Status pengajuan berubah selama proses pembatalan');
+    const updated = await this.getRequest(id);
     await this.record(actor, 'OVERTIME_REQUEST_CANCEL', id, request, updated, request.reason);
     return updated;
   }

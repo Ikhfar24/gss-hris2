@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { LeaveStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthenticatedUser } from '../common/decorators/current-user.decorator';
@@ -221,11 +221,13 @@ export class LeaveRequestsService {
       // The unique request/stage constraint makes historical approval records immutable.
       await tx.leaveApproval.create({ data: { leaveRequestId: id, stage, decision: dto.approve ? 'APPROVED' : 'REJECTED', note: dto.note ?? null, decidedById: actor.userId, decidedAt: now } });
       const isFinal = finalStatus === 'APPROVED';
-      const result = await tx.leaveRequest.update({
-        where: { id },
+      // Klaim status asal: menutup balapan cancel-vs-review dan review ganda lintas tahap.
+      const claimed = await tx.leaveRequest.updateMany({
+        where: { id, status: request.status },
         data: { status: finalStatus, ...(isFinal ? { reviewedById: actor.userId, reviewedAt: now, reviewNote: dto.note ?? null } : {}) },
-        include: INCLUDE,
       });
+      if (claimed.count !== 1) throw new ConflictException('Status pengajuan berubah selama proses review');
+      const result = await tx.leaveRequest.findUniqueOrThrow({ where: { id }, include: INCLUDE });
       if (isFinal && request.type === 'CUTI') await this.debitLeaveOnce(tx, request, actor.userId);
       if (isFinal && request.type === 'RESIGN' && startOfCalendarDay(request.startDate) <= startOfCalendarDay(now)) {
         await this.applyResign(tx, request.employeeId, startOfCalendarDay(request.startDate), actor);
@@ -242,10 +244,14 @@ export class LeaveRequestsService {
     if (!request) throw new NotFoundException('Pengajuan tidak ditemukan');
     if (request.type !== 'RESIGN' || request.status !== 'APPROVED') throw new BadRequestException('Hanya resign yang telah disetujui yang dapat difinalisasi');
     if (startOfCalendarDay(request.startDate) > startOfCalendarDay(new Date())) throw new BadRequestException('Tanggal efektif resign belum tiba');
+    const resignDate = startOfCalendarDay(request.startDate);
     await this.prisma.$transaction(async (tx) => {
       const employee = await tx.employee.findUnique({ where: { id: request.employeeId }, select: { status: true } });
       if (employee?.status === 'RESIGNED') throw new BadRequestException('Resign sudah difinalisasi');
-      await this.applyResign(tx, request.employeeId, startOfCalendarDay(request.startDate), actor);
+      // Klaim atomik: finalisasi ganda bersamaan hanya dimenangkan satu pihak.
+      const claimed = await tx.employee.updateMany({ where: { id: request.employeeId, status: { not: 'RESIGNED' } }, data: { status: 'RESIGNED', resignDate } });
+      if (claimed.count !== 1) throw new BadRequestException('Resign sudah difinalisasi');
+      await this.applyResign(tx, request.employeeId, resignDate, actor);
       await this.audit(tx, actor, 'LEAVE_REQUEST_RESIGN_FINALIZE', id, { employeeStatus: employee?.status }, { employeeStatus: 'RESIGNED' });
     });
     return this.findOne(id, actor);
@@ -259,7 +265,9 @@ export class LeaveRequestsService {
     if (!isOwner && !isHr) throw new ForbiddenException('Hanya pemohon atau HR yang dapat membatalkan pengajuan ini');
     if (!REVIEWABLE_STATUSES.includes(request.status)) throw new BadRequestException(`Pengajuan berstatus ${request.status}, tidak dapat dibatalkan`);
     const updated = await this.prisma.$transaction(async (tx) => {
-      const result = await tx.leaveRequest.update({ where: { id }, data: { status: 'CANCELLED' }, include: INCLUDE });
+      const claimed = await tx.leaveRequest.updateMany({ where: { id, status: request.status }, data: { status: 'CANCELLED' } });
+      if (claimed.count !== 1) throw new ConflictException('Status pengajuan berubah selama proses pembatalan');
+      const result = await tx.leaveRequest.findUniqueOrThrow({ where: { id }, include: INCLUDE });
       await this.audit(tx, actor, 'LEAVE_REQUEST_CANCEL', id, { status: request.status }, { status: 'CANCELLED' });
       return result;
     });

@@ -102,7 +102,10 @@ test('leave approval follows coordinator then HR stages with immutable history',
     },
     $transaction: async (callback) => callback({
       leaveApproval: { create: async ({ data }) => approvals.push(data) },
-      leaveRequest: { update: async ({ data }) => Object.assign(request, data) },
+      leaveRequest: {
+        updateMany: async ({ data }) => { Object.assign(request, data); return { count: 1 }; },
+        findUniqueOrThrow: async () => request,
+      },
       auditLog: { create: async () => ({}) },
     }),
   };
@@ -145,7 +148,10 @@ test('final cuti approval does not debit a leave balance twice', async () => {
     leaveRequest: { findUnique: async () => request },
     $transaction: async (callback) => callback({
       leaveApproval: { create: async () => ({}) },
-      leaveRequest: { update: async ({ data }) => ({ ...request, ...data }) },
+      leaveRequest: {
+        updateMany: async ({ data }) => ({ count: 1 }),
+        findUniqueOrThrow: async () => ({ ...request, status: 'APPROVED' }),
+      },
       leaveBalanceTransaction: { findFirst: async () => ({ id: 'existing-ledger-entry' }), create: async () => { ledgerCreated = true; } },
       leaveBalance: { updateMany: async () => { balanceUpdated = true; } },
       auditLog: { create: async () => ({}) },
@@ -181,7 +187,10 @@ test('resignation waits for its effective date, then deactivates access and reco
     leaveRequest: { findUnique: async () => request },
     $transaction: async (callback) => callback({
       leaveApproval: { create: async () => ({}) },
-      leaveRequest: { update: async ({ data }) => ({ ...request, ...data }) },
+      leaveRequest: {
+        updateMany: async ({ data }) => { Object.assign(request, data); return { count: 1 }; },
+        findUniqueOrThrow: async () => request,
+      },
       user: { findMany: async () => [{ id: 'user-1', isActive: true }], updateMany: async () => ({ count: 1 }) },
       employee: { update: async () => ({}) },
       placement: { findMany: async () => [{ id: 'placement-1', endDate: null }], updateMany: async () => ({ count: 1 }) },
@@ -209,7 +218,7 @@ test('overtime rejects unauthorized review and approval stores no monetary field
   const service = new OvertimeRequestsService({
     overtimeRequest: {
       findUnique: async () => request,
-      update: async ({ data }) => { updateData = data; return { ...request, ...data }; },
+      updateMany: async ({ data }) => { updateData = data; Object.assign(request, data); return { count: 1 }; },
     },
     employee: { findUnique: async () => ({ status: 'ACTIVE' }) },
   }, { record: async () => {} }, coordinatorApproved);

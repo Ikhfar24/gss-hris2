@@ -37,7 +37,8 @@
     "test:ui-phase5": "nest build && node --test test/ui-phase5.test.js",
     "test:consolidated-mobile-uat": "nest build && node --test test/consolidated-mobile-uat.test.js",
     "test:full-human-uat": "nest build && node --test test/full-human-uat.test.js",
-    "test:temporary-credentials": "nest build && node --test test/temporary-credentials.test.js"
+    "test:temporary-credentials": "nest build && node --test test/temporary-credentials.test.js",
+    "test:state-claims": "nest build && node --test test/state-transition-claims.test.js"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.0",
