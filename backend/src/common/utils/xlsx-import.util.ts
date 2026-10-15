@@ -50,7 +50,7 @@ export function assertSafeXlsxUpload(file?: XlsxUpload): asserts file is XlsxUpl
 
 export async function buildImportTemplate(sheetName: string, columns: XlsxImportColumn[]): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
-  workbook.creator = 'Papaiz HRIS';
+  workbook.creator = 'GSS';
   workbook.created = new Date();
   const worksheet = workbook.addWorksheet(sheetName);
   worksheet.properties.defaultRowHeight = 20;

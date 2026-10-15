@@ -5,7 +5,7 @@ import { BrandingProvider } from "@/components/providers/BrandingProvider";
 import { Toaster } from "sonner";
 
 export const metadata: Metadata = {
-  title: "Papaiz HR",
+  title: "GSS",
   description: "HRIS & Workforce Management",
 };
 

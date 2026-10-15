@@ -22,14 +22,14 @@ export class CompanySettingsService {
     const settings = await this.prisma.companySettings.findFirst({
       select: { companyName: true, appName: true, logoUrl: true, faviconUrl: true, primaryColor: true },
     });
-    if (!settings) return { companyName: 'Papaiz.corp', appName: 'Papaiz HR', logoUrl: null, faviconUrl: null, primaryColor: '#001F3F' };
+    if (!settings) return { companyName: 'GSS', appName: 'GSS', logoUrl: null, faviconUrl: null, primaryColor: '#0F3151' };
     const safeAsset = (value: string | null) => value && /^\/(?!\/)[A-Za-z0-9._~/-]*$/.test(value) ? value : null;
     return {
       companyName: settings.companyName,
       appName: settings.appName,
       logoUrl: safeAsset(settings.logoUrl),
       faviconUrl: safeAsset(settings.faviconUrl),
-      primaryColor: settings.primaryColor && /^#[0-9a-fA-F]{6}$/.test(settings.primaryColor) ? settings.primaryColor : '#001F3F',
+      primaryColor: settings.primaryColor && /^#[0-9a-fA-F]{6}$/.test(settings.primaryColor) ? settings.primaryColor : '#0F3151',
     };
   }
 

@@ -89,8 +89,8 @@ test('UAT Fix Pack 04 generates an organization-authorized HR PDF without sensit
 test('UAT Fix Pack 04 makes Company Settings GET and PATCH System Admin-only', async () => {
   assert.deepEqual(Reflect.getMetadata('roles', CompanySettingsController), ['SYSTEM_ADMIN']);
   const calls = [];
-  const controller = new CompanySettingsController({ get: async () => ({ companyName: 'Papaiz' }), update: async (dto, id) => { calls.push({ dto, id }); return dto; } });
-  assert.equal((await controller.get()).companyName, 'Papaiz');
+  const controller = new CompanySettingsController({ get: async () => ({ companyName: 'GSS' }), update: async (dto, id) => { calls.push({ dto, id }); return dto; } });
+  assert.equal((await controller.get()).companyName, 'GSS');
   await controller.update({ companyName: 'Baru' }, { userId: 'system-1', role: 'SYSTEM_ADMIN' });
   assert.equal(calls[0].id, 'system-1');
 });

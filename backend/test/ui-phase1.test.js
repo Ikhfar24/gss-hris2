@@ -10,7 +10,7 @@ test('UI Phase 1 defines the approved visual tokens and a single icon language',
   const globals = frontend('app/globals.css');
   const tailwind = frontend('tailwind.config.ts');
   const pkg = JSON.parse(frontend('package.json'));
-  assert.match(globals, /--brand-color: #001f3f/);
+  assert.match(globals, /--brand-color: #0f3151/);
   assert.match(globals, /--grey: #f0f0f0/);
   assert.match(tailwind, /brand-rgb/);
   assert.ok(pkg.dependencies['lucide-react']);

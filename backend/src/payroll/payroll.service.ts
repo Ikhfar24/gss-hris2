@@ -330,7 +330,7 @@ export class PayrollService {
     if (slip.payrollRun.status !== 'FINALIZED' || (!isOwner && actor.role !== FINANCE)) throw new ForbiddenException('Slip tidak dapat diakses');
     const settings = await this.prisma.companySettings.findFirst();
     const buffer = await buildPayslipPdf({
-      companyName: settings?.companyName ?? 'Papaiz.corp',
+      companyName: settings?.companyName ?? 'GSS',
       employeeName: slip.employee.name,
       periodLabel: `${slip.payrollRun.periodStart.toLocaleDateString('id-ID')} - ${slip.payrollRun.periodEnd.toLocaleDateString('id-ID')}`,
       basisLabel: slip.basis === 'CONTRACT'

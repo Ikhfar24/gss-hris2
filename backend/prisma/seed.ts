@@ -13,8 +13,8 @@ async function main() {
   if (!existingSettings) {
     await prisma.companySettings.create({
       data: {
-        companyName: 'Papaiz.corp',
-        appName: 'Papaiz HR',
+        companyName: 'GSS',
+        appName: 'GSS',
         email: 'hr@papaiz.corp',
         logoUrl: '/branding/logo.svg',
         faviconUrl: '/branding/favicon.svg',

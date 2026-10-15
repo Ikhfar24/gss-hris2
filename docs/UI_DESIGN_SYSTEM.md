@@ -1,8 +1,8 @@
-# Papaiz HRIS UI Design System
+# GSS UI Design System
 
 ## Status and scope
 
-This document defines the approved visual foundation for Papaiz HRIS. Phase UI-1
+This document defines the approved visual foundation for GSS. Phase UI-1
 introduces tokens only. It does not change routes, page hierarchy, shell placement,
 dashboard section order, workflow sequence, permissions, or business logic.
 
@@ -82,7 +82,7 @@ bg-info-surface
 ```
 
 `brand` remains connected to the validated Company Settings primary color through
-`--brand-rgb`. Navy remains the Papaiz default and fixed structural brand reference.
+`--brand-rgb`. Navy remains the GSS default and fixed structural brand reference.
 
 ## Typography
 
@@ -212,7 +212,7 @@ The supported review widths are 375, 390, 430, 768, 1024, 1280, and 1440px or wi
 - Status, errors, and selection are never communicated by color alone.
 - Forms, tables, dialogs, and navigation use semantic HTML and accessible names.
 - Reduced-motion preferences preserve state feedback without decorative movement.
-- Browser selection and input caret colors use the Papaiz palette.
+- Browser selection and input caret colors use the GSS palette.
 
 ## Deferred structural recommendations
 

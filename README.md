@@ -1,4 +1,4 @@
-# Papaiz HRIS — Phase 1–6
+# GSS — Phase 1–6
 
 Implementasi dari `PRD_HRIS_Papaiz_v0_2.md`, mencakup **Phase 1: Foundation**,
 **Phase 2: Employee & Placement**, **Phase 3: Attendance**,

@@ -1,7 +1,7 @@
 {
   "name": "papaiz-hris-backend",
   "version": "0.1.0",
-  "description": "Papaiz HRIS - Backend (Phase 1: Foundation)",
+  "description": "GSS - Backend (Phase 1: Foundation)",
   "private": true,
   "scripts": {
     "build": "nest build",

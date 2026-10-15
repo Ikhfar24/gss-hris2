@@ -73,6 +73,6 @@ async function bootstrap() {
 
   const port = process.env.PORT ?? 4000;
   await app.listen(port);
-  console.log(`Papaiz HRIS backend running on http://localhost:${port}/api/v1`);
+  console.log(`GSS backend running on http://localhost:${port}/api/v1`);
 }
 bootstrap();

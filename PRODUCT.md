@@ -8,18 +8,18 @@ web
 
 ## Users
 
-Papaiz HRIS serves two primary operating scenes within one product:
+GSS serves two primary operating scenes within one product:
 
 - Employees and coordinators completing daily work from mobile devices, including attendance, requests, history, profile, and team workflows.
 - HR, Finance, Directors, Commissioners, and System Administrators managing workforce operations from desktop workspaces.
 
 ## Product Purpose
 
-Papaiz HRIS connects employees, client sites, placements, schedules, attendance, requests, payroll, and approvals in one role-aware operational system. Success means each user can understand current state, complete authorized work quickly, and trust that recorded decisions follow the established workflow.
+GSS connects employees, client sites, placements, schedules, attendance, requests, payroll, and approvals in one role-aware operational system. Success means each user can understand current state, complete authorized work quickly, and trust that recorded decisions follow the established workflow.
 
 ## Positioning
 
-Papaiz is a workforce operations map: people, client locations, placements, temporary assignments, attendance evidence, and governed decisions remain visibly connected instead of appearing as unrelated administrative modules.
+GSS is a workforce operations map: people, client locations, placements, temporary assignments, attendance evidence, and governed decisions remain visibly connected instead of appearing as unrelated administrative modules.
 
 ## Operating Context
 
@@ -41,7 +41,7 @@ Papaiz is a workforce operations map: people, client locations, placements, temp
 
 ## Brand Commitments
 
-- Product name: Papaiz HRIS.
+- Product name: GSS.
 - Primary navy: `#0F3151`.
 - Teal accent: `#01ACAC`.
 - Danger crimson: `#DC143C`.

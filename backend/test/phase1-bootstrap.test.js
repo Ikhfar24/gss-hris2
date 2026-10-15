@@ -67,14 +67,14 @@ test('public branding endpoint returns the strict branding allowlist', async () 
   let brandingQuery;
   const service = new CompanySettingsService({
     companySettings: { findFirst: async (query) => { brandingQuery = query; return ({
-      id: 'settings-1', companyName: 'Papaiz', appName: 'Papaiz HR', logoUrl: '/logo.svg',
+      id: 'settings-1', companyName: 'GSS', appName: 'GSS', logoUrl: '/logo.svg',
       faviconUrl: '/favicon.ico', primaryColor: '#112233', email: 'secret@example.test',
       address: 'Private address', updatedAt: new Date(), updatedById: 'admin-1',
     }); } },
   }, {});
   const result = await new BrandingController(service).get();
   assert.deepEqual(result, {
-    companyName: 'Papaiz', appName: 'Papaiz HR', logoUrl: '/logo.svg',
+    companyName: 'GSS', appName: 'GSS', logoUrl: '/logo.svg',
     faviconUrl: '/favicon.ico', primaryColor: '#112233',
   });
   assert.deepEqual(Object.keys(brandingQuery.select).sort(), ['appName', 'companyName', 'faviconUrl', 'logoUrl', 'primaryColor']);

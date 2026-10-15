@@ -11,7 +11,7 @@ interface Branding {
   primaryColor: string;
 }
 
-const fallback: Branding = { companyName: 'Papaiz', appName: 'Papaiz HR', logoUrl: '/branding/logo.svg', faviconUrl: '/branding/favicon.svg', primaryColor: '#0F3151' };
+const fallback: Branding = { companyName: 'GSS', appName: 'GSS', logoUrl: '/branding/logo.svg', faviconUrl: '/branding/favicon.svg', primaryColor: '#0F3151' };
 const BrandingContext = createContext<Branding>(fallback);
 
 function safeColor(value: unknown) {
