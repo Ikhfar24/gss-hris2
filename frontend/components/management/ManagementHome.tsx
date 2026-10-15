@@ -371,8 +371,9 @@ function PersonalAttendance({
         today && (
           <Badge
             variant={today.attendanceMode === "MOBILE" ? "info" : "neutral"}
+            className="shrink-0 whitespace-nowrap text-xs"
           >
-            {today.attendanceMode === "MOBILE" ? "Mobile" : "Berbasis lokasi"}
+            {today.attendanceMode === "MOBILE" ? "Mobile" : "Geofence"}
           </Badge>
         )
       }
@@ -424,8 +425,8 @@ function AttendanceDistribution({
   const rows = [
     { label: "Hadir", value: attendance.hadir, color: "bg-success" },
     { label: "Terlambat", value: attendance.terlambat, color: "bg-warning" },
-    { label: "Belum absen", value: attendance.tidakHadir, color: "bg-brand" },
-    { label: "Perlu review", value: attendance.perluDitinjau, color: "bg-danger" },
+    { label: "Belum absen", value: attendance.tidakHadir, color: "bg-slate-400" },
+    { label: "Perlu review", value: attendance.perluDitinjau, color: "bg-amber-500" },
   ];
   const max = Math.max(...rows.map((row) => row.value), 1);
   return (
@@ -469,7 +470,7 @@ function AttendanceTrend({ days, className }: { days: MonitoringDay[]; className
         <div className="flex flex-wrap gap-x-3 gap-y-1 text-caption text-muted" aria-label="Legenda grafik">
           <Legend color="bg-success-accent" label="Hadir" />
           <Legend color="bg-warning-accent" label="Terlambat" />
-          <Legend color="bg-danger" label="Tidak hadir" />
+          <Legend color="bg-slate-400" label="Tidak hadir" />
           <Legend color="bg-indigo" label="Cuti/Izin" />
         </div>
       }
@@ -485,7 +486,7 @@ function AttendanceTrend({ days, className }: { days: MonitoringDay[]; className
             const segments = [
               { label: "Hadir tepat waktu", value: punctual, color: "bg-success-accent" },
               { label: "Terlambat", value: day.summary.late, color: "bg-warning-accent" },
-              { label: "Tidak hadir", value: day.summary.notAttended, color: "bg-danger" },
+              { label: "Tidak hadir", value: day.summary.notAttended, color: "bg-slate-400" },
               { label: "Cuti atau izin", value: day.summary.onLeave, color: "bg-indigo" },
             ];
             return (

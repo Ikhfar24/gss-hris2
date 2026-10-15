@@ -9,15 +9,45 @@ export class ApiError extends Error {
 }
 
 interface RequestOptions {
-  method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
+  method?: 'GET' | 'POST' | 'PATCH' | 'DELETE' | 'PUT';
   body?: unknown;
   token?: string | null;
+  _isRetry?: boolean;
+}
+
+let refreshPromise: Promise<void> | null = null;
+
+async function requestRefresh(): Promise<void> {
+  if (!refreshPromise) {
+    refreshPromise = (async () => {
+      try {
+        const res = await fetch(`${API_URL}/auth/refresh`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
+          },
+        });
+        if (!res.ok) {
+          const payload = await res.json().catch(() => ({ message: res.statusText }));
+          throw new ApiError(res.status, payload.message ?? 'Gagal memperbarui token');
+        }
+      } finally {
+        refreshPromise = null;
+      }
+    })();
+  }
+  return refreshPromise;
 }
 
 export async function downloadFile(path: string, token: string | null, fallbackName: string): Promise<void> {
   const res = await fetch(`${API_URL}${path}`, {
     credentials: 'include',
-    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    headers: {
+      'X-Requested-With': 'XMLHttpRequest',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
   });
   if (!res.ok) {
     const payload = await res.json().catch(() => ({ message: res.statusText }));
@@ -49,7 +79,10 @@ export async function uploadFile<T>(path: string, file: File, token?: string | n
   const res = await fetch(`${API_URL}${path}`, {
     method: 'POST',
     credentials: 'include',
-    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    headers: {
+      'X-Requested-With': 'XMLHttpRequest',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
     body,
   });
   if (!res.ok) {
@@ -66,12 +99,27 @@ export async function apiFetch<T>(path: string, opts: RequestOptions = {}): Prom
     method: opts.method ?? 'GET',
     headers: {
       'Content-Type': 'application/json',
+      'X-Requested-With': 'XMLHttpRequest',
       ...(opts.token ? { Authorization: `Bearer ${opts.token}` } : {}),
     },
     body: opts.body ? JSON.stringify(opts.body) : undefined,
   });
 
   if (!res.ok) {
+    if (res.status === 401 && !opts._isRetry && !path.startsWith('/auth/refresh') && !path.startsWith('/auth/login')) {
+      const payload = await res.json().catch(() => ({ message: res.statusText }));
+      const originalError = new ApiError(res.status, payload.message ?? 'Tidak terautentikasi');
+      try {
+        await requestRefresh();
+        return await apiFetch<T>(path, { ...opts, _isRetry: true });
+      } catch {
+        throw originalError;
+      }
+    }
+
+    if (res.status === 429) {
+      throw new ApiError(429, 'Terlalu banyak permintaan. Mohon tunggu beberapa saat lalu coba lagi.');
+    }
     const payload = await res.json().catch(() => ({ message: res.statusText }));
     throw new ApiError(res.status, payload.message ?? 'Terjadi kesalahan');
   }

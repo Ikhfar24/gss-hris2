@@ -1,6 +1,5 @@
 "use client";
 
-import { MapPin } from "lucide-react";
 import { useSession } from "@/components/providers/SessionProvider";
 import { employmentTypeLabel } from "@/lib/employment";
 import { cn } from "@/lib/utils";
@@ -10,12 +9,6 @@ export function MobileIdentityHeader({ className }: { className?: string }) {
   const { session } = useSession();
   const employee = session.employee;
   if (!employee) return null;
-
-  const placement =
-    employee.activePlacementName ??
-    (employee.employmentType === "STAFF_OFFICE"
-      ? "Lokasi kerja belum ditetapkan"
-      : "Penempatan belum tersedia");
 
   return (
     <header
@@ -30,10 +23,6 @@ export function MobileIdentityHeader({ className }: { className?: string }) {
         </h1>
         <p className="mt-0.5 truncate text-body text-muted">
           {employee.jobTitle || employmentTypeLabel(employee.employmentType)}
-        </p>
-        <p className="mt-1 flex min-w-0 items-center gap-1.5 text-caption text-muted">
-          <MapPin className="size-3.5 shrink-0" />
-          <span className="truncate">{placement}</span>
         </p>
       </div>
       <CurrentUserAvatar

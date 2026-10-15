@@ -156,8 +156,15 @@ export function FinanceHome() {
             </div>
           ) : (
             <EmptyState
-              title="Belum ada payroll"
-              description="Buat payroll dari periode yang sudah tersedia."
+              title="Belum ada periode payroll"
+              description="Kelola dan buat periode penggajian baru untuk karyawan aktif."
+              action={
+                <Button asChild>
+                  <Link href="/payroll">
+                    + Kelola Payroll
+                  </Link>
+                </Button>
+              }
             />
           )}
         </WorkSheet>
@@ -499,6 +506,7 @@ function PersonalAttendance({ today }: { today: Today | null }) {
         today && (
           <Badge
             variant={today.attendanceMode === "MOBILE" ? "info" : "neutral"}
+            className="shrink-0 whitespace-nowrap text-xs"
           >
             {today.attendanceMode === "MOBILE" ? "Mobile" : "Geofence"}
           </Badge>

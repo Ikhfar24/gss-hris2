@@ -40,14 +40,14 @@ export function canAttend(session: Session) {
 
 export function mobileNavigation(session: Session): NavigationItem[] {
   const roleItems: Record<Role, NavigationItem[]> = {
-    KARYAWAN: [item('Beranda', '/dashboard', Gauge), item('Pengajuan', '/requests', CalendarDays), item('Riwayat', '/attendance/history', Clock3), item('Profil', '/profile', CircleUserRound)],
+    KARYAWAN: [item('Beranda', '/dashboard', Gauge), item('Izin', '/requests', CalendarDays), item('Riwayat', '/attendance/history', Clock3), item('Profil', '/profile', CircleUserRound)],
     KOORDINATOR: [item('Beranda', '/dashboard', Gauge), item('Tim', '/employees', UsersRound), item('Aktivitas', '/activity', ClipboardCheck), item('Profil', '/profile', CircleUserRound)],
     ADMIN_HR: [item('Beranda', '/dashboard', Gauge), item('Karyawan', '/employees', UsersRound), item('Aktivitas', '/activity', ClipboardCheck), item('Profil', '/profile', CircleUserRound)],
     KEUANGAN: [item('Beranda', '/dashboard', Gauge), item('Payroll', '/payroll', WalletCards), item('Aktivitas', '/activity', ClipboardCheck), item('Profil', '/profile', CircleUserRound)],
-    MARKETING: [item('Beranda', '/dashboard', Gauge), item('Pengajuan', '/leave-requests', CalendarDays), item('Riwayat', '/attendance/history', Clock3), item('Profil', '/profile', CircleUserRound)],
-    DIREKTUR: [item('Beranda', '/dashboard', Gauge), item('Persetujuan', '/approvals', ClipboardCheck), item('Monitoring', '/reports', BarChart3), item('Aktivitas', '/activity', Clock3), item('Profil', '/profile', CircleUserRound)],
-    KOMISARIS: [item('Beranda', '/dashboard', Gauge), item('Monitoring', '/reports', BarChart3), item('Aktivitas', '/activity', ClipboardCheck), item('Profil', '/profile', CircleUserRound)],
-    SYSTEM_ADMIN: [item('Beranda', '/dashboard', Gauge), item('Sistem', '/system', Settings), item('Monitoring', '/reports', BarChart3), item('Aktivitas', '/activity', ClipboardCheck), item('Profil', '/profile', CircleUserRound)],
+    MARKETING: [item('Beranda', '/dashboard', Gauge), item('Izin', '/leave-requests', CalendarDays), item('Riwayat', '/attendance/history', Clock3), item('Profil', '/profile', CircleUserRound)],
+    DIREKTUR: [item('Beranda', '/dashboard', Gauge), item('Setujui', '/approvals', ClipboardCheck), item('Pantau', '/reports', BarChart3), item('Aktivitas', '/activity', Clock3), item('Profil', '/profile', CircleUserRound)],
+    KOMISARIS: [item('Beranda', '/dashboard', Gauge), item('Pantau', '/reports', BarChart3), item('Aktivitas', '/activity', ClipboardCheck), item('Profil', '/profile', CircleUserRound)],
+    SYSTEM_ADMIN: [item('Beranda', '/dashboard', Gauge), item('Sistem', '/system', Settings), item('Pantau', '/reports', BarChart3), item('Aktivitas', '/activity', ClipboardCheck), item('Profil', '/profile', CircleUserRound)],
   };
   return roleItems[session.role];
 }

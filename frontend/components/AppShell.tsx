@@ -108,7 +108,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             if (!items.length) return null;
             return (
               <div key={group.label} className="mb-4">
-                <p className="mb-2 px-3 text-[0.6875rem] font-bold uppercase tracking-[0.16em] text-white/40">
+                <p className="mb-2 px-3 text-[0.6875rem] font-bold uppercase tracking-[0.16em] text-slate-300">
                   {group.label}
                 </p>
                 <div className="space-y-1">
@@ -311,7 +311,7 @@ function NavLink({ item, active }: { item: NavigationItem; active: boolean }) {
         "relative flex items-center gap-3 rounded-lg px-3 py-2 text-[0.8125rem] font-medium transition-colors",
         active
           ? "bg-accent text-binder-deep shadow-control"
-          : "text-white/58 hover:bg-white/[0.06] hover:text-white",
+          : "text-slate-200 hover:bg-white/10 hover:text-white",
       )}
     >
       <Icon className="size-[18px] shrink-0" />

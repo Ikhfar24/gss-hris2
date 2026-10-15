@@ -188,6 +188,26 @@ function TodayCard({
   today: TodayResponse | null;
   eligible: boolean;
 }) {
+  const [clock, setClock] = useState<string>("");
+
+  useEffect(() => {
+    const updateTime = () => {
+      const now = new Date();
+      setClock(
+        now.toLocaleTimeString("id-ID", {
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+          hour12: false,
+          timeZone: "Asia/Jakarta",
+        }) + " WIB",
+      );
+    };
+    updateTime();
+    const timer = setInterval(updateTime, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
   if (!eligible)
     return (
       <section className="rounded-xl bg-paper p-4 shadow-card sm:p-5">
@@ -203,15 +223,24 @@ function TodayCard({
     <section className="rounded-xl bg-paper p-4 shadow-card sm:p-5">
       <div className="flex min-w-0 items-start justify-between gap-3">
         <div className="min-w-0">
-          <h2 className="text-section-title text-brand">Presensi Hari Ini</h2>
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-section-title text-brand">Presensi Hari Ini</h2>
+            {clock && (
+              <span className="inline-flex items-center gap-1 rounded-md bg-surface-subtle px-2 py-0.5 font-mono text-[0.75rem] font-semibold text-brand shadow-control">
+                <Clock3 className="size-3 text-muted" />
+                {clock}
+              </span>
+            )}
+          </div>
           <p className="mt-0.5 truncate text-caption text-muted">
             {formatFullDate(attendance?.date ?? new Date())}
           </p>
         </div>
         <Badge
           variant={today?.attendanceMode === "MOBILE" ? "info" : "neutral"}
+          className="shrink-0 whitespace-nowrap text-xs"
         >
-          {today?.attendanceMode === "MOBILE" ? "Mobile" : "Lokasi kerja"}
+          {today?.attendanceMode === "MOBILE" ? "Mobile" : "Geofence"}
         </Badge>
       </div>
       <div className="mt-4 grid grid-cols-2 overflow-hidden rounded-lg bg-surface-subtle">

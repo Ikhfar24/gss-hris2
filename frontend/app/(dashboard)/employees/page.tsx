@@ -239,9 +239,21 @@ export default function EmployeesPage() {
     }
   }
 
+  const isInitialMount = useRef(true);
   useEffect(() => {
     load();
   }, []);
+
+  useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return;
+    }
+    const timer = setTimeout(() => {
+      load(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [search, statusFilter, typeFilter]);
 
   function applyFilters(e: FormEvent) {
     e.preventDefault();
@@ -1148,8 +1160,9 @@ export default function EmployeesPage() {
                   <td className="whitespace-nowrap px-3 py-2 text-right">
                     <Link
                       href={`/employees/${emp.id}/360`}
-                      className="inline-flex min-h-9 items-center rounded-lg bg-brand px-3 text-xs font-semibold text-white"
+                      className="inline-flex min-h-8 items-center gap-1.5 rounded-lg border border-border bg-paper px-2.5 text-xs font-semibold text-brand shadow-control transition-colors hover:border-brand/40 hover:bg-surface-subtle"
                     >
+                      <UserRound className="size-3.5 text-muted" />
                       Profil Lengkap
                     </Link>
                     {canManage && (

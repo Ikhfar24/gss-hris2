@@ -93,7 +93,37 @@ export function PeopleAttendanceMonitoring({ role, context = role === 'KOORDINAT
     <ContextBand title={`Monitoring Presensi ${context === 'team' ? 'Tim' : 'Organisasi'}`} description="Orang dan aktivitas presensi dalam cakupan kewenangan Anda." meta={<span>{context === 'team' ? 'TIM' : 'ORGANISASI'} · AKTIVITAS HARI INI</span>} />
     {error && <Alert variant="danger">{error}</Alert>}
     {data && <div className="mb-4 mt-4 grid grid-cols-4 divide-x divide-border overflow-hidden rounded-xl bg-paper text-center shadow-sheet"><Metric value={data.summary.attended} label="Hadir" onClick={() => setState('ATTENDED')} /><Metric value={data.summary.late} label="Terlambat" onClick={() => setState('LATE')} /><Metric value={data.summary.notAttended} label="Belum" onClick={() => setState('NOT_ATTENDED')} /><Metric value={data.summary.needsReview} label="Tinjau" onClick={() => setState('NEEDS_REVIEW')} /></div>}
-    <div className="mb-4 min-w-0 space-y-3"><div className="relative"><label className="sr-only" htmlFor="attendance-people-search">Cari nama atau lokasi</label><Search className="pointer-events-none absolute left-3 top-3 size-4 text-muted" /><input id="attendance-people-search" type="search" value={search} onChange={(event) => setSearch(event.target.value)} className="input pl-9" placeholder="Cari nama atau lokasi" /></div><div className="max-w-full overflow-x-auto overscroll-x-contain pb-1"><SegmentedControl aria-label="Filter status absensi" value={state} onValueChange={setState} options={stateOptions} /></div>{visibleTypeOptions.length > 2 && <div className="max-w-full overflow-x-auto overscroll-x-contain pb-1"><SegmentedControl aria-label="Filter jenis tenaga" value={type} onValueChange={(next) => { setType(next); void load(next); }} options={visibleTypeOptions} /></div>}{loading && data && <p className="text-caption text-muted" role="status">Memperbarui daftar tanpa menutup data sebelumnya...</p>}</div>
+    <div className="mb-4 min-w-0 space-y-3">
+      <div className="relative">
+        <label className="sr-only" htmlFor="attendance-people-search">Cari nama atau lokasi</label>
+        <Search className="pointer-events-none absolute left-3 top-3 size-4 text-muted" />
+        <input id="attendance-people-search" type="search" value={search} onChange={(event) => setSearch(event.target.value)} className="input pl-9" placeholder="Cari nama atau lokasi" />
+      </div>
+      <div className="max-w-full overflow-x-auto overscroll-x-contain pb-1"><SegmentedControl aria-label="Filter status absensi" value={state} onValueChange={setState} options={stateOptions} /></div>
+      {visibleTypeOptions.length > 2 && (
+        <>
+          <div className="hidden max-w-full overflow-x-auto overscroll-x-contain pb-1 sm:block"><SegmentedControl aria-label="Filter jenis tenaga" value={type} onValueChange={(next) => { setType(next); void load(next); }} options={visibleTypeOptions} /></div>
+          <div className="flex items-center gap-2 sm:hidden">
+            <label htmlFor="mobile-type-filter" className="shrink-0 text-caption font-semibold text-muted">Jenis Tenaga:</label>
+            <select
+              id="mobile-type-filter"
+              value={type}
+              onChange={(e) => {
+                const next = e.target.value as EmploymentType;
+                setType(next);
+                void load(next);
+              }}
+              className="input h-9 min-h-0 flex-1 py-1 text-xs"
+            >
+              {visibleTypeOptions.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </div>
+        </>
+      )}
+      {loading && data && <p className="text-caption text-muted" role="status">Memperbarui daftar tanpa menutup data sebelumnya...</p>}
+    </div>
     {!data && loading ? <LoadingState label="Memuat monitoring presensi" className="space-y-2">{Array.from({ length: 5 }).map((_, index) => <Skeleton key={index} className="h-24 rounded-xl" />)}</LoadingState> : <>
       <div className="divide-y overflow-hidden rounded-xl bg-paper shadow-sheet md:hidden">{people.map((person) => <PersonRow key={person.employee.id} person={person} onOpen={openDetail} />)}{!people.length && <EmptyState title="Tidak ada orang pada filter ini" />}</div>
       <DataRegion className="hidden md:block"><table className="min-w-[820px] text-sm"><thead><tr><th>Karyawan</th><th>Lokasi</th><th>Masuk</th><th>Pulang</th><th>Status</th><th></th></tr></thead><tbody>{people.map((person) => <tr key={person.employee.id}><td className="font-semibold">{person.employee.name}<span className="block text-xs font-normal text-slate-400">{person.employee.jobTitle ?? person.employee.employmentType}</span></td><td>{person.location.name}</td><td>{formatTime(person.attendance?.checkInAt)}</td><td>{formatTime(person.attendance?.checkOutAt)}</td><td><State person={person} /></td><td className="text-right">{person.attendance && <Button size="sm" variant="secondary" onClick={() => openDetail(person.attendance!.id)}>{person.attendance.validationStatus === 'NEEDS_REVIEW' ? 'Tinjau' : 'Detail'}</Button>}</td></tr>)}</tbody></table></DataRegion>
