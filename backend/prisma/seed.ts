@@ -16,7 +16,9 @@ async function main() {
         companyName: 'Papaiz.corp',
         appName: 'Papaiz HR',
         email: 'hr@papaiz.corp',
-        primaryColor: '#001F3F',
+        logoUrl: '/branding/logo.svg',
+        faviconUrl: '/branding/favicon.svg',
+        primaryColor: '#0F3151',
       },
     });
     console.log('Created default company settings');
