@@ -113,10 +113,10 @@ export default function AttendanceMap({ work, current, radiusMeters, showGeofenc
     if (visibleWork) {
       const point: [number, number] = [visibleWork.latitude, visibleWork.longitude];
       if (workMarkerRef.current) workMarkerRef.current.setLatLng(point);
-      else workMarkerRef.current = loaded.circleMarker(point, { radius: 7, color: '#001F3F', fillColor: '#29297A', fillOpacity: 1 }).bindTooltip('Lokasi kerja').addTo(map);
+      else workMarkerRef.current = loaded.circleMarker(point, { radius: 7, color: '#0F3151', fillColor: '#01ACAC', fillOpacity: 1 }).bindTooltip('Lokasi kerja').addTo(map);
       if (radius) {
         if (geofenceCircleRef.current) geofenceCircleRef.current.setLatLng(point).setRadius(radius);
-        else geofenceCircleRef.current = loaded.circle(point, { radius, color: '#001F3F', fillColor: '#29297A', fillOpacity: 0.14 }).addTo(map);
+        else geofenceCircleRef.current = loaded.circle(point, { radius, color: '#0F3151', fillColor: '#01ACAC', fillOpacity: 0.14 }).addTo(map);
       } else {
         remove(geofenceCircleRef.current);
         geofenceCircleRef.current = null;

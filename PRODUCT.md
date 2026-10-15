@@ -42,8 +42,8 @@ Papaiz is a workforce operations map: people, client locations, placements, temp
 ## Brand Commitments
 
 - Product name: Papaiz HRIS.
-- Primary navy: `#001F3F`.
-- Gold accent: `#FFD700`.
+- Primary navy: `#0F3151`.
+- Teal accent: `#01ACAC`.
 - Danger crimson: `#DC143C`.
 - White: `#FFFFFF`.
 - Secondary indigo: `#29297A`.
@@ -51,7 +51,7 @@ Papaiz is a workforce operations map: people, client locations, placements, temp
 - Primary text: `#1B1513`.
 - Border neutral: `#E2DFD9`.
 - Success sage: `#B6D588`.
-- Navy is dominant, gold is restrained and premium, crimson is destructive or critical, and sage communicates success.
+- Navy is dominant, teal is restrained and premium, crimson is destructive or critical, and sage communicates success.
 - The product must feel premium, professional, modern, clean, distinctive, enterprise-ready, mobile-first for employee workflows, and desktop-optimized for administrative workflows.
 
 ## Evidence on Hand

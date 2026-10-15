@@ -28,8 +28,8 @@ and 10% accent or semantic color.
 
 | Role | Value | Usage |
 | --- | --- | --- |
-| Primary navy | `#001F3F` | Brand, sidebar, primary actions, selected emphasis |
-| Gold accent | `#FFD700` | Small indicators, icons, attention accents |
+| Primary navy | `#0F3151` | Brand, sidebar, primary actions, selected emphasis |
+| Teal accent | `#01ACAC` | Small indicators, icons, attention accents |
 | Danger crimson | `#DC143C` | Destructive actions, rejection, critical errors |
 | White | `#FFFFFF` | Main surfaces, forms, tables |
 | Secondary indigo | `#29297A` | Informational emphasis |
@@ -51,7 +51,7 @@ variants for accessible UI states.
 | Danger | `#DC143C` | `#DC143C` | `#FFF0F3` | `#F1A6B5` |
 | Information | `#29297A` | `#29297A` | `#F2F2FB` | `#B5B5DC` |
 
-Gold and sage must not be used as normal text on white. Use their semantic foreground
+Teal and sage must not be used as normal text on white. Use their semantic foreground
 tokens instead. White on navy, indigo, and crimson is reserved for high-emphasis
 controls or surfaces where WCAG AA contrast is maintained.
 
@@ -68,7 +68,7 @@ text-muted          Secondary text
 border-border       Neutral border
 bg-brand            Primary action or selected surface
 text-brand          Brand emphasis on a light surface
-bg-accent            Small gold accent only
+bg-accent            Small teal accent only
 text-success         Accessible success text
 bg-success-accent    Sage accent
 bg-success-surface   Quiet success surface
@@ -190,7 +190,7 @@ strong borders and broad shadows on the same surface.
 
 - Preserve the existing desktop sidebar, topbar, and mobile navigation concept.
 - Navy is the dominant navigation color.
-- Gold is limited to a small active indicator or accent, never a full selected row.
+- Teal is limited to a small active indicator or accent, never a full selected row.
 - Navigation visibility continues to follow existing role and capability rules.
 - Current destinations require visible styling and `aria-current` where applicable.
 

@@ -5,18 +5,18 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        navy: "rgb(0 31 63 / <alpha-value>)",
+        navy: "rgb(15 49 81 / <alpha-value>)",
         binder: {
-          DEFAULT: "rgb(var(--binder-rgb, 0 31 63) / <alpha-value>)",
-          deep: "rgb(var(--binder-deep-rgb, 0 20 41) / <alpha-value>)",
-          soft: "rgb(var(--binder-soft-rgb, 13 48 82) / <alpha-value>)",
+          DEFAULT: "rgb(var(--binder-rgb, 15 49 81) / <alpha-value>)",
+          deep: "rgb(var(--binder-deep-rgb, 10 33 56) / <alpha-value>)",
+          soft: "rgb(var(--binder-soft-rgb, 25 72 109) / <alpha-value>)",
         },
         paper: "rgb(var(--paper-rgb, 255 255 255) / <alpha-value>)",
         canvas: "rgb(var(--canvas-rgb, 240 240 240) / <alpha-value>)",
         rule: "rgb(var(--rule-rgb, 226 223 217) / <alpha-value>)",
         grey: "rgb(var(--background-rgb, 240 240 240) / <alpha-value>)",
-        brand: "rgb(var(--brand-rgb, 0 31 63) / <alpha-value>)",
-        accent: "rgb(var(--accent-rgb, 255 215 0) / <alpha-value>)",
+        brand: "rgb(var(--brand-rgb, 15 49 81) / <alpha-value>)",
+        accent: "rgb(var(--accent-rgb, 1 172 172) / <alpha-value>)",
         indigo: "rgb(var(--indigo-rgb, 41 41 122) / <alpha-value>)",
         background: "rgb(var(--background-rgb, 240 240 240) / <alpha-value>)",
         surface: {
@@ -87,10 +87,10 @@ const config: Config = {
       },
       borderRadius: { lg: "0.5rem", xl: "0.625rem", "2xl": "0.875rem" },
       boxShadow: {
-        control: "0 1px 2px rgb(0 31 63 / 0.045)",
-        card: "0 4px 14px -10px rgb(0 31 63 / 0.24)",
-        sheet: "0 8px 24px -18px rgb(0 31 63 / 0.28)",
-        lift: "0 20px 48px -20px rgb(0 20 41 / 0.34)",
+        control: "0 1px 2px rgb(15 49 81 / 0.045)",
+        card: "0 4px 14px -10px rgb(15 49 81 / 0.24)",
+        sheet: "0 8px 24px -18px rgb(15 49 81 / 0.28)",
+        lift: "0 20px 48px -20px rgb(10 33 56 / 0.34)",
       },
     },
   },

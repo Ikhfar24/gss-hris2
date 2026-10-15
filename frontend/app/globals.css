@@ -6,21 +6,21 @@
 
 :root {
   color-scheme: light;
-  --brand-color: #001f3f;
-  --brand-rgb: 0 31 63;
-  --brand-hover-rgb: 0 24 49;
-  --brand-subtle-rgb: 238 243 248;
-  --binder-rgb: 0 31 63;
-  --binder-deep-rgb: 0 20 41;
-  --binder-soft-rgb: 10 54 91;
+  --brand-color: #0f3151;
+  --brand-rgb: 15 49 81;
+  --brand-hover-rgb: 11 38 63;
+  --brand-subtle-rgb: 238 241 243;
+  --binder-rgb: 15 49 81;
+  --binder-deep-rgb: 10 33 56;
+  --binder-soft-rgb: 25 72 109;
   --paper-rgb: 255 255 255;
   --canvas-rgb: 240 240 240;
   --rule-rgb: 226 223 217;
-  --accent-rgb: 255 215 0;
-  --accent-hover-rgb: 230 194 0;
-  --accent-subtle-rgb: 255 249 214;
+  --accent-rgb: 1 172 172;
+  --accent-hover-rgb: 1 148 148;
+  --accent-subtle-rgb: 235 248 248;
   --indigo-rgb: 41 41 122;
-  --navy: #001f3f;
+  --navy: #0f3151;
   --grey: #f0f0f0;
   --background: #f0f0f0;
   --background-rgb: 240 240 240;
