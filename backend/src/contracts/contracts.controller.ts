@@ -21,6 +21,6 @@ export class ContractsController {
   @Roles(Role.ADMIN_HR, Role.SYSTEM_ADMIN)
   @Post()
   create(@Body() dto: CreateContractDto, @CurrentUser() actor: AuthenticatedUser) {
-    return this.service.create(dto, actor.userId);
+    return this.service.create(dto, actor);
   }
 }

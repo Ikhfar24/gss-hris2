@@ -8,6 +8,7 @@ import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { AdminResetPasswordDto, LifecycleDto, RevealTemporaryCredentialDto } from './dto/lifecycle.dto';
+import { QueryUserDto } from './dto/query-user.dto';
 import { Throttle } from '@nestjs/throttler';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -18,7 +19,7 @@ export class UsersController {
   // Director may monitor, but normal HR account mutation remains HR/System Admin.
   @Roles(Role.ADMIN_HR, Role.SYSTEM_ADMIN, Role.DIREKTUR)
   @Get()
-  findAll(@Query() query: any, @CurrentUser() actor: AuthenticatedUser) {
+  findAll(@Query() query: QueryUserDto, @CurrentUser() actor: AuthenticatedUser) {
     return this.usersService.findAll(query, actor);
   }
 

@@ -101,6 +101,9 @@ export class PlacementRequestsService {
 
     await this.auditLog.record({
       actorId: actor.userId,
+      actorName: actor.name ?? null,
+      actorEmail: actor.email,
+      actorRole: actor.role,
       action: 'PLACEMENT_REQUEST_CREATE',
       entity: 'PlacementRequest',
       entityId: request.id,
@@ -142,6 +145,9 @@ export class PlacementRequestsService {
 
     await this.auditLog.record({
       actorId: actor.userId,
+      actorName: actor.name ?? null,
+      actorEmail: actor.email,
+      actorRole: actor.role,
       action: 'PLACEMENT_REQUEST_HR_REVIEW',
       entity: 'PlacementRequest',
       entityId: id,
@@ -183,6 +189,9 @@ export class PlacementRequestsService {
 
     await this.auditLog.record({
       actorId: actor.userId,
+      actorName: actor.name ?? null,
+      actorEmail: actor.email,
+      actorRole: actor.role,
       action: 'PLACEMENT_REQUEST_DIRECTOR_APPROVE',
       entity: 'PlacementRequest',
       entityId: id,
@@ -213,6 +222,9 @@ export class PlacementRequestsService {
 
     await this.auditLog.record({
       actorId: actor.userId,
+      actorName: actor.name ?? null,
+      actorEmail: actor.email,
+      actorRole: actor.role,
       action: 'PLACEMENT_REQUEST_CANCEL',
       entity: 'PlacementRequest',
       entityId: id,

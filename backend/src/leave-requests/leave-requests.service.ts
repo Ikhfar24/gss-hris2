@@ -82,6 +82,8 @@ export class LeaveRequestsService {
       await tx.auditLog.create({
         data: {
           actorId: actor.userId,
+          actorName: actor.name ?? null,
+          actorEmail: actor.email,
           actorRole: actor.role as Role,
           action: 'LEAVE_BALANCE_INITIALIZE',
           entity: 'LeaveBalance',
@@ -133,6 +135,8 @@ export class LeaveRequestsService {
       await tx.auditLog.create({
         data: {
           actorId: actor.userId,
+          actorName: actor.name ?? null,
+          actorEmail: actor.email,
           actorRole: actor.role as Role,
           action: 'LEAVE_BALANCE_ADJUST',
           entity: 'LeaveBalance',
@@ -382,7 +386,21 @@ export class LeaveRequestsService {
   }
 
   private audit(tx: Prisma.TransactionClient, actor: AuthenticatedUser, action: string, entityId: string, oldValue?: unknown, newValue?: unknown, reason?: string | null, entity = 'LeaveRequest') {
-    return tx.auditLog.create({ data: { actorId: actor.userId, actorRole: actor.role as any, action, entity, entityId, oldValue: oldValue as any, newValue: newValue as any, reason: reason ?? null, source: 'leave-requests' } });
+    return tx.auditLog.create({
+      data: {
+        actorId: actor.userId,
+        actorName: actor.name ?? null,
+        actorEmail: actor.email,
+        actorRole: actor.role as any,
+        action,
+        entity,
+        entityId,
+        oldValue: oldValue as any,
+        newValue: newValue as any,
+        reason: reason ?? null,
+        source: 'leave-requests',
+      },
+    });
   }
 
   private async assertCanAccess(request: { employeeId: string; status: LeaveStatus; employee: { employmentType: string } }, actor: AuthenticatedUser) {

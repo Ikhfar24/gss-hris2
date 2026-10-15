@@ -150,6 +150,8 @@ export class OvertimeRequestsService {
   private async record(actor: AuthenticatedUser, action: string, entityId: string, oldValue: unknown, newValue: unknown, reason?: string) {
     await this.auditLog.record({
       actorId: actor.userId,
+      actorName: actor.name ?? null,
+      actorEmail: actor.email,
       actorRole: actor.role,
       action,
       entity: 'OvertimeRequest',

@@ -9,7 +9,7 @@ import { payableAttendanceState } from '../common/domain/attendance-payable';
 import { effectiveWorkLocation } from '../common/domain/temporary-assignment';
 import { CheckInDto } from './dto/check-in.dto';
 import { CheckOutDto } from './dto/check-out.dto';
-import { QueryAttendanceDto, QueryOpenAttendanceDto } from './dto/query-attendance.dto';
+import { QueryAttendanceDto, QueryMyHistoryDto, QueryOpenAttendanceDto } from './dto/query-attendance.dto';
 import { CorrectAttendanceDto } from './dto/correct-attendance.dto';
 import { ReviewAttendanceDto } from './dto/review-attendance.dto';
 import { CoordinatorScopeService } from '../coordinator-scopes/coordinator-scope.service';
@@ -168,9 +168,7 @@ export class AttendanceService {
       } else {
         distance = distanceInMeters(location.latitude, location.longitude, dto.latitude!, dto.longitude!);
         if (distance > location.radiusMeters) {
-          throw new BadRequestException(
-            `Di luar radius lokasi kerja: jarak ${Math.round(distance)}m, maksimum ${location.radiusMeters}m`,
-          );
+          throw new BadRequestException('Di luar radius lokasi kerja yang diizinkan');
         }
         // §11.4: never claim certain fake-GPS detection — flag for HR instead of blocking.
         if (dto.mockLocationDetected) {
@@ -282,6 +280,8 @@ export class AttendanceService {
 
     await this.auditLog.record({
       actorId: actor.userId,
+      actorName: actor.name ?? null,
+      actorEmail: actor.email,
       action: 'ATTENDANCE_CHECK_IN',
       entity: 'Attendance',
       entityId: attendance.id,
@@ -377,6 +377,8 @@ export class AttendanceService {
 
     await this.auditLog.record({
       actorId: actor.userId,
+      actorName: actor.name ?? null,
+      actorEmail: actor.email,
       action: 'ATTENDANCE_CHECK_OUT',
       entity: 'Attendance',
       entityId: updated.id,
@@ -402,13 +404,17 @@ export class AttendanceService {
     return { attendance: attendance ? this.present(attendance) : null, attendanceMode, expectedLocation: location, nonWorkingDay, approvedAbsence };
   }
 
-  async myHistory(actor: AuthenticatedUser) {
+  async myHistory(actor: AuthenticatedUser, query?: QueryMyHistoryDto) {
     const user = await this.prisma.user.findUnique({ where: { id: actor.userId }, select: { employeeId: true } });
     if (!user?.employeeId) throw new BadRequestException('Akun ini belum terhubung ke data karyawan');
+    const limit = Math.min(Math.max(query?.limit ?? 100, 1), 200);
+    const page = Math.max(query?.page ?? 1, 1);
     const records = await this.prisma.attendance.findMany({
       where: { employeeId: user.employeeId },
       include: INCLUDE,
       orderBy: [{ date: 'desc' }, { checkInAt: 'desc' }],
+      skip: (page - 1) * limit,
+      take: limit,
     });
     return records.map((record) => this.present(record));
   }
@@ -621,6 +627,8 @@ export class AttendanceService {
 
     await this.auditLog.record({
       actorId: actor.userId,
+      actorName: actor.name ?? null,
+      actorEmail: actor.email,
       action: 'ATTENDANCE_CORRECTION',
       entity: 'Attendance',
       entityId: id,
@@ -670,6 +678,8 @@ export class AttendanceService {
 
     await this.auditLog.record({
       actorId: actor.userId,
+      actorName: actor.name ?? null,
+      actorEmail: actor.email,
       actorRole: actor.role,
       action: isSelfReview ? 'ATTENDANCE_SELF_REVIEW' : 'ATTENDANCE_REVIEW',
       entity: 'Attendance',
@@ -707,6 +717,8 @@ export class AttendanceService {
     });
     await this.auditLog.record({
       actorId: actor.userId,
+      actorName: actor.name ?? null,
+      actorEmail: actor.email,
       actorRole: actor.role,
       action: 'ATTENDANCE_AUTO_CLOSE',
       entity: 'Attendance',
@@ -719,7 +731,7 @@ export class AttendanceService {
     return this.present(updated);
   }
 
-  async attention(actor: AuthenticatedUser) {
+  async attention(actor: AuthenticatedUser, limit = 100) {
     const records = await this.prisma.attendance.findMany({
       where: {
         OR: [{ validationStatus: 'NEEDS_REVIEW' }, { forgottenCheckout: true }, { checkInAt: { not: null }, checkOutAt: null }],
@@ -727,6 +739,7 @@ export class AttendanceService {
       },
       include: { ...INCLUDE, reviews: { orderBy: { reviewedAt: 'desc' } } },
       orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
+      take: limit,
     });
     return records.map((record) => this.present(record));
   }

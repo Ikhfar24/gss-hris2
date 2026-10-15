@@ -31,6 +31,8 @@ export class PayrollService {
   private async audit(actor: AuthenticatedUser, action: string, entity: string, entityId: string, reason: string, newValue?: unknown) {
     await this.auditLog.record({
       actorId: actor.userId,
+      actorName: actor.name ?? null,
+      actorEmail: actor.email,
       actorRole: actor.role,
       action,
       entity,
@@ -77,6 +79,22 @@ export class PayrollService {
         },
       });
       const skipped: string[] = [];
+      const eligibleEmployeeIds = employees.map((e) => e.id);
+      let countMap: Map<string, number> | null = null;
+      if (typeof tx.attendance.groupBy === 'function') {
+        const attendanceCounts = eligibleEmployeeIds.length > 0
+          ? await tx.attendance.groupBy({
+              by: ['employeeId'],
+              where: {
+                employeeId: { in: eligibleEmployeeIds },
+                date: { gte: periodStart, lte: periodEnd },
+                payableStatus: 'PAYABLE',
+              },
+              _count: { _all: true },
+            })
+          : [];
+        countMap = new Map(attendanceCounts.map((r) => [r.employeeId, r._count._all]));
+      }
 
       for (const employee of employees) {
         const contract = employee.contracts[0];
@@ -89,9 +107,11 @@ export class PayrollService {
 
         if (employee.employmentType === 'TENAGA_BORONGAN' && employee.dailyRate) {
           // Only reviewed and payable attendance can earn a Borongan daily rate.
-          const payableDays = await tx.attendance.count({
-            where: { employeeId: employee.id, date: { gte: periodStart, lte: periodEnd }, payableStatus: 'PAYABLE' },
-          });
+          const payableDays = countMap
+            ? (countMap.get(employee.id) ?? 0)
+            : await tx.attendance.count({
+                where: { employeeId: employee.id, date: { gte: periodStart, lte: periodEnd }, payableStatus: 'PAYABLE' },
+              });
           const baseSalary = employee.dailyRate * payableDays;
           await tx.payrollSlip.create({
             data: {

@@ -172,7 +172,7 @@ export class EmployeesService {
     return this.prisma.$transaction(async (tx) => {
       const updated = await tx.employee.update({ where: { id }, data: { photoUrl }, include: SUMMARY_INCLUDE });
       await tx.auditLog.create({ data: {
-        actorId: actor.userId, actorRole: Role.ADMIN_HR,
+        actorId: actor.userId, actorName: actor.name ?? null, actorEmail: actor.email, actorRole: Role.ADMIN_HR,
         action: employee.photoUrl ? 'EMPLOYEE_PROFILE_PHOTO_REPLACE' : 'EMPLOYEE_PROFILE_PHOTO_UPLOAD',
         entity: 'Employee', entityId: id,
         oldValue: { hasPhoto: !!employee.photoUrl }, newValue: { hasPhoto: true },
@@ -224,7 +224,7 @@ export class EmployeesService {
           placements: initialLocationId ? { create: { locationId: initialLocationId, startDate: new Date(joinDate), status: 'ACTIVE' } } : undefined,
         } as any, select: { id: true } }));
       }
-      await tx.auditLog.create({ data: { actorId: actor.userId, actorRole: actor.role as Role, action: 'EMPLOYEE_IMPORT', entity: 'Employee', newValue: { rowCount: records.length }, source: 'EMPLOYEE_IMPORT' } });
+      await tx.auditLog.create({ data: { actorId: actor.userId, actorName: actor.name ?? null, actorEmail: actor.email, actorRole: actor.role as Role, action: 'EMPLOYEE_IMPORT', entity: 'Employee', newValue: { rowCount: records.length }, source: 'EMPLOYEE_IMPORT' } });
       return records;
     });
     return { dryRun: false, valid: true, created: created.length, errors: [] };
@@ -278,7 +278,7 @@ export class EmployeesService {
         }
         records.push({ ...employee, userId });
       }
-      await tx.auditLog.create({ data: { actorId: actor.userId, actorRole: actor.role as Role, action: 'EMPLOYEE_XLSX_IMPORT', entity: 'Employee', newValue: { rowCount: records.length, provisionedUserCount: credentials.length }, source: 'EMPLOYEE_IMPORT' } });
+      await tx.auditLog.create({ data: { actorId: actor.userId, actorName: actor.name ?? null, actorEmail: actor.email, actorRole: actor.role as Role, action: 'EMPLOYEE_XLSX_IMPORT', entity: 'Employee', newValue: { rowCount: records.length, provisionedUserCount: credentials.length }, source: 'EMPLOYEE_IMPORT' } });
       return { records, credentials };
     });
     return { valid: true, created: result.records.length, provisionedUsers: result.credentials.length, records: result.records, credentials: result.credentials, errors: [] };
@@ -369,7 +369,7 @@ export class EmployeesService {
     if (dateOfBirth !== undefined && new Date(dateOfBirth).getTime() !== new Date(before.dateOfBirth ?? 0).getTime()) changedFields.push('dateOfBirth');
     const updated = await tx.employee.update({ where: { id }, data: { ...rest, trainingEndDate: trainingEndDate ? new Date(trainingEndDate) : undefined, dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : undefined }, include: SUMMARY_INCLUDE });
     if (dto.status === 'RESIGNED') await tx.user.updateMany({ where: { employeeId: id, isActive: true }, data: { isActive: false } });
-    await tx.auditLog.create({ data: { actorId: actor.userId, actorRole: actor.role as Role, action: changedSensitive ? 'EMPLOYEE_SENSITIVE_UPDATE' : 'EMPLOYEE_UPDATE', entity: 'Employee', entityId: id, oldValue: { fields: changedFields, profile: this.auditProjection(before) } as any, newValue: { fields: changedFields, profile: this.auditProjection(updated) } as any, reason: reason ?? null, source: 'EMPLOYEE_MANAGEMENT', relatedEntityId: updated.user?.id } });
+    await tx.auditLog.create({ data: { actorId: actor.userId, actorName: actor.name ?? null, actorEmail: actor.email, actorRole: actor.role as Role, action: changedSensitive ? 'EMPLOYEE_SENSITIVE_UPDATE' : 'EMPLOYEE_UPDATE', entity: 'Employee', entityId: id, oldValue: { fields: changedFields, profile: this.auditProjection(before) } as any, newValue: { fields: changedFields, profile: this.auditProjection(updated) } as any, reason: reason ?? null, source: 'EMPLOYEE_MANAGEMENT', relatedEntityId: updated.user?.id } });
     return this.present(updated, actor);
   }
 
@@ -393,7 +393,7 @@ export class EmployeesService {
     }
     await this.prisma.$transaction(async (tx) => {
       await tx.employee.delete({ where: { id } });
-      await tx.auditLog.create({ data: { actorId: actor.userId, actorRole: actor.role as Role, action: 'EMPLOYEE_DELETE_SAFE', entity: 'Employee', entityId: id, reason, source: 'EMPLOYEE_MANAGEMENT' } });
+      await tx.auditLog.create({ data: { actorId: actor.userId, actorName: actor.name ?? null, actorEmail: actor.email, actorRole: actor.role as Role, action: 'EMPLOYEE_DELETE_SAFE', entity: 'Employee', entityId: id, reason, source: 'EMPLOYEE_MANAGEMENT' } });
     });
     return { deleted: true };
   }
@@ -435,7 +435,7 @@ export class EmployeesService {
         deletedAt: now, deletedById: actor.userId, deletionReason: reason.trim(),
       } });
       await tx.auditLog.create({ data: {
-        actorId: actor.userId, actorRole: actor.role as Role, action: 'EMPLOYEE_FORCE_DELETE', entity: 'Employee', entityId: id,
+        actorId: actor.userId, actorName: actor.name ?? null, actorEmail: actor.email, actorRole: actor.role as Role, action: 'EMPLOYEE_FORCE_DELETE', entity: 'Employee', entityId: id,
         oldValue: { name: employee.name, employeeNumber: employee.employeeNumber, dependencies: employee._count } as any,
         newValue: { strategy: 'ANONYMIZED_TOMBSTONE', tombstoneName, linkedUserDisabled: !!employee.user } as any,
         reason: reason.trim(), source: 'EMPLOYEE_MANAGEMENT', relatedEntityId: id,

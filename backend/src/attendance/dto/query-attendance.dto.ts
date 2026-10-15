@@ -1,4 +1,5 @@
-import { IsDateString, IsEnum, IsOptional, IsString } from 'class-validator';
+import { IsDateString, IsEnum, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import { Type } from 'class-transformer';
 
 export enum ValidationStatusFilter {
   VALID = 'VALID',
@@ -34,4 +35,19 @@ export class QueryOpenAttendanceDto {
   @IsOptional()
   @IsDateString()
   toDate?: string;
+}
+
+export class QueryMyHistoryDto {
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(200)
+  limit?: number;
 }

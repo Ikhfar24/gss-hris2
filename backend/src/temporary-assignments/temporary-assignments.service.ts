@@ -132,6 +132,18 @@ export class TemporaryAssignmentsService {
   }
 
   private async audit(action: string, id: string, actor: AuthenticatedUser, oldValue: unknown, newValue: unknown, reason: string) {
-    await this.auditLog.record({ actorId: actor.userId, actorRole: actor.role, action: `TEMPORARY_ASSIGNMENT_${action}`, entity: 'TemporaryAssignment', entityId: id, oldValue, newValue, reason, source: 'temporary-assignments' });
+    await this.auditLog.record({
+      actorId: actor.userId,
+      actorName: actor.name ?? null,
+      actorEmail: actor.email,
+      actorRole: actor.role,
+      action: `TEMPORARY_ASSIGNMENT_${action}`,
+      entity: 'TemporaryAssignment',
+      entityId: id,
+      oldValue,
+      newValue,
+      reason,
+      source: 'temporary-assignments',
+    });
   }
 }

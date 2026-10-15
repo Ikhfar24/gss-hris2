@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogService } from '../audit-log/audit-log.service';
+import { AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { UpdateCompanySettingsDto } from './dto/update-company-settings.dto';
 
 @Injectable()
@@ -32,7 +33,15 @@ export class CompanySettingsService {
     };
   }
 
-  async update(dto: UpdateCompanySettingsDto, actorId: string) {
+  async update(dto: UpdateCompanySettingsDto, actorOrId: AuthenticatedUser | string) {
+    const actorId = typeof actorOrId === 'string' ? actorOrId : actorOrId.userId;
+    const actor =
+      typeof actorOrId === 'string'
+        ? await this.prisma.user?.findUnique?.({
+            where: { id: actorId },
+            select: { name: true, email: true, role: true },
+          })
+        : actorOrId;
     const before = await this.get();
     const updated = await this.prisma.companySettings.update({
       where: { id: before.id },
@@ -41,6 +50,9 @@ export class CompanySettingsService {
 
     await this.auditLog.record({
       actorId,
+      actorName: actor?.name ?? null,
+      actorEmail: actor?.email ?? null,
+      actorRole: actor?.role,
       action: 'COMPANY_SETTINGS_UPDATE',
       entity: 'CompanySettings',
       entityId: updated.id,

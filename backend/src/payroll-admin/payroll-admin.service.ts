@@ -188,6 +188,19 @@ export class PayrollAdminService {
   }
 
   private async audit(action: string, entity: string, entityId: string, actor: AuthenticatedUser, oldValue: unknown, newValue: unknown, reason?: string, relatedEntityId?: string) {
-    await this.auditLog.record({ actorId: actor.userId, actorRole: actor.role, action: `PAYROLL_${action}`, entity, entityId, oldValue, newValue, reason, source: 'payroll-admin', relatedEntityId });
+    await this.auditLog.record({
+      actorId: actor.userId,
+      actorName: actor.name ?? null,
+      actorEmail: actor.email,
+      actorRole: actor.role,
+      action: `PAYROLL_${action}`,
+      entity,
+      entityId,
+      oldValue,
+      newValue,
+      reason,
+      source: 'payroll-admin',
+      relatedEntityId,
+    });
   }
 }

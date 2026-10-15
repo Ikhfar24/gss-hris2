@@ -20,12 +20,12 @@ export class HolidaysController {
   @Roles(Role.ADMIN_HR, Role.SYSTEM_ADMIN)
   @Post()
   create(@Body() dto: CreateHolidayDto, @CurrentUser() actor: AuthenticatedUser) {
-    return this.service.create(dto, actor.userId);
+    return this.service.create(dto, actor);
   }
 
   @Roles(Role.ADMIN_HR, Role.SYSTEM_ADMIN)
   @Delete(':id')
   remove(@Param('id') id: string, @CurrentUser() actor: AuthenticatedUser) {
-    return this.service.remove(id, actor.userId);
+    return this.service.remove(id, actor);
   }
 }

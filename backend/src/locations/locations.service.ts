@@ -72,6 +72,9 @@ export class LocationsService {
     }
     await this.auditLog.record({
       actorId: actor.userId,
+      actorName: actor.name ?? null,
+      actorEmail: actor.email,
+      actorRole: actor.role,
       action: 'LOCATION_CREATE',
       entity: 'Location',
       entityId: loc.id,
@@ -99,6 +102,9 @@ export class LocationsService {
     }
     await this.auditLog.record({
       actorId: actor.userId,
+      actorName: actor.name ?? null,
+      actorEmail: actor.email,
+      actorRole: actor.role,
       action: 'LOCATION_UPDATE',
       entity: 'Location',
       entityId: id,
@@ -127,7 +133,7 @@ export class LocationsService {
       records = await this.prisma.$transaction(async (tx) => {
         const result: { id: string; referenceCode: string; name: string; clientId: string | null }[] = [];
         for (const row of preview.rows) result.push(await tx.location.create({ data: row.data as CreateLocationDto, select: { id: true, referenceCode: true, name: true, clientId: true } }));
-        await tx.auditLog.create({ data: { actorId: actor.userId, actorRole: actor.role as Role, action: 'LOCATION_IMPORT', entity: 'Location', newValue: { rowCount: result.length }, source: 'LOCATION_IMPORT' } });
+        await tx.auditLog.create({ data: { actorId: actor.userId, actorName: actor.name ?? null, actorEmail: actor.email, actorRole: actor.role as Role, action: 'LOCATION_IMPORT', entity: 'Location', newValue: { rowCount: result.length }, source: 'LOCATION_IMPORT' } });
         return result;
       });
     } catch (error) {
@@ -149,7 +155,7 @@ export class LocationsService {
         throw new ConflictException('Lokasi masih memiliki relasi operasional atau riwayat. Gunakan Force Delete.');
       }
       const { _count, ...snapshot } = location;
-      await tx.auditLog.create({ data: { actorId: actor.userId, actorRole: Role.ADMIN_HR, action: 'LOCATION_DELETE_SAFE', entity: 'Location', entityId: id, oldValue: snapshot as any, reason: reason.trim(), source: 'LOCATION_MANAGEMENT', relatedEntityId: location.clientId } });
+      await tx.auditLog.create({ data: { actorId: actor.userId, actorName: actor.name ?? null, actorEmail: actor.email, actorRole: Role.ADMIN_HR, action: 'LOCATION_DELETE_SAFE', entity: 'Location', entityId: id, oldValue: snapshot as any, reason: reason.trim(), source: 'LOCATION_MANAGEMENT', relatedEntityId: location.clientId } });
       await tx.location.delete({ where: { id } });
       return { deleted: true, strategy: 'PHYSICAL_PRISTINE_DELETE' };
     });
@@ -173,7 +179,7 @@ export class LocationsService {
       await tx.payrollCycleSetting.updateMany({ where: { locationId: id, isActive: true }, data: { isActive: false } });
       await tx.location.update({ where: { id }, data: { isActive: false, deletedAt, deletedById: actor.userId, deletionReason: reason.trim() } });
       const { _count, ...snapshot } = location;
-      await tx.auditLog.create({ data: { actorId: actor.userId, actorRole: Role.ADMIN_HR, action: 'LOCATION_FORCE_DELETE', entity: 'Location', entityId: id, oldValue: snapshot as any, newValue: { strategy: 'TOMBSTONE', deletedAt, dependencies: _count }, reason: reason.trim(), source: 'LOCATION_MANAGEMENT', relatedEntityId: location.clientId } });
+      await tx.auditLog.create({ data: { actorId: actor.userId, actorName: actor.name ?? null, actorEmail: actor.email, actorRole: Role.ADMIN_HR, action: 'LOCATION_FORCE_DELETE', entity: 'Location', entityId: id, oldValue: snapshot as any, newValue: { strategy: 'TOMBSTONE', deletedAt, dependencies: _count }, reason: reason.trim(), source: 'LOCATION_MANAGEMENT', relatedEntityId: location.clientId } });
       return { deleted: true, strategy: 'TOMBSTONE' };
     });
   }

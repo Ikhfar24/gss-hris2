@@ -62,7 +62,7 @@ export class UsersService {
       return await this.prisma.$transaction(async (tx) => {
         const user = await tx.user.create({ data: { name: dto.name.trim(), email, passwordHash, role: dto.role, employeeId: dto.employeeId, mustChangePassword: true }, select: SAFE_SELECT });
         await this.temporaryCredentials.store(tx, user.id, password, 'ACCOUNT_CREATION', actor.userId);
-        await tx.auditLog.create({ data: { actorId: actor.userId, actorRole: actor.role as Role, action: 'USER_CREATE', entity: 'User', entityId: user.id, newValue: { id: user.id, email: user.email, role: user.role, employeeId: user.employeeId, temporaryCredentialAvailable: true }, source: 'USER_MANAGEMENT', relatedEntityId: user.employeeId } });
+        await tx.auditLog.create({ data: { actorId: actor.userId, actorName: actor.name ?? null, actorEmail: actor.email, actorRole: actor.role as Role, action: 'USER_CREATE', entity: 'User', entityId: user.id, newValue: { id: user.id, email: user.email, role: user.role, employeeId: user.employeeId, temporaryCredentialAvailable: true }, source: 'USER_MANAGEMENT', relatedEntityId: user.employeeId } });
         return this.present({ ...user, temporaryCredential: { available: true, purpose: 'ACCOUNT_CREATION', keyVersion: this.temporaryCredentials.keyVersion, createdAt: new Date(), lastRevealedAt: null, revealCount: 0 } }, true);
       });
     } catch (error) {
@@ -98,7 +98,7 @@ export class UsersService {
       });
       await tx.auditLog.create({
         data: {
-          actorId: actor.userId, actorRole: actor.role as Role,
+          actorId: actor.userId, actorName: actor.name ?? null, actorEmail: actor.email, actorRole: actor.role as Role,
           action: sensitive ? 'USER_LIFECYCLE_UPDATE' : 'USER_UPDATE', entity: 'User', entityId: id,
           oldValue: sensitive ? { role: before.role, isActive: before.isActive, employeeId: before.employeeId } : before as any,
           newValue: sensitive ? { role: updated.role, isActive: updated.isActive, employeeId: updated.employeeId } : updated as any,
@@ -139,7 +139,7 @@ export class UsersService {
     return this.prisma.$transaction(async (tx) => {
       await tx.user.update({ where: { id }, data: { passwordHash, mustChangePassword: true, passwordChangedAt: null, sessionVersion: { increment: 1 } } });
       await this.temporaryCredentials.store(tx, id, password, 'ADMIN_PASSWORD_RESET', actor.userId);
-      await tx.auditLog.create({ data: { actorId: actor.userId, actorRole: actor.role as Role, action: 'USER_PASSWORD_ADMIN_RESET', entity: 'User', entityId: id, reason, source: 'USER_MANAGEMENT', newValue: { mustChangePassword: true, temporaryCredentialAvailable: true, keyVersion: this.temporaryCredentials.keyVersion } } });
+      await tx.auditLog.create({ data: { actorId: actor.userId, actorName: actor.name ?? null, actorEmail: actor.email, actorRole: actor.role as Role, action: 'USER_PASSWORD_ADMIN_RESET', entity: 'User', entityId: id, reason, source: 'USER_MANAGEMENT', newValue: { mustChangePassword: true, temporaryCredentialAvailable: true, keyVersion: this.temporaryCredentials.keyVersion } } });
       return { reset: true, temporaryCredential: { available: true, purpose: 'ADMIN_PASSWORD_RESET' } };
     });
   }
@@ -157,7 +157,7 @@ export class UsersService {
     const password = this.temporaryCredentials.decrypt(target.temporaryCredential);
     await this.prisma.$transaction(async (tx) => {
       const updated = await tx.userTemporaryCredential.update({ where: { userId: id }, data: { lastRevealedAt: new Date(), revealCount: { increment: 1 } }, select: { revealCount: true } });
-      await tx.auditLog.create({ data: { actorId: actor.userId, actorRole: actor.role as Role, action: 'USER_TEMPORARY_CREDENTIAL_REVEAL', entity: 'User', entityId: id, reason, source: 'USER_MANAGEMENT', newValue: { purpose: target.temporaryCredential!.purpose, keyVersion: target.temporaryCredential!.keyVersion, revealCount: updated.revealCount } } });
+      await tx.auditLog.create({ data: { actorId: actor.userId, actorName: actor.name ?? null, actorEmail: actor.email, actorRole: actor.role as Role, action: 'USER_TEMPORARY_CREDENTIAL_REVEAL', entity: 'User', entityId: id, reason, source: 'USER_MANAGEMENT', newValue: { purpose: target.temporaryCredential!.purpose, keyVersion: target.temporaryCredential!.keyVersion, revealCount: updated.revealCount } } });
     });
     return { password, purpose: target.temporaryCredential.purpose, createdAt: target.temporaryCredential.createdAt };
   }
@@ -175,7 +175,7 @@ export class UsersService {
     }
     await this.prisma.$transaction(async (tx) => {
       await tx.user.delete({ where: { id } });
-      await tx.auditLog.create({ data: { actorId: actor.userId, actorRole: actor.role as Role, action: 'USER_DELETE_SAFE', entity: 'User', entityId: id, oldValue: user as any, reason, source: 'USER_MANAGEMENT' } });
+      await tx.auditLog.create({ data: { actorId: actor.userId, actorName: actor.name ?? null, actorEmail: actor.email, actorRole: actor.role as Role, action: 'USER_DELETE_SAFE', entity: 'User', entityId: id, oldValue: user as any, reason, source: 'USER_MANAGEMENT' } });
     });
     return { deleted: true };
   }
@@ -211,6 +211,8 @@ export class UsersService {
       await tx.auditLog.create({
         data: {
           actorId: actor.userId,
+          actorName: actor.name ?? null,
+          actorEmail: actor.email,
           actorRole: Role.SYSTEM_ADMIN,
           action: 'USER_FORCE_DELETE',
           entity: 'User',

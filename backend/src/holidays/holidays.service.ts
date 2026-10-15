@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogService } from '../audit-log/audit-log.service';
+import { AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { CreateHolidayDto } from './dto/create-holiday.dto';
 
 @Injectable()
@@ -14,7 +15,9 @@ export class HolidaysService {
     return this.prisma.holiday.findMany({ orderBy: { date: 'asc' }, include: { location: { select: { id: true, name: true } } } });
   }
 
-  async create(dto: CreateHolidayDto, actorId: string) {
+  async create(dto: CreateHolidayDto, actorOrId: AuthenticatedUser | string) {
+    const actorId = typeof actorOrId === 'string' ? actorOrId : actorOrId.userId;
+    const actor = typeof actorOrId === 'string' ? null : actorOrId;
     const type = dto.type ?? 'NATIONAL';
     if (type === 'LOCATION_SPECIFIC' && !dto.locationId) {
       throw new BadRequestException('Hari libur khusus lokasi wajib memilih lokasi');
@@ -37,6 +40,9 @@ export class HolidaysService {
 
     await this.auditLog.record({
       actorId,
+      actorName: actor?.name ?? null,
+      actorEmail: actor?.email ?? null,
+      actorRole: actor?.role,
       action: 'HOLIDAY_CREATE',
       entity: 'Holiday',
       entityId: holiday.id,
@@ -46,10 +52,15 @@ export class HolidaysService {
     return holiday;
   }
 
-  async remove(id: string, actorId: string) {
+  async remove(id: string, actorOrId: AuthenticatedUser | string) {
+    const actorId = typeof actorOrId === 'string' ? actorOrId : actorOrId.userId;
+    const actor = typeof actorOrId === 'string' ? null : actorOrId;
     const holiday = await this.prisma.holiday.delete({ where: { id } });
     await this.auditLog.record({
       actorId,
+      actorName: actor?.name ?? null,
+      actorEmail: actor?.email ?? null,
+      actorRole: actor?.role,
       action: 'HOLIDAY_DELETE',
       entity: 'Holiday',
       entityId: id,

@@ -7,7 +7,7 @@ import { Role } from '../common/enums/role.enum';
 import { AttendanceService } from './attendance.service';
 import { CheckInDto } from './dto/check-in.dto';
 import { CheckOutDto } from './dto/check-out.dto';
-import { QueryAttendanceDto, QueryOpenAttendanceDto } from './dto/query-attendance.dto';
+import { QueryAttendanceDto, QueryMyHistoryDto, QueryOpenAttendanceDto } from './dto/query-attendance.dto';
 import { CorrectAttendanceDto } from './dto/correct-attendance.dto';
 import { ReviewAttendanceDto } from './dto/review-attendance.dto';
 import { AutoCloseAttendanceDto } from './dto/auto-close-attendance.dto';
@@ -42,8 +42,8 @@ export class AttendanceController {
   }
 
   @Get('me/history')
-  myHistory(@CurrentUser() actor: AuthenticatedUser) {
-    return this.service.myHistory(actor);
+  myHistory(@CurrentUser() actor: AuthenticatedUser, @Query() query: QueryMyHistoryDto) {
+    return this.service.myHistory(actor, query);
   }
 
   // Keep static paths before the ':id' detail route below.
@@ -55,8 +55,9 @@ export class AttendanceController {
 
   @Roles(...ATTENDANCE_REVIEWER_ROLES)
   @Get('attention')
-  attention(@CurrentUser() actor: AuthenticatedUser) {
-    return this.service.attention(actor);
+  attention(@CurrentUser() actor: AuthenticatedUser, @Query('limit') limit?: string) {
+    const parsedLimit = limit ? parseInt(limit, 10) : 100;
+    return this.service.attention(actor, Number.isFinite(parsedLimit) && parsedLimit > 0 ? parsedLimit : 100);
   }
 
   @Roles(...REVIEWER_ROLES)

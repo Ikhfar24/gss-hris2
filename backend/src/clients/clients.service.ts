@@ -57,6 +57,9 @@ export class ClientsService {
     }
     await this.auditLog.record({
       actorId: actor.userId,
+      actorName: actor.name ?? null,
+      actorEmail: actor.email,
+      actorRole: actor.role,
       action: 'CLIENT_CREATE',
       entity: 'Client',
       entityId: client.id,
@@ -80,6 +83,9 @@ export class ClientsService {
     }
     await this.auditLog.record({
       actorId: actor.userId,
+      actorName: actor.name ?? null,
+      actorEmail: actor.email,
+      actorRole: actor.role,
       action: 'CLIENT_UPDATE',
       entity: 'Client',
       entityId: id,
@@ -107,7 +113,7 @@ export class ClientsService {
       created = await this.prisma.$transaction(async (tx) => {
         const records: { id: string; referenceCode: string; name: string }[] = [];
         for (const row of preview.rows) records.push(await tx.client.create({ data: row.data as CreateClientDto, select: { id: true, referenceCode: true, name: true } }));
-        await tx.auditLog.create({ data: { actorId: actor.userId, actorRole: actor.role as Role, action: 'CLIENT_IMPORT', entity: 'Client', newValue: { rowCount: records.length }, source: 'CLIENT_IMPORT' } });
+        await tx.auditLog.create({ data: { actorId: actor.userId, actorName: actor.name ?? null, actorEmail: actor.email, actorRole: actor.role as Role, action: 'CLIENT_IMPORT', entity: 'Client', newValue: { rowCount: records.length }, source: 'CLIENT_IMPORT' } });
         return records;
       });
     } catch (error) {
@@ -129,7 +135,7 @@ export class ClientsService {
         throw new ConflictException('Client masih memiliki relasi operasional atau riwayat. Gunakan Force Delete.');
       }
       const { _count, ...snapshot } = client;
-      await tx.auditLog.create({ data: { actorId: actor.userId, actorRole: Role.ADMIN_HR, action: 'CLIENT_DELETE_SAFE', entity: 'Client', entityId: id, oldValue: snapshot as any, reason: reason.trim(), source: 'CLIENT_MANAGEMENT' } });
+      await tx.auditLog.create({ data: { actorId: actor.userId, actorName: actor.name ?? null, actorEmail: actor.email, actorRole: Role.ADMIN_HR, action: 'CLIENT_DELETE_SAFE', entity: 'Client', entityId: id, oldValue: snapshot as any, reason: reason.trim(), source: 'CLIENT_MANAGEMENT' } });
       await tx.client.delete({ where: { id } });
       return { deleted: true, strategy: 'PHYSICAL_PRISTINE_DELETE' };
     });
@@ -148,7 +154,7 @@ export class ClientsService {
       const deletedAt = new Date();
       await tx.client.update({ where: { id }, data: { isActive: false, deletedAt, deletedById: actor.userId, deletionReason: reason.trim() } });
       const { _count, ...snapshot } = client;
-      await tx.auditLog.create({ data: { actorId: actor.userId, actorRole: Role.ADMIN_HR, action: 'CLIENT_FORCE_DELETE', entity: 'Client', entityId: id, oldValue: snapshot as any, newValue: { strategy: 'TOMBSTONE', deletedAt, dependencies: _count }, reason: reason.trim(), source: 'CLIENT_MANAGEMENT' } });
+      await tx.auditLog.create({ data: { actorId: actor.userId, actorName: actor.name ?? null, actorEmail: actor.email, actorRole: Role.ADMIN_HR, action: 'CLIENT_FORCE_DELETE', entity: 'Client', entityId: id, oldValue: snapshot as any, newValue: { strategy: 'TOMBSTONE', deletedAt, dependencies: _count }, reason: reason.trim(), source: 'CLIENT_MANAGEMENT' } });
       return { deleted: true, strategy: 'TOMBSTONE' };
     });
   }
