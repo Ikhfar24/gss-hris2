@@ -250,8 +250,9 @@ npm run dev                # http://localhost:3000
 | Method | Path                    | Akses                              |
 |--------|--------------------------|-------------------------------------|
 | POST   | `/api/v1/auth/login`     | Publik (rate-limited)              |
-| GET    | `/api/v1/company-settings` | Publik (untuk branding login page) |
-| PATCH  | `/api/v1/company-settings` | Admin/HR, System Admin            |
+| GET    | `/api/v1/branding`       | Publik (untuk branding login page) |
+| GET    | `/api/v1/company-settings` | System Admin                       |
+| PATCH  | `/api/v1/company-settings` | System Admin                       |
 | GET    | `/api/v1/users`          | Admin/HR, System Admin, Direktur   |
 | POST   | `/api/v1/users`          | Admin/HR, System Admin             |
 | PATCH  | `/api/v1/users/:id`      | Admin/HR, System Admin             |
