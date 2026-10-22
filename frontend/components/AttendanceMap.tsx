@@ -97,7 +97,7 @@ export default function AttendanceMap({ work, current, radiusMeters, showGeofenc
       accuracyCircleRef.current = null;
       map.remove();
     };
-  }, [hasAnchor, leaflet]);
+  }, [hasAnchor, leaflet]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const map = mapRef.current;
@@ -167,7 +167,7 @@ export default function AttendanceMap({ work, current, radiusMeters, showGeofenc
       cancelled = true;
       window.cancelAnimationFrame(fitFrame);
     };
-  }, [accuracy, currentPoint?.latitude, currentPoint?.longitude, leaflet, markerLabel, radius, visibleWork?.latitude, visibleWork?.longitude]);
+  }, [accuracy, currentPoint?.latitude, currentPoint?.longitude, leaflet, markerLabel, radius, visibleWork?.latitude, visibleWork?.longitude]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!hasAnchor) {
     let message = showGeofence ? 'Koordinat lokasi kerja belum dikonfigurasi.' : 'Menunggu koordinat GPS saat ini.';

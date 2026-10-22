@@ -11,7 +11,7 @@ import {
   ReceiptText,
   UserRound,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ApiError, apiFetch } from "@/lib/api";
 import type { ApprovedFullDayAbsence, AttendanceMode, AttendanceRecord } from "@/lib/attendance";
 import { approvedAbsenceLabel, attendanceStatus, latenessLabel } from "@/lib/attendance";
@@ -73,7 +73,7 @@ export function EmployeeHome({
   const [error, setError] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  async function load() {
+  const load = useCallback(async () => {
     if (!employee) {
       setLoading(false);
       return;
@@ -94,13 +94,12 @@ export function EmployeeHome({
     } finally {
       setLoading(false);
     }
-  }
-
+  }, [employee, session]);
   useEffect(() => {
     void load();
     window.addEventListener("attendance-updated", load);
     return () => window.removeEventListener("attendance-updated", load);
-  }, [employee?.id]);
+  }, [load]);
   if (!employee)
     return (
       <Alert variant="warning" title="Profil belum terhubung">

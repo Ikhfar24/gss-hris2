@@ -13,6 +13,7 @@ export function EmployeeAvatar({ name, photoUrl, size = 'md', className }: { nam
     setFailed(false);
   }, [photoUrl]);
 
+  // eslint-disable-next-line @next/next/no-img-element
   if (photoUrl && !failed) return <img src={protectedMediaUrl(photoUrl)} alt={`Foto profil ${name}`} onError={() => setFailed(true)} className={cn('shrink-0 rounded-full border-2 border-white/80 object-cover shadow-sm', sizes[size], className)} />;
   return <span role="img" aria-label={`Foto profil ${name} belum tersedia`} className={cn('grid shrink-0 place-items-center rounded-full border-2 border-white/80 bg-brand/10 font-bold text-brand shadow-sm', sizes[size], className)}>{initials}</span>;
 }

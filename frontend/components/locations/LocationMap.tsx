@@ -65,7 +65,7 @@ export default function LocationMap({ point, radiusMeters, editable = false, onP
       markerRef.current = L.circleMarker(center, { radius: 7, color: '#1d4ed8', fillColor: '#2563eb', fillOpacity: 1 }).bindTooltip('Pusat lokasi').addTo(map);
       map.fitBounds(radiusRef.current.getBounds(), { padding: [28, 28], maxZoom: 18 });
     });
-  }, [mapReady, point?.latitude, point?.longitude, radiusMeters]);
+  }, [mapReady, point?.latitude, point?.longitude, radiusMeters]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="relative overflow-hidden rounded-xl border border-slate-200 bg-slate-100">

@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { ArrowRight, MapPin } from 'lucide-react';
 import { apiFetch, ApiError } from '@/lib/api';
 import { getToken } from '@/lib/auth';
@@ -45,7 +45,7 @@ export default function PlacementRequestsPage() {
   const [pending, setPending] = useState<PendingAction | null>(null);
   const [form, setForm] = useState({ employeeId: '', destinationLocationId: '', startDate: '', reason: '' });
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true); setError(null);
     try {
       const token = getToken();
@@ -57,8 +57,8 @@ export default function PlacementRequestsPage() {
       if (locationResult) setLocations(locationResult as Option[]);
     } catch (reason) { setError(reason instanceof ApiError || reason instanceof Error ? reason.message : 'Gagal memuat data pengajuan'); }
     finally { setLoading(false); }
-  }
-  useEffect(() => { void load(); }, []);
+  }, [canCreate]);
+  useEffect(() => { void load(); }, [load]);
 
   async function onCreate(event: FormEvent) {
     event.preventDefault(); setSubmitting(true); setError(null);

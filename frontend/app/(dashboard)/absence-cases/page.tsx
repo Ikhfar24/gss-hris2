@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { CalendarX } from 'lucide-react';
 import { apiFetch, ApiError } from '@/lib/api';
 import { getToken } from '@/lib/auth';
@@ -39,7 +39,7 @@ export default function AbsenceCasesPage() {
   const [form, setForm] = useState({ employeeId: '', date: '' });
   const [explanation, setExplanation] = useState({ caseId: '', text: '' });
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true); setError(null);
     try {
       if (!canManage) { setRows(await apiFetch<AbsenceCase[]>('/absence-cases/my')); return; }
@@ -51,8 +51,8 @@ export default function AbsenceCasesPage() {
       if (employeeResult) setEmployees((employeeResult as EmployeeResponse).data);
     } catch (reason) { setError(reason instanceof ApiError ? reason.message : 'Gagal memuat kasus ketidakhadiran'); }
     finally { setLoading(false); }
-  }
-  useEffect(() => { void load(); }, []);
+  }, [canManage, isHr]);
+  useEffect(() => { void load(); }, [load]);
 
   async function create(event: FormEvent) { event.preventDefault(); setBusy(true); setError(null); try { await apiFetch('/absence-cases', { method: 'POST', token: getToken(), body: form }); setForm({ employeeId: '', date: '' }); setShowForm(false); await load(); } catch (reason) { setError(reason instanceof ApiError ? reason.message : 'Gagal membuat kasus ketidakhadiran'); } finally { setBusy(false); } }
   async function performAction(reason: string) { if (!pending) return; setBusy(true); setError(null); const path = pending.kind === 'follow-up' ? 'follow-up' : 'resolve'; const body = pending.kind === 'follow-up' ? { note: reason } : { decision: pending.kind === 'excuse' ? 'EXCUSE' : 'CONFIRM_ALPHA', reason }; try { await apiFetch(`/absence-cases/${pending.row.id}/${path}`, { method: 'PATCH', token: getToken(), body }); setPending(null); await load(); } catch (cause) { setError(cause instanceof ApiError ? cause.message : 'Gagal memproses kasus'); } finally { setBusy(false); } }

@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 import { CalendarRange, History, Plus, SlidersHorizontal } from "lucide-react";
 import { ApiError, apiFetch } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
@@ -79,7 +79,7 @@ export function LeaveBalancePanel({
     ? `/leave-balances/employees/${employeeId}`
     : "/leave-balances/me";
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -93,11 +93,10 @@ export function LeaveBalancePanel({
     } finally {
       setLoading(false);
     }
-  }
-
+  }, [endpoint]);
   useEffect(() => {
     void load();
-  }, [endpoint]);
+  }, [load]);
 
   function openInitialize() {
     setForm({ year: String(jakartaYear()), value: "", reason: "" });

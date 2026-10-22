@@ -14,7 +14,7 @@ import {
   UserX,
   UsersRound,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, apiFetch } from "@/lib/api";
 import type { ApprovedFullDayAbsence, AttendanceMode, AttendanceRecord } from "@/lib/attendance";
 import { approvedAbsenceLabel, attendanceStatus } from "@/lib/attendance";
@@ -106,7 +106,7 @@ export function ManagementHome({ role }: { role: "KOORDINATOR" | "ADMIN_HR" }) {
   const [error, setError] = useState(false);
   const requestId = useRef(0);
 
-  async function load(selectedType = type) {
+  const load = useCallback(async (selectedType = type) => {
     const currentRequest = ++requestId.current;
     setLoading(true);
     setError(false);
@@ -155,15 +155,14 @@ export function ManagementHome({ role }: { role: "KOORDINATOR" | "ADMIN_HR" }) {
     } finally {
       if (currentRequest === requestId.current) setLoading(false);
     }
-  }
-
+  }, [type, session, isCoordinator]);
   useEffect(() => {
     void load();
     const refreshAttendance = () => void load();
     window.addEventListener("attendance-updated", refreshAttendance);
     return () =>
       window.removeEventListener("attendance-updated", refreshAttendance);
-  }, [type]);
+  }, [load]);
   if (loading && !summary) return <ManagementSkeleton />;
   if (!summary) return <ErrorState retry={load} />;
 

@@ -15,7 +15,7 @@ import {
   UsersRound,
   WalletCards,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ApiError, apiFetch } from "@/lib/api";
 import type { ApprovedFullDayAbsence, AttendanceMode, AttendanceRecord } from "@/lib/attendance";
 import { approvedAbsenceLabel, attendanceStatus } from "@/lib/attendance";
@@ -82,7 +82,7 @@ export function FinanceHome() {
   const [attention, setAttention] = useState<Attention[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true);
     setError(false);
     try {
@@ -104,12 +104,12 @@ export function FinanceHome() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [session]);
   useEffect(() => {
     void load();
     window.addEventListener("attendance-updated", load);
     return () => window.removeEventListener("attendance-updated", load);
-  }, []);
+  }, [load]);
   if (loading) return <HomeSkeleton />;
   if (error) return <ErrorState retry={load} />;
   const activeRun = runs.find((run) => run.status !== "FINALIZED") ?? runs[0];
@@ -226,7 +226,7 @@ export function ExecutiveHome({ role }: { role: "DIREKTUR" | "KOMISARIS" }) {
   const [attention, setAttention] = useState<Attention[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true);
     setError(false);
     try {
@@ -245,10 +245,10 @@ export function ExecutiveHome({ role }: { role: "DIREKTUR" | "KOMISARIS" }) {
     } finally {
       setLoading(false);
     }
-  }
+  }, [role]);
   useEffect(() => {
     void load();
-  }, [role]);
+  }, [load]);
   if (loading) return <HomeSkeleton />;
   if (error || !summary) return <ErrorState retry={load} />;
   const active = workforce.filter((item) => item.status === "ACTIVE");

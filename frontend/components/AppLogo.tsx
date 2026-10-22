@@ -31,6 +31,7 @@ export function AppLogo({
             inverse ? "border-white/15 bg-white" : "border-border bg-paper",
           )}
         >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={branding.logoUrl!}
             alt={`${branding.companyName} logo`}

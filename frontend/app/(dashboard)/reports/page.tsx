@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { CalendarDays, Download, FileSpreadsheet, FileText, MapPinned, UsersRound } from 'lucide-react';
 import { apiFetch, ApiError, downloadFile } from '@/lib/api';
 import { formatDate } from '@/lib/format';
@@ -36,7 +36,7 @@ export default function ReportsPage() {
   const [filters, setFilters] = useState({ from: '', to: '', employeeId: '', locationId: '', status: '' });
   const canSeeManpower = ['ADMIN_HR', 'SYSTEM_ADMIN', 'DIREKTUR', 'KOMISARIS'].includes(session.role);
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true); setOverviewError(false);
     const options = Promise.all([apiFetch<EmployeeResponse>('/employees?pageSize=100').then((response) => response.data).catch(() => []), apiFetch<Option[]>('/locations').catch(() => [])]);
     const overview = Promise.all([apiFetch<Summary>('/dashboard/summary'), canSeeManpower ? apiFetch<Workforce[]>('/employees/manpower') : Promise.resolve([])]).catch(() => null);
@@ -44,8 +44,8 @@ export default function ReportsPage() {
     setEmployees(nextEmployees); setLocations(nextLocations);
     if (overviewResult) { setSummary(overviewResult[0]); setWorkforce(overviewResult[1]); } else { setOverviewError(true); }
     setLoading(false);
-  }
-  useEffect(() => { void load(); }, [session.role]);
+  }, [canSeeManpower]);
+  useEffect(() => { void load(); }, [load]);
 
   async function download(reportKey: string, format: 'xlsx' | 'pdf') {
     setError(null); setDownloading(`${reportKey}-${format}`);

@@ -70,7 +70,7 @@ export function PeopleAttendanceMonitoring({ role, context = role === 'KOORDINAT
     setType(nextType);
     setState(stateOptions.some((option) => option.value === requestedState) ? requestedState as FilterState : 'ALL');
     void load(nextType);
-  }, [queryKey]);
+  }, [queryKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function toLocalInput(value: string | null) { if (!value) return ''; const date = new Date(value); const pad = (number: number) => String(number).padStart(2, '0'); return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`; }
   async function openDetail(id: string) { try { const result: any = await apiFetch(`/attendance/${id}`); setDetail(result); setNote(''); setCorrecting(false); setCorrection({ checkInAt: toLocalInput(result.checkInAt), checkOutAt: toLocalInput(result.checkOutAt), reason: '' }); } catch (reason) { setError(reason instanceof ApiError ? reason.message : 'Gagal memuat bukti presensi'); } }

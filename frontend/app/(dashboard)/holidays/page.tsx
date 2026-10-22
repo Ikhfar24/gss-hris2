@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { CalendarDays, ChevronLeft, ChevronRight, MapPin, Plus, Trash2 } from 'lucide-react';
 import { apiFetch, ApiError } from '@/lib/api';
 import { getToken } from '@/lib/auth';
@@ -65,7 +65,7 @@ export default function HolidaysPage() {
   const [pendingDelete, setPendingDelete] = useState<HolidayRow | null>(null);
   const [form, setForm] = useState<{ date: string; name: string; type: HolidayType; locationId: string }>({ date: dateKey(now), name: '', type: 'NATIONAL', locationId: '' });
 
-  async function load() {
+  const load = useCallback(async () => {
     setError(null);
     try {
       const [holidayData, locationData] = await Promise.all([
@@ -77,9 +77,8 @@ export default function HolidaysPage() {
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Gagal memuat kalender hari libur');
     }
-  }
-
-  useEffect(() => { void load(); }, []);
+  }, [canManage]);
+  useEffect(() => { void load(); }, [load]);
 
   function selectDay(day: Date) {
     const key = dateKey(day);

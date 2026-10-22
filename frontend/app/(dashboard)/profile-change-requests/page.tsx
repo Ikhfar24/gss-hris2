@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { ApiError, apiFetch } from '@/lib/api';
 import { formatDate } from '@/lib/format';
 import { useSession } from '@/components/providers/SessionProvider';
@@ -39,7 +39,7 @@ export default function ProfileChangeRequestsPage() {
   } | null>(null);
   const [busy, setBusy] = useState(false);
 
-  async function load() {
+  const load = useCallback(async () => {
     setError(null);
     try {
       const [own, review] = await Promise.all([
@@ -59,10 +59,10 @@ export default function ProfileChangeRequestsPage() {
         reason instanceof ApiError ? reason.message : 'Gagal memuat pengajuan',
       );
     }
-  }
+  }, [isEmployee, isHr]);
   useEffect(() => {
     void load();
-  }, [session.role]);
+  }, [load]);
   async function submit(event: FormEvent) {
     event.preventDefault();
     const changes = Object.fromEntries(

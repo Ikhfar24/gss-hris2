@@ -242,7 +242,7 @@ export default function EmployeesPage() {
   const isInitialMount = useRef(true);
   useEffect(() => {
     load();
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (isInitialMount.current) {
@@ -253,7 +253,7 @@ export default function EmployeesPage() {
       load(1);
     }, 300);
     return () => clearTimeout(timer);
-  }, [search, statusFilter, typeFilter]);
+  }, [search, statusFilter, typeFilter]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function applyFilters(e: FormEvent) {
     e.preventDefault();

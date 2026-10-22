@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { AlertTriangle, BarChart3, CalendarDays, CheckCircle2, ChevronRight, Clock3, Fingerprint, Settings } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ApiError, apiFetch } from '@/lib/api';
 import { formatDate } from '@/lib/format';
 import { useSession } from '@/components/providers/SessionProvider';
@@ -31,7 +31,7 @@ function PersonalActivity() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true); setError(false);
     try {
       const [history, leaves, overtime] = await Promise.all([
@@ -46,9 +46,9 @@ function PersonalActivity() {
       ]).slice(0, 10));
     } catch (reason) { setError(reason instanceof ApiError || reason instanceof Error); }
     finally { setLoading(false); }
-  }
+  }, [session.role]);
 
-  useEffect(() => { void load(); }, [session.role]);
+  useEffect(() => { void load(); }, [load]);
   if (!session.employee) return <EmptyState title="Aktivitas pribadi tidak tersedia" description="Akun ini belum terhubung ke data karyawan." />;
   if (loading) return <ActivitySkeleton />;
   if (error) return <ErrorState retry={load} />;
@@ -78,14 +78,14 @@ function ManagementActivity() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true); setError(false);
     try {
       const [cards, leaves, overtime, history] = await Promise.all([
         apiFetch<Attention[]>('/dashboard/attention'),
         apiFetch<WorkflowItem[]>('/leave-requests'),
         apiFetch<WorkflowItem[]>('/overtime-requests'),
-        session.employee ? apiFetch<AttendanceItem[]>('/attendance/me/history') : Promise.resolve([]),
+        session.employee?.id ? apiFetch<AttendanceItem[]>('/attendance/me/history') : Promise.resolve([]),
       ]);
       setAttention(cards.filter((item) => item.count > 0));
       setAttendance(history.slice(0, 5));
@@ -95,9 +95,9 @@ function ManagementActivity() {
       ]).slice(0, 30));
     } catch (reason) { setError(reason instanceof ApiError || reason instanceof Error); }
     finally { setLoading(false); }
-  }
+  }, [session.employee?.id]);
 
-  useEffect(() => { void load(); }, [session.employee?.id]);
+  useEffect(() => { void load(); }, [load]);
   if (loading) return <ActivitySkeleton />;
   if (error) return <ErrorState retry={load} />;
   const own = completed.filter((item) => item.employee?.id === session.employee?.id);
@@ -126,8 +126,8 @@ function RoleActivity() {
   const [attention, setAttention] = useState<Attention[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
-  async function load() { setLoading(true); setError(false); try { setAttention(['KEUANGAN', 'DIREKTUR'].includes(session.role) ? (await apiFetch<Attention[]>('/dashboard/attention')).filter((item) => item.count > 0) : []); } catch (reason) { setError(reason instanceof ApiError || reason instanceof Error); } finally { setLoading(false); } }
-  useEffect(() => { void load(); }, [session.role]);
+  const load = useCallback(async () => { setLoading(true); setError(false); try { setAttention(['KEUANGAN', 'DIREKTUR'].includes(session.role) ? (await apiFetch<Attention[]>('/dashboard/attention')).filter((item) => item.count > 0) : []); } catch (reason) { setError(reason instanceof ApiError || reason instanceof Error); } finally { setLoading(false); } }, [session.role]);
+  useEffect(() => { void load(); }, [load]);
   if (loading) return <ActivitySkeleton />;
   if (error) return <ErrorState retry={load} />;
   if (session.role === 'SYSTEM_ADMIN') return <RoleHub eyebrow="SYSTEM" description="Tidak ada penyimpanan notifikasi terpisah. Gunakan pusat administrasi dan monitoring yang berwenang." links={[['Administrasi Sistem', '/system', <Settings key="system" className="size-5" />], ['Monitoring & Laporan', '/reports', <BarChart3 key="reports" className="size-5" />]]} />;
