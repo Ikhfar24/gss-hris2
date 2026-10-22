@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, Optional, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { createHash } from 'crypto';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogService } from '../audit-log/audit-log.service';
@@ -8,6 +9,11 @@ import { Role } from '../common/enums/role.enum';
 import { Prisma } from '@prisma/client';
 import { ChangeEmailDto, ChangePasswordDto } from './dto/account.dto';
 import { TemporaryCredentialService } from '../temporary-credentials/temporary-credential.service';
+
+const REFRESH_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+// A replayed token this soon after rotation is most likely a racing tab, not
+// theft, so the old token is rejected without terminating the fresh session.
+const REFRESH_TOKEN_REUSE_GRACE_MS = 30_000;
 
 @Injectable()
 export class AuthService {
@@ -152,13 +158,14 @@ export class AuthService {
       version = user.sessionVersion;
     }
 
-    const payload = {
-      sub: userId,
-      type: 'refresh',
-      sessionVersion: version,
-    };
-
-    return this.jwt.sign(payload, { expiresIn: '7d' });
+    const token = this.jwt.sign({ sub: userId, type: 'refresh', sessionVersion: version }, { expiresIn: '7d' });
+    const now = new Date();
+    // Expired rows are unusable; drop them opportunistically so the table stays bounded.
+    await this.prisma.refreshSession.deleteMany({ where: { userId, expiresAt: { lt: now } } });
+    await this.prisma.refreshSession.create({
+      data: { userId, tokenHash: this.hashRefreshToken(token), expiresAt: new Date(now.getTime() + REFRESH_TOKEN_TTL_MS) },
+    });
+    return token;
   }
 
   async login(user: { id: string; name?: string; email: string; role: string; mustChangePassword: boolean; sessionVersion: number }) {
@@ -222,6 +229,52 @@ export class AuthService {
       throw new UnauthorizedException('Sesi telah kedaluwarsa atau diperbarui');
     }
 
+    const stored = await this.prisma.refreshSession.findUnique({ where: { tokenHash: this.hashRefreshToken(refreshToken) } });
+    if (!stored || stored.userId !== user.id) {
+      throw new UnauthorizedException('Token refresh tidak valid atau sudah digunakan');
+    }
+    if (stored.revokedAt) {
+      throw new UnauthorizedException('Token refresh sudah dicabut');
+    }
+
+    const now = new Date();
+    if (stored.expiresAt.getTime() <= now.getTime()) {
+      throw new UnauthorizedException('Token refresh tidak valid atau kedaluwarsa');
+    }
+    if (stored.usedAt) {
+      await this.rejectRefreshTokenReuse(stored, user);
+      throw new UnauthorizedException('Token refresh sudah digunakan');
+    }
+
+    const nextRefreshToken = this.jwt.sign(
+      { sub: user.id, type: 'refresh', sessionVersion: user.sessionVersion },
+      { expiresIn: '7d' },
+    );
+
+    // Claim the presented row atomically so two concurrent refreshes cannot both
+    // succeed, then persist its single successor in the same transaction.
+    const claimed = await this.prisma.$transaction(async (tx) => {
+      const result = await tx.refreshSession.updateMany({
+        where: { id: stored.id, usedAt: null, revokedAt: null },
+        data: { usedAt: now },
+      });
+      if (result.count === 0) return false;
+      await tx.refreshSession.create({
+        data: {
+          userId: user.id,
+          tokenHash: this.hashRefreshToken(nextRefreshToken),
+          expiresAt: new Date(now.getTime() + REFRESH_TOKEN_TTL_MS),
+        },
+      });
+      return true;
+    });
+
+    if (!claimed) {
+      const latest = await this.prisma.refreshSession.findUnique({ where: { id: stored.id } });
+      await this.rejectRefreshTokenReuse(latest ?? stored, user);
+      throw new UnauthorizedException('Token refresh sudah digunakan');
+    }
+
     const newAccessToken = this.jwt.sign({
       sub: user.id,
       email: user.email,
@@ -230,13 +283,11 @@ export class AuthService {
       sessionVersion: user.sessionVersion,
     });
 
-    const newRefreshToken = await this.generateRefreshToken(user.id, user.sessionVersion);
-
     return {
       accessToken: newAccessToken,
-      refreshToken: newRefreshToken,
+      refreshToken: nextRefreshToken,
       maxAgeMs: 8 * 60 * 60 * 1000,
-      refreshMaxAgeMs: 7 * 24 * 60 * 60 * 1000,
+      refreshMaxAgeMs: REFRESH_TOKEN_TTL_MS,
       user: {
         id: user.id,
         email: user.email,
@@ -246,6 +297,31 @@ export class AuthService {
     };
   }
 
+  private async rejectRefreshTokenReuse(
+    stored: { userId: string; usedAt: Date | null },
+    user: { id: string; email: string; role: string },
+  ) {
+    if (stored.usedAt && Date.now() - stored.usedAt.getTime() < REFRESH_TOKEN_REUSE_GRACE_MS) return;
+
+    const now = new Date();
+    await this.prisma.refreshSession.updateMany({ where: { userId: stored.userId, revokedAt: null }, data: { revokedAt: now } });
+    await this.prisma.user.update({ where: { id: stored.userId }, data: { sessionVersion: { increment: 1 } } });
+    await this.auditLog?.record?.({
+      actorId: user.id,
+      actorEmail: user.email,
+      actorRole: user.role as Role,
+      action: 'AUTH_REFRESH_TOKEN_REUSE',
+      entity: 'User',
+      entityId: user.id,
+      source: 'AUTH_REFRESH',
+      reason: 'Refresh token yang sudah dipakai kembali digunakan; seluruh sesi dicabut',
+    });
+  }
+
+  private hashRefreshToken(token: string) {
+    return createHash('sha256').update(token).digest('hex');
+  }
+
   async changePassword(actor: AuthenticatedUser, dto: ChangePasswordDto) {
     const user = await this.userForReauthentication(actor.userId, dto.currentPassword);
     if (await bcrypt.compare(dto.newPassword, user.passwordHash)) throw new BadRequestException('Password baru harus berbeda dari password saat ini');
@@ -253,6 +329,7 @@ export class AuthService {
     const updated = await this.prisma.$transaction(async (tx) => {
       const value = await tx.user.update({ where: { id: actor.userId }, data: { passwordHash, mustChangePassword: false, passwordChangedAt: new Date(), sessionVersion: { increment: 1 } }, select: { id: true, email: true, role: true, mustChangePassword: true, sessionVersion: true } });
       await tx.userTemporaryCredential.deleteMany({ where: { userId: actor.userId } });
+      await tx.refreshSession.updateMany({ where: { userId: actor.userId, revokedAt: null }, data: { revokedAt: new Date() } });
       await tx.auditLog.create({ data: { actorId: actor.userId, actorName: user.name, actorEmail: user.email, actorRole: user.role, action: 'AUTH_PASSWORD_CHANGE', entity: 'User', entityId: actor.userId, source: 'ACCOUNT_SELF_SERVICE', newValue: { mustChangePassword: false, sessionVersion: value.sessionVersion } } });
       return value;
     });
@@ -268,6 +345,7 @@ export class AuthService {
     try {
       const updated = await this.prisma.$transaction(async (tx) => {
         const value = await tx.user.update({ where: { id: actor.userId }, data: { email, sessionVersion: { increment: 1 } }, select: { id: true, email: true, role: true, mustChangePassword: true, sessionVersion: true } });
+        await tx.refreshSession.updateMany({ where: { userId: actor.userId, revokedAt: null }, data: { revokedAt: new Date() } });
         await tx.auditLog.create({ data: { actorId: actor.userId, actorName: user.name, actorEmail: user.email, actorRole: user.role, action: 'AUTH_EMAIL_CHANGE', entity: 'User', entityId: actor.userId, source: 'ACCOUNT_SELF_SERVICE', oldValue: { email: user.email }, newValue: { email, sessionVersion: value.sessionVersion } } });
         return value;
       });
@@ -317,6 +395,7 @@ export class AuthService {
           newValue: { sessionVersion: user.sessionVersion },
         },
       });
+      await tx.refreshSession.updateMany({ where: { userId, revokedAt: null }, data: { revokedAt: new Date() } });
     });
   }
 }

@@ -43,6 +43,7 @@ model User {
   auditLogs AuditLog[] @relation("AuditLogActor")
   coordinatorScopes CoordinatorScope[]
   temporaryCredential UserTemporaryCredential?
+  refreshSessions RefreshSession[]
 
   @@map("users")
 }
@@ -62,6 +63,25 @@ model UserTemporaryCredential {
   revealCount    Int      @default(0)
 
   @@map("user_temporary_credentials")
+}
+
+// One row per issued refresh token. Tokens are single-use: refreshing marks the
+// presented row as used and inserts its successor, so a replayed token cannot
+// mint new access tokens. Presenting an already-used token outside a short
+// grace window (multi-tab race) revokes every session of that user.
+model RefreshSession {
+  id        String    @id @default(uuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique // SHA-256 of the refresh JWT; the token itself is never stored
+  expiresAt DateTime
+  usedAt    DateTime?
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, revokedAt])
+  @@index([expiresAt])
+  @@map("refresh_sessions")
 }
 
 // Coordinator monitoring authority is defined by employment type, not the

@@ -111,6 +111,7 @@ test('logout rotates the server-side session version and audits atomically', asy
     $transaction: async (callback) => callback({
       user: { update: async (query) => { writes.push(query); return { role: 'KARYAWAN', sessionVersion: 8 }; } },
       auditLog: { create: async (query) => writes.push(query) },
+      refreshSession: { updateMany: async () => ({ count: 0 }) },
     }),
   };
   await new AuthService(prisma, {}, {}).logout('user-1');

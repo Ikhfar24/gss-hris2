@@ -1,5 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const crypto = require('node:crypto');
 const jwt = require('jsonwebtoken');
 
 const { AuthService } = require('../dist/auth/auth.service');
@@ -8,16 +9,34 @@ const { JwtStrategy } = require('../dist/auth/strategies/jwt.strategy');
 
 const JWT_SECRET = 'a-32-character-minimum-jwt-secret!';
 const config = { get: (key) => (key === 'JWT_SECRET' ? JWT_SECRET : undefined) };
+const hashToken = (token) => crypto.createHash('sha256').update(token).digest('hex');
+
+function sessionRow(token, overrides = {}) {
+  return {
+    id: 'session-1',
+    userId: 'u1',
+    tokenHash: hashToken(token),
+    expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+    usedAt: null,
+    revokedAt: null,
+    ...overrides,
+  };
+}
 
 const fakeJwtService = {
   sign: (payload, opts) => jwt.sign(payload, JWT_SECRET, { expiresIn: opts?.expiresIn ?? '8h' }),
   verify: (token) => jwt.verify(token, JWT_SECRET),
 };
 
-test('generateRefreshToken creates a 7-day token with type refresh and sessionVersion', async () => {
+test('generateRefreshToken creates a 7-day token and stores only its hash', async () => {
+  const stored = [];
   const prisma = {
     user: {
       findUnique: async () => ({ id: 'u1', sessionVersion: 3 }),
+    },
+    refreshSession: {
+      deleteMany: async () => ({ count: 0 }),
+      create: async ({ data }) => { stored.push(data); return data; },
     },
   };
   const service = new AuthService(prisma, fakeJwtService, {});
@@ -28,6 +47,11 @@ test('generateRefreshToken creates a 7-day token with type refresh and sessionVe
   assert.equal(decoded.type, 'refresh');
   assert.equal(decoded.sessionVersion, 3);
   assert.ok(decoded.exp - decoded.iat >= 7 * 24 * 3600 - 10);
+
+  assert.equal(stored.length, 1);
+  assert.equal(stored[0].tokenHash, hashToken(token));
+  assert.notEqual(stored[0].tokenHash, token);
+  assert.ok(stored[0].expiresAt.getTime() > Date.now() + 6.9 * 24 * 60 * 60 * 1000);
 });
 
 test('login returns both access token and refresh token', async () => {
@@ -38,6 +62,10 @@ test('login returns both access token and refresh token', async () => {
     },
     auditLog: {
       create: async () => ({ id: 'log-1' }),
+    },
+    refreshSession: {
+      deleteMany: async () => ({ count: 0 }),
+      create: async ({ data }) => data,
     },
     $transaction: async (cb) => cb(prisma),
   };
@@ -59,7 +87,10 @@ test('login returns both access token and refresh token', async () => {
   assert.equal(refreshDecoded.sub, 'u1');
 });
 
-test('refreshAccessToken succeeds and rotates tokens when valid', async () => {
+test('refreshAccessToken succeeds and marks the presented token as used', async () => {
+  const validRefreshToken = fakeJwtService.sign({ sub: 'u1', type: 'refresh', sessionVersion: 2 }, { expiresIn: '7d' });
+  const row = sessionRow(validRefreshToken);
+  const created = [];
   const prisma = {
     user: {
       findUnique: async () => ({
@@ -71,9 +102,18 @@ test('refreshAccessToken succeeds and rotates tokens when valid', async () => {
         sessionVersion: 2,
       }),
     },
+    refreshSession: {
+      findUnique: async ({ where }) => (where.id === row.id || where.tokenHash === row.tokenHash ? row : null),
+      updateMany: async ({ where, data }) => {
+        if (where.id !== row.id || row.usedAt || row.revokedAt) return { count: 0 };
+        row.usedAt = data.usedAt;
+        return { count: 1 };
+      },
+      create: async ({ data }) => { created.push(data); return data; },
+    },
+    $transaction: async (cb) => cb(prisma),
   };
   const service = new AuthService(prisma, fakeJwtService, {});
-  const validRefreshToken = fakeJwtService.sign({ sub: 'u1', type: 'refresh', sessionVersion: 2 }, { expiresIn: '7d' });
 
   const result = await service.refreshAccessToken(validRefreshToken);
   assert.ok(result.accessToken);
@@ -87,6 +127,109 @@ test('refreshAccessToken succeeds and rotates tokens when valid', async () => {
   const newRefreshDecoded = jwt.decode(result.refreshToken);
   assert.equal(newRefreshDecoded.type, 'refresh');
   assert.equal(newRefreshDecoded.sessionVersion, 2);
+
+  assert.ok(row.usedAt instanceof Date);
+  assert.equal(created.length, 1);
+  assert.equal(created[0].tokenHash, hashToken(result.refreshToken));
+  assert.notEqual(created[0].tokenHash, result.refreshToken);
+});
+
+test('refreshAccessToken rejects an unknown token that was never issued', async () => {
+  const prisma = {
+    user: {
+      findUnique: async () => ({
+        id: 'u1',
+        email: 'user@example.com',
+        role: 'KARYAWAN',
+        isActive: true,
+        mustChangePassword: false,
+        sessionVersion: 2,
+      }),
+    },
+    refreshSession: { findUnique: async () => null },
+  };
+  const service = new AuthService(prisma, fakeJwtService, {});
+  const token = fakeJwtService.sign({ sub: 'u1', type: 'refresh', sessionVersion: 2 }, { expiresIn: '7d' });
+
+  await assert.rejects(() => service.refreshAccessToken(token), /tidak valid atau sudah digunakan/);
+});
+
+test('refreshAccessToken rejects a replayed token and revokes every session after the grace window', async () => {
+  const token = fakeJwtService.sign({ sub: 'u1', type: 'refresh', sessionVersion: 2 }, { expiresIn: '7d' });
+  const row = sessionRow(token, { usedAt: new Date(Date.now() - 5 * 60 * 1000) });
+  const audits = [];
+  let versionBumped = false;
+  const prisma = {
+    user: {
+      findUnique: async () => ({
+        id: 'u1',
+        email: 'user@example.com',
+        role: 'KARYAWAN',
+        isActive: true,
+        mustChangePassword: false,
+        sessionVersion: 2,
+      }),
+      update: async ({ data }) => { versionBumped = data.sessionVersion.increment === 1; return {}; },
+    },
+    refreshSession: {
+      findUnique: async () => row,
+      updateMany: async () => ({ count: 1 }),
+      create: async () => assert.fail('a replayed token must not mint a successor'),
+    },
+    $transaction: async (cb) => cb(prisma),
+  };
+  const service = new AuthService(prisma, fakeJwtService, { record: async (entry) => audits.push(entry) });
+
+  await assert.rejects(() => service.refreshAccessToken(token), /sudah digunakan/);
+  assert.equal(versionBumped, true);
+  assert.ok(audits.some((entry) => entry.action === 'AUTH_REFRESH_TOKEN_REUSE'));
+});
+
+test('refreshAccessToken rejects a replay inside the grace window without ending the session', async () => {
+  const token = fakeJwtService.sign({ sub: 'u1', type: 'refresh', sessionVersion: 2 }, { expiresIn: '7d' });
+  const row = sessionRow(token, { usedAt: new Date(Date.now() - 1000) });
+  const prisma = {
+    user: {
+      findUnique: async () => ({
+        id: 'u1',
+        email: 'user@example.com',
+        role: 'KARYAWAN',
+        isActive: true,
+        mustChangePassword: false,
+        sessionVersion: 2,
+      }),
+      update: async () => assert.fail('grace-window replay must not bump the session version'),
+    },
+    refreshSession: {
+      findUnique: async () => row,
+      updateMany: async () => assert.fail('grace-window replay must not revoke sessions'),
+      create: async () => assert.fail('a replayed token must not mint a successor'),
+    },
+    $transaction: async (cb) => cb(prisma),
+  };
+  const service = new AuthService(prisma, fakeJwtService, {});
+
+  await assert.rejects(() => service.refreshAccessToken(token), /sudah digunakan/);
+});
+
+test('refreshAccessToken rejects a revoked session row', async () => {
+  const token = fakeJwtService.sign({ sub: 'u1', type: 'refresh', sessionVersion: 2 }, { expiresIn: '7d' });
+  const prisma = {
+    user: {
+      findUnique: async () => ({
+        id: 'u1',
+        email: 'user@example.com',
+        role: 'KARYAWAN',
+        isActive: true,
+        mustChangePassword: false,
+        sessionVersion: 2,
+      }),
+    },
+    refreshSession: { findUnique: async () => sessionRow(token, { revokedAt: new Date() }) },
+  };
+  const service = new AuthService(prisma, fakeJwtService, {});
+
+  await assert.rejects(() => service.refreshAccessToken(token), /sudah dicabut/);
 });
 
 test('refreshAccessToken rejects token with mismatched sessionVersion', async () => {
