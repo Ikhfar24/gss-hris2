@@ -379,13 +379,13 @@ model PlacementRequest {
 // --- Company Settings (White-label foundation, PRD section 18) --------
 model CompanySettings {
   id           String   @id @default(uuid())
-  companyName  String   @default("Papaiz.corp")
-  appName      String   @default("Papaiz HR")
+  companyName  String   @default("GSS")
+  appName      String   @default("GSS")
   logoUrl      String?
   faviconUrl   String?
   email        String?
   address      String?
-  primaryColor String?  @default("#0F172A")
+  primaryColor String?  @default("#0F3151")
   updatedAt    DateTime @updatedAt
   updatedById  String?
 
