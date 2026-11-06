@@ -5,6 +5,11 @@ build/
 .env
 .env.local
 .env.*.local
+backend/.env.backup-*
+db-dump/
+*.dump
+ngrok.exe
+renewfe/
 uploads/
 *.log
 .DS_Store

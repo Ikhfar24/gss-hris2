@@ -59,7 +59,8 @@ interface EmployeeRow {
   jobTitle?: string | null;
   attendanceRequired?: boolean;
   attendanceMode: "GEOFENCE" | "MOBILE";
-  placements: { location: { name: string } }[];
+  placements?: { location: { name: string } }[];
+  activePlacement?: { locationName?: string; clientName?: string };
   contracts?: ContractRow[];
   user?: { id: string; email: string; isActive: boolean } | null;
 }
@@ -190,7 +191,7 @@ export default function EmployeesPage() {
       if (search.trim()) params.set("search", search.trim());
       if (statusFilter) params.set("status", statusFilter);
       if (typeFilter) params.set("employmentType", typeFilter);
-      const [emps, locs, attendanceRows] = await Promise.all([
+      const [emps, locs, attendanceRows] = await Promise.allSettled([
         apiFetch<EmployeeResponse>(`/employees?${params}`),
         canManage
           ? apiFetch<LocationOption[]>("/locations")
@@ -216,19 +217,23 @@ export default function EmployeesPage() {
           : Promise.resolve([]),
       ]);
       if (currentRequest !== requestId.current) return;
-      setEmployees(emps.data);
-      setTotal(emps.meta.total);
-      setPage(emps.meta.page);
+      if (emps.status === "rejected") throw emps.reason;
+      setEmployees(emps.value.data);
+      setTotal(emps.value.meta.total);
+      setPage(emps.value.meta.page);
       setSelectedIds([]);
-      setLocations(locs);
+      setLocations(locs.status === "fulfilled" ? locs.value : []);
       setTodayAttendance(
         Object.fromEntries(
-          attendanceRows.map((attendance) => [
+          (attendanceRows.status === "fulfilled" ? attendanceRows.value : []).map((attendance) => [
             attendance.employee.id,
             attendance,
           ]),
         ),
       );
+      setError(locs.status === "rejected" || attendanceRows.status === "rejected"
+        ? "Data karyawan tersedia, tetapi data lokasi atau absensi hari ini belum dapat dimuat. Coba muat ulang."
+        : null);
     } catch (err) {
       if (currentRequest === requestId.current)
         setError(
@@ -953,7 +958,7 @@ export default function EmployeesPage() {
                       </p>
                       <p className="mt-1 break-words text-caption text-muted [overflow-wrap:anywhere]">
                         <MapPin className="mr-1 inline size-3.5" />
-                        {employee.placements[0]?.location?.name ??
+                        {employee.placements?.[0]?.location?.name ?? employee.activePlacement?.locationName ??
                           "Belum ditempatkan"}
                       </p>
                       {isCoordinator && (
@@ -1152,7 +1157,7 @@ export default function EmployeesPage() {
                     <StatusBadge status={emp.status} />
                   </td>
                   <td className="px-3 py-2">
-                    {emp.placements[0]?.location?.name ?? "-"}
+                    {emp.placements?.[0]?.location?.name ?? emp.activePlacement?.locationName ?? "-"}
                   </td>
                   {canManage && (
                     <td className="px-3 py-2">{formatRupiah(emp.dailyRate)}</td>

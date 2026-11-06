@@ -108,7 +108,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             if (!items.length) return null;
             return (
               <div key={group.label} className="mb-4">
-                <p className="mb-2 px-3 text-[0.6875rem] font-bold uppercase tracking-[0.16em] text-slate-300">
+                <p className="mb-1.5 px-3 text-[0.75rem] font-semibold text-slate-300/80">
                   {group.label}
                 </p>
                 <div className="space-y-1">
@@ -266,7 +266,7 @@ function MobileModules() {
             if (!items.length) return null;
             return (
               <section key={group.label}>
-                <p className="mb-2 border-b border-border pb-2 text-caption font-bold uppercase tracking-[0.12em] text-muted">
+                <p className="mb-2 border-b border-border pb-1.5 text-xs font-semibold text-foreground/80">
                   {group.label}
                 </p>
                 <div className="grid gap-1">
@@ -348,7 +348,7 @@ function MobileNavigation({
   return (
     <nav
       aria-label="Navigasi seluler"
-      className="fixed inset-x-0 bottom-0 z-40 flex min-h-[4.5rem] items-end border-t border-border bg-paper pl-[max(0.25rem,env(safe-area-inset-left))] pr-[max(0.25rem,env(safe-area-inset-right))] pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 shadow-lift lg:hidden"
+      className="fixed inset-x-3 bottom-2.5 z-40 flex items-center justify-around rounded-2xl border border-slate-200/80 bg-white/95 px-2 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] shadow-lg backdrop-blur-md lg:hidden"
     >
       {arranged.map((item) => {
         const Icon = item.icon;
@@ -360,10 +360,10 @@ function MobileNavigation({
               type="button"
               onClick={onAttendance}
               aria-label="Buka presensi langsung"
-              className="group -mt-8 flex min-h-11 flex-1 flex-col items-center gap-1 text-caption font-bold text-brand"
+              className="group -mt-6 flex min-h-12 flex-1 flex-col items-center gap-1 text-[0.6875rem] font-bold text-brand"
             >
-              <span className="relative grid size-14 place-items-center overflow-hidden rounded-full border-4 border-paper bg-brand text-white shadow-lift transition-transform group-active:scale-95 motion-reduce:transition-none">
-                <Icon className="size-6" />
+              <span className="relative grid size-12 place-items-center overflow-hidden rounded-full border-2 border-white bg-brand text-white shadow-md transition-transform group-active:scale-95 motion-reduce:transition-none">
+                <Icon className="size-5" />
               </span>
               <span>Presensi</span>
             </button>
@@ -374,8 +374,8 @@ function MobileNavigation({
             href={item.href}
             aria-current={active ? "page" : undefined}
             className={cn(
-              "relative flex min-h-11 min-w-0 flex-1 flex-col items-center gap-1 px-1 py-1 text-caption font-semibold after:absolute after:-top-2 after:h-0.5 after:w-8 after:bg-transparent",
-              active ? "text-brand after:bg-accent" : "text-muted",
+              "relative flex min-h-12 min-w-0 flex-1 flex-col items-center justify-center rounded-xl px-1 py-1 text-[0.6875rem] font-semibold transition-all",
+              active ? "bg-brand/10 text-brand" : "text-muted hover:text-foreground",
             )}
           >
             <Icon className="size-5" />

@@ -19,6 +19,7 @@ import { ApiError, apiFetch } from "@/lib/api";
 import type { ApprovedFullDayAbsence, AttendanceMode, AttendanceRecord } from "@/lib/attendance";
 import { approvedAbsenceLabel, attendanceStatus } from "@/lib/attendance";
 import { formatFullDate, formatTime } from "@/lib/format";
+import { cn } from "@/lib/utils";
 import { canAttend } from "@/lib/navigation";
 import { useSession } from "@/components/providers/SessionProvider";
 import { MobileIdentityHeader } from "@/components/employee/MobileIdentityHeader";
@@ -205,10 +206,7 @@ export function ManagementHome({ role }: { role: "KOORDINATOR" | "ADMIN_HR" }) {
           <div className="min-w-0">
             <h1 className="hidden text-page-title text-brand sm:block">Dashboard</h1>
             <p className="mt-0.5 hidden break-words text-body text-muted sm:block [overflow-wrap:anywhere]">
-              Halo, <span className="font-semibold text-foreground">{displayName}</span>. {contextTitle} dalam satu ringkasan.
-            </p>
-            <p className="mt-1 hidden text-caption font-semibold text-brand sm:block">
-              {isCoordinator ? "Koordinator · PRIBADI & TIM" : "Admin HR · PRIBADI & Workforce"}
+              Halo, <span className="font-semibold text-foreground">{displayName}</span> — pantauan presensi dan ringkasan operasional hari ini.
             </p>
             {loading && (
               <p className="mt-1 text-xs text-slate-400" role="status">
@@ -475,11 +473,11 @@ function AttendanceTrend({ days, className }: { days: MonitoringDay[]; className
       }
     >
       <div className="relative h-32 border-b border-l border-border pl-2 pt-2 sm:h-60 sm:pl-3">
-        <div aria-hidden="true" className="absolute inset-x-0 top-1/4 border-t border-dashed border-border/70" />
-        <div aria-hidden="true" className="absolute inset-x-0 top-1/2 border-t border-dashed border-border/70" />
-        <div aria-hidden="true" className="absolute inset-x-0 top-3/4 border-t border-dashed border-border/70" />
+        <div aria-hidden="true" className="absolute inset-x-0 top-1/4 border-t border-slate-100" />
+        <div aria-hidden="true" className="absolute inset-x-0 top-1/2 border-t border-slate-100" />
+        <div aria-hidden="true" className="absolute inset-x-0 top-3/4 border-t border-slate-100" />
         <div className="relative z-10 flex h-full items-end justify-around gap-1 sm:gap-3">
-          {days.map((day) => {
+          {days.map((day, index) => {
             const date = new Date(`${day.date}T00:00:00+07:00`);
             const punctual = Math.max(day.summary.attended - day.summary.late, 0);
             const segments = [
@@ -489,9 +487,9 @@ function AttendanceTrend({ days, className }: { days: MonitoringDay[]; className
               { label: "Cuti atau izin", value: day.summary.onLeave, color: "bg-indigo" },
             ];
             return (
-              <div key={day.date} className="flex h-full min-w-0 flex-1 flex-col items-center justify-end">
+              <div key={`${day.date}-${index}`} className="flex h-full min-w-0 flex-1 flex-col items-center justify-end">
                 <div
-                  className="flex w-full max-w-12 flex-col-reverse overflow-hidden rounded-t-sm bg-surface-subtle sm:max-w-14"
+                  className="flex w-full max-w-12 flex-col-reverse overflow-hidden rounded-t-md bg-slate-100 shadow-xs sm:max-w-14"
                   style={{ height: `${Math.max((day.summary.totalScheduled / max) * 100, 3)}%` }}
                   title={`${dateFormatter.format(date)}: ${day.summary.attended} hadir, ${day.summary.late} terlambat, ${day.summary.notAttended} tidak hadir, ${day.summary.onLeave} cuti/izin`}
                 >
@@ -517,7 +515,7 @@ function AttendanceTrend({ days, className }: { days: MonitoringDay[]; className
   );
 }
 function Legend({ color, label }: { color: string; label: string }) {
-  return <span className="inline-flex items-center gap-1.5"><span className={`size-2 rounded-sm ${color}`} />{label}</span>;
+  return <span className="inline-flex items-center gap-1.5 text-xs text-slate-500"><span className={`size-2 rounded-full ${color}`} />{label}</span>;
 }
 function PlacementSnapshot({ count, href }: { count: number; href: string }) {
   return (
@@ -598,25 +596,48 @@ function Metric({
   icon: typeof UsersRound;
   tone?: "neutral" | "success" | "warning" | "danger";
 }) {
-  const colors = {
-    neutral: "text-brand",
-    success: "text-success",
-    warning: "text-warning",
-    danger: "text-danger",
+  const toneStyles = {
+    neutral: {
+      text: "text-slate-900",
+      iconBg: "bg-slate-100 text-slate-700",
+      card: "bg-white border-slate-200/80 hover:border-slate-300"
+    },
+    success: {
+      text: "text-emerald-700",
+      iconBg: "bg-emerald-100 text-emerald-700",
+      card: "bg-gradient-to-br from-emerald-50/50 via-white to-white border-emerald-200/70 hover:border-emerald-300 shadow-sm"
+    },
+    warning: {
+      text: "text-amber-700",
+      iconBg: "bg-amber-100 text-amber-700",
+      card: "bg-white border-slate-200/80 hover:border-amber-200"
+    },
+    danger: {
+      text: "text-rose-700",
+      iconBg: "bg-rose-100 text-rose-700",
+      card: "bg-white border-slate-200/80 hover:border-rose-200"
+    },
   };
+  const current = toneStyles[tone];
   return (
     <Link
       href={href}
-      className="group min-w-0 rounded-xl border border-border bg-paper p-2.5 shadow-card transition-colors hover:bg-surface-subtle sm:p-4"
+      className={cn(
+        "group min-w-0 rounded-xl border p-3 sm:p-4 shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md",
+        current.card
+      )}
     >
       <span className="flex items-start justify-between gap-2">
-        <span className="min-h-8 text-[0.6875rem] font-semibold leading-4 text-muted sm:min-h-9 sm:text-caption sm:leading-5">{label}</span>
-        <span className={`grid size-7 shrink-0 place-items-center rounded-lg bg-surface-subtle sm:size-8 ${colors[tone]}`}><Icon className="size-3.5 sm:size-4" /></span>
+        <span className="min-h-8 text-xs font-semibold leading-4 text-slate-500 sm:min-h-9 sm:leading-5">{label}</span>
+        <span className={cn("grid size-7 shrink-0 place-items-center rounded-lg sm:size-8", current.iconBg)}>
+          <Icon className="size-3.5 sm:size-4" />
+        </span>
       </span>
-      <span className={`mt-0.5 block text-xl font-bold tabular-nums sm:mt-1 sm:text-3xl ${colors[tone]}`}>{value}</span>
+      <span className={cn("mt-1 block text-2xl font-bold tabular-nums sm:text-3xl", current.text)}>{value}</span>
     </Link>
   );
 }
+
 function Service({
   href,
   icon: Icon,

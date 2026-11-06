@@ -56,13 +56,8 @@ function LoginForm() {
       });
       toast.success("Selamat datang kembali");
       const next = params.get("next");
-      router.replace(
-        response.user.mustChangePassword
-          ? "/account"
-          : isInternalPath(next)
-            ? next
-            : "/dashboard",
-      );
+      const target = response.user.mustChangePassword ? '/account' : isInternalPath(next) ? next : '/dashboard';
+      window.location.href = target;
     } catch (err) {
       setError(
         err instanceof ApiError ? err.message : "Gagal terhubung ke server",

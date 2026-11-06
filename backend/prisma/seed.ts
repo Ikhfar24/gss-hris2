@@ -66,7 +66,7 @@ async function main() {
   let client = await prisma.client.findFirst({ where: { name: 'PT Contoh Klien' } });
   if (!client) {
     client = await prisma.client.create({
-      data: { name: 'PT Contoh Klien', address: 'Jl. Contoh No. 1, Jawa Tengah' },
+      data: { referenceCode: 'CL-CONTOH-KLIEN', name: 'PT Contoh Klien', address: 'Jl. Contoh No. 1, Jawa Tengah' },
     });
     console.log('Created dummy client: PT Contoh Klien');
   }
@@ -81,6 +81,7 @@ async function main() {
     if (!loc) {
       loc = await prisma.location.create({
         data: {
+          referenceCode: `LOC-${def.name.toUpperCase()}`,
           name: def.name,
           address: def.address,
           latitude: def.latitude,

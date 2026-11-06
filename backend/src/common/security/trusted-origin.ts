@@ -19,6 +19,37 @@ export function isUnsafeMethod(method: string): boolean {
   return ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method.toUpperCase());
 }
 
-export function isTrustedBrowserOrigin(origin: string | undefined, allowed: Set<string>): boolean {
-  return origin === undefined || allowed.has(origin);
+export function isTrustedBrowserOrigin(
+  origin: string | undefined,
+  allowed: Set<string>,
+  environment = process.env.NODE_ENV,
+): boolean {
+  if (origin === undefined) return true;
+  if (allowed.has(origin)) return true;
+
+  // Izinkan development tunnels (ngrok, localtunnel) dan IP jaringan lokal saat development
+  if (environment === 'development') {
+    try {
+      const url = new URL(origin);
+      const host = url.hostname.toLowerCase();
+      if (
+        host.endsWith('.ngrok-free.dev') ||
+        host.endsWith('.ngrok-free.app') ||
+        host.endsWith('.ngrok.app') ||
+        host.endsWith('.ngrok.io') ||
+        host.endsWith('.loca.lt') ||
+        host === 'localhost' ||
+        host === '127.0.0.1' ||
+        host.startsWith('192.168.') ||
+        host.startsWith('10.') ||
+        /^172\.(1[6-9]|2\d|3[01])\./.test(host)
+      ) {
+        return true;
+      }
+    } catch {
+      return false;
+    }
+  }
+
+  return false;
 }

@@ -207,6 +207,9 @@ dinamis — cukup untuk Phase 1, tapi hak akses final Komisaris & System Admin
 docker compose up -d
 ```
 
+> Untuk instalasi lokal Windows tanpa Docker (termasuk cara dump/restore data
+> asli dari PC kantor), lihat `docs/DB_TRANSFER.md`.
+
 ### 2. Backend
 
 ```bash
